@@ -6,6 +6,17 @@ it. This hook runs `set-wave-board sync` on every Stop and, when a job's payload
 from what this machine last pushed, blocks the stop ONCE with the exact push procedure —
 so the push happens whether or not the agent remembered the board.
 
+It does not ask after every change (owner, 2026-11-08: a push per `set` burned tokens all
+day). Sync classes each pending push, and the hook decides per job:
+  - first push, or a milestone (a wave finished, an item turned blocked): asked for, at most
+    once per SET_WAVEBOARD_NAG_SECONDS (1800);
+  - other progress: batched, asked for only when the job was last pushed at least
+    SET_WAVEBOARD_DEBOUNCE_SECONDS (3600) ago;
+  - notes only: never asked for; it rides with the next push.
+A job's own board and its combined-board document are always asked for in the same block.
+The end-of-session push is the skill's instruction (`set-wave-board pending`): a Stop hook
+cannot tell the last Stop of a session from any other.
+
 It also asks for a REVIEW of a stale board: one whose items only an agent can move (no
 evidence, or blocked) are open while HEAD has moved on since the board last changed
 (`set-wave-board stale`). Sync cannot move those items, so before this the board simply
@@ -83,11 +94,18 @@ def _backoff() -> float:
         return 1800.0
 
 
+WHY = {"first": "first push from this machine", "milestone": "a wave finished or an item turned blocked",
+       "progress": "batched progress (at least an hour since the last push)"}
+
+
 def procedure(root: Path, jobs: list, backoff: float) -> str:
+    whys = sorted({WHY.get(r.get("why"), "") for r in jobs} - {""})
     lines = [
         f"Wave board: {len(jobs)} push(es) from this repository have state this machine has not "
-        "pushed to the board pages. Push each one now with your ArtifactData tool, then carry on "
-        "where you left off.",
+        "pushed to the board pages" + (f" ({'; '.join(whys)})" if whys else "") + ". Push all of "
+        "them now in this one go with your ArtifactData tool, then carry on where you left off. "
+        "Routine progress is batched hourly and notes-only changes are never asked for; push "
+        "what `set-wave-board pending` lists before a handoff or at the end of the session.",
     ]
     for r in jobs:
         version = r.get("pushed_version")
@@ -168,7 +186,7 @@ def main() -> int:
     now = time.time()
     state = root / ".set" / "waveboard"
     backoff, review_backoff = _backoff(), _review_backoff()
-    due = _due(state, pending, "nag", backoff, now)
+    due = due_pushes(state, pending, backoff, _debounce(), now)
     review_due = _due(state, stale, "review-nag", review_backoff, now)
     if not due and not review_due:
         return 0
@@ -187,6 +205,55 @@ def main() -> int:
 
 def mode_review_on() -> bool:
     return os.environ.get("SET_WAVEBOARD_REVIEW", "").strip().lower() not in OFF
+
+
+def _debounce() -> float:
+    try:
+        return float(os.environ.get("SET_WAVEBOARD_DEBOUNCE_SECONDS", "3600"))
+    except ValueError:
+        return 3600.0
+
+
+def due_pushes(state: Path, entries: list, backoff: float, debounce: float, now: float) -> list:
+    """The pushes to ask for now, decided per JOB so a board and its combined document travel
+    in one block (one continuation, not two).
+
+    - notes only: never asked for; it rides along with the next push that is asked for;
+    - first push or a milestone (a wave finished, an item turned blocked): asked for, at most
+      once per `backoff`;
+    - other progress: batched — asked for only when the job's oldest pending target was last
+      pushed at least `debounce` ago, and not reminded within `debounce` either.
+    """
+    by_job: dict = {}
+    for e in entries:
+        by_job.setdefault(e["job"], []).append(e)
+    due = []
+    for job, group in by_job.items():
+        cls = max((e.get("class") or "progress" for e in group), key=lambda c: CLASS_RANK.get(c, 1))
+        if cls == "notes":
+            logger.debug("%s: only notes changed; not asking", job)
+            continue
+        last_nag = _stamp_of(state, job, "nag")
+        if cls in ("first", "milestone"):
+            ok = now - last_nag >= backoff
+        else:
+            pushed = [e.get("pushed_at") for e in group]
+            last_push = min(pushed) if all(isinstance(t, (int, float)) for t in pushed) else 0.0
+            ok = now - last_push >= debounce and now - last_nag >= debounce
+        logger.debug("%s: class %s, due %s", job, cls, ok)
+        if ok:
+            due += [dict(e, why=cls) for e in group]
+    return due
+
+
+def _stamp_of(state: Path, key: str, suffix: str) -> float:
+    try:
+        return float((state / f"{key}.{suffix}").read_text().strip())
+    except (OSError, ValueError):
+        return 0.0
+
+
+CLASS_RANK = {"notes": 0, "progress": 1, "milestone": 2, "first": 3}
 
 
 def _review_backoff() -> float:
@@ -221,26 +288,21 @@ def push_entries(results: list) -> list:
             entries.append({"job": x["job"], "target": "board", "url": x["artifact_url"],
                             "collection": "board", "doc": "state", "payload": x["payload"],
                             "pushed_version": x.get("pushed_version"), "hash": x["content_hash"],
-                            "nag_key": x["job"]})
+                            "nag_key": x["job"], "class": x.get("push_class"),
+                            "pushed_at": x.get("pushed_at")})
         if x.get("combined_push_needed"):
             entries.append({"job": x["job"], "target": "combined", "url": x["combined_url"],
                             "collection": "boards", "doc": x["combined_doc"],
                             "payload": x["combined_payload"],
                             "pushed_version": x.get("combined_pushed_version"),
-                            "hash": x["combined_hash"], "nag_key": f"{x['job']}.combined"})
+                            "hash": x["combined_hash"], "nag_key": x["job"],
+                            "class": x.get("combined_push_class"),
+                            "pushed_at": x.get("combined_pushed_at")})
     return entries
 
 
 def _due(state: Path, jobs: list, suffix: str, backoff: float, now: float) -> list:
-    due = []
-    for x in jobs:
-        try:
-            last = float((state / f"{x.get('nag_key', x['job'])}.{suffix}").read_text().strip())
-        except (OSError, ValueError):
-            last = 0.0
-        if now - last >= backoff:
-            due.append(x)
-    return due
+    return [x for x in jobs if now - _stamp_of(state, x.get("nag_key", x["job"]), suffix) >= backoff]
 
 
 def _stamp(state: Path, jobs: list, suffix: str, now: float) -> None:

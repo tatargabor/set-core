@@ -665,6 +665,57 @@ def content_hash(content: dict) -> str:
     return hashlib.sha256(canon.encode("utf-8")).hexdigest()
 
 
+# ── push classes ─────────────────────────────────────────────────────────────
+#
+# Not every payload change is worth a push the moment it happens: a push costs the agent a
+# continuation, and a Stop hook that asks after every `set` burns tokens all day (owner,
+# 2026-11-08). So a pending push carries a class, and the hook decides by it:
+#   first      nothing recorded on this machine yet: the document does not exist
+#   milestone  a wave finished or an item turned blocked since the last push
+#   progress   statuses, titles or dependencies moved, but no milestone
+#   notes      only notes, `updated` / `by` stamps or evidence definitions differ
+# The marks of what was pushed are stored in the push record by `pushed`.
+
+CLASS_RANK = {"notes": 0, "progress": 1, "milestone": 2, "first": 3}
+
+
+def push_marks(content: dict) -> dict:
+    """What a push class is decided on: a hash of the visible substance, the finished waves,
+    and the blocked items."""
+    material, waves_done, blocked = [], [], []
+    for wave in content.get("waves") or []:
+        items = wave.get("items") or []
+        material.append([wave.get("id"), wave.get("title"),
+                         [[it.get("id"), it.get("title"), it.get("status"),
+                           it.get("waiting_on"), it.get("blocks")] for it in items]])
+        if items and all(it.get("status") in ("done", "skipped") for it in items):
+            waves_done.append(str(wave.get("id")))
+        blocked += [str(it.get("id")) for it in items if it.get("status") == "blocked"]
+    return {"material": content_hash({"title": content.get("title"), "waves": material}),
+            "waves_done": sorted(waves_done), "blocked": sorted(blocked)}
+
+
+def push_class(current: dict, record: dict) -> str:
+    """The class of a pending push, from the current marks and the push record."""
+    if not record.get("hash"):
+        return "first"
+    if not record.get("material"):
+        return "progress"  # a record written before marks existed: no way to tell, so batch it
+    if current["material"] == record["material"]:
+        return "notes"
+    if (set(current["waves_done"]) - set(record.get("waves_done") or [])
+            or set(current["blocked"]) - set(record.get("blocked") or [])):
+        return "milestone"
+    return "progress"
+
+
+def _epoch(value):
+    try:
+        return _dt.datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
 # ── sync ─────────────────────────────────────────────────────────────────────
 
 def sync_job(root: Path, job: str) -> dict:
@@ -707,8 +758,10 @@ def sync_job(root: Path, job: str) -> dict:
     # board in the combined Artifact's `boards` collection, keyed <project>--<job>.
     curl = combined_url()
     project = scoped_name(root) if curl else None
+    marks = push_marks(content)
     combined = {"combined_url": curl if project else None, "combined_doc": None, "combined_payload": None,
-                "combined_hash": None, "combined_pushed_version": None, "combined_push_needed": False}
+                "combined_hash": None, "combined_pushed_version": None, "combined_push_needed": False,
+                "combined_push_class": None, "combined_pushed_at": None}
     if curl and project is None:
         logger.debug("%s: not in the team scope; no combined push", job)
     if curl and project:
@@ -721,9 +774,14 @@ def sync_job(root: Path, job: str) -> dict:
             write_if_changed(cpath, dump(dict(body, synced_at=stamp, synced_by=who, content_hash=ch)))
         cpushed = read_json(sdir / f"{job}.combined-pushed.json") or {}
         same_target = cpushed.get("url") == curl
+        cneeded = not same_target or cpushed.get("hash") != ch
         combined.update(combined_doc=doc, combined_payload=str(cpath), combined_hash=ch,
                         combined_pushed_version=cpushed.get("version") if same_target else None,
-                        combined_push_needed=not same_target or cpushed.get("hash") != ch)
+                        combined_push_needed=cneeded,
+                        combined_push_class=(push_class(marks, cpushed if same_target else {})
+                                             if cneeded else None),
+                        combined_pushed_at=_epoch(cpushed.get("pushed_at")) if same_target else None)
+    needed = bool(url) and pushed.get("hash") != h
     return {
         **combined,
         "job": job,
@@ -735,7 +793,9 @@ def sync_job(root: Path, job: str) -> dict:
         "changed_items": changed_items,
         "unresolved": unresolved,
         "pushed_version": pushed.get("version"),
-        "push_needed": bool(url) and pushed.get("hash") != h,
+        "push_needed": needed,
+        "push_class": push_class(marks, pushed) if needed else None,
+        "pushed_at": _epoch(pushed.get("pushed_at")),
     }
 
 
@@ -1179,6 +1239,11 @@ def cmd_pushed(args, root):
         if not h:
             raise UsageError(f"no {'combined ' if args.combined else ''}payload for {args.job}; run sync first")
     rec = {"hash": h, "version": args.version, "pushed_at": now_iso(), "by": host_label()}
+    state = read_json(sdir / payload) or {}
+    if state.get("content_hash") == h:
+        # the marks the next push is classed against (see push_class); only when the
+        # recorded hash is the payload's own, or they would describe another state
+        rec.update(push_marks(state))
     if args.combined:
         curl = combined_url()
         if not curl:

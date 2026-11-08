@@ -20,7 +20,8 @@ A three-step task done in one sitting does not need one; a todo list is enough t
 
 1. **The job file** — waves, items, and for each item the **evidence** that proves it.
 2. **`sync`**, run by the `set-hook-waveboard` Stop hook on every stop, whether or not you
-   remembered — it derives status from evidence.
+   remembered — it derives status from evidence. (Sync runs every stop; the *push* it asks for
+   is batched — see the push procedure.)
 3. **Your own report**, `set-wave-board set <job> <item> <status>` — the **fast lane**. Report
    every finished step with it, straight away. But evidence and the hook are the guarantee:
    where evidence speaks it overrides your report (a `done` with unchecked task boxes comes
@@ -148,10 +149,25 @@ The page reads collection `board`, document `state`. Only you can write it — n
    the same url / `board` / `state`, then redo step 1 with the version it returned.
 3. `set-wave-board pushed <job> --version <the version the set returned>`.
 
-The Stop hook asks for this by itself when a payload differs from the last push: it blocks the
-stop once, with the exact call filled in. It stays quiet for 30 minutes per job after that
-(`SET_WAVEBOARD_NAG_SECONDS`), on its own continuation, in a linked worktree
-(`SET_WAVEBOARD_PUSH=worktree` lifts that), and entirely with `SET_WAVEBOARD_PUSH=off`.
+The Stop hook asks for this by itself, but **in batches, not after every `set`** — every push
+costs a continuation, and a push per step burned the team's token budget (owner, 2026-11-08).
+`sync` classes each pending push, and the hook decides per job:
+
+| class | what changed since the last push | the hook |
+|---|---|---|
+| `first` | nothing recorded on this machine yet | asks at once |
+| `milestone` | a wave finished, or an item turned `blocked` | asks at once |
+| `progress` | statuses, titles or dependencies, no milestone | asks only when the last push is ≥ 1 hour old (`SET_WAVEBOARD_DEBOUNCE_SECONDS`) |
+| `notes` | only notes, `updated`/`by` stamps, evidence definitions | never asks; rides with the next push |
+
+A board and its combined-board document are asked for in **one** block — push both in that one
+go. After a block it stays quiet for 30 minutes per job (`SET_WAVEBOARD_NAG_SECONDS`), on its
+own continuation, in a linked worktree (`SET_WAVEBOARD_PUSH=worktree` lifts that), and entirely
+with `SET_WAVEBOARD_PUSH=off`.
+
+**Before a handoff and at the end of a session, run `set-wave-board pending` and push what it
+lists.** The hook cannot tell the last Stop of a session from any other, so batched progress and
+notes would otherwise wait for the next session on this machine.
 
 ## Cross-machine notes
 

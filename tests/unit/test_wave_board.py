@@ -42,7 +42,8 @@ def env(tmp_path, monkeypatch):
          # Never this machine's editor list or claude.ai account.
          "SET_WAVEBOARD_EDITORS": str(tmp_path / "no-editors.json"),
          "CLAUDE_CONFIG_DIR": str(tmp_path / "claude-config")}
-    for var in ("SET_WAVEBOARD_PUSH", "SET_WAVEBOARD_NAG_SECONDS", "SET_WAVEBOARD_REVIEW",
+    for var in ("SET_WAVEBOARD_PUSH", "SET_WAVEBOARD_NAG_SECONDS", "SET_WAVEBOARD_DEBOUNCE_SECONDS",
+                "SET_WAVEBOARD_REVIEW",
                 "SET_WAVEBOARD_REVIEW_SECONDS", "SET_WAVEBOARD_STALE_COMMITS"):
         e.pop(var, None)
     return e
@@ -304,7 +305,8 @@ def test_hook_pins_the_recorded_version(env, repo):
     run(env, repo, "sync")
     run(env, repo, "pushed", "j", "--version", "7")
     run(env, repo, "set", "j", "a", "doing")
-    out = json.loads(hook(env, repo).stdout)
+    # routine progress is batched; with no debounce it is asked for at once
+    out = json.loads(hook(env, repo, SET_WAVEBOARD_DEBOUNCE_SECONDS="0").stdout)
     assert "if_version=7" in out["reason"]
 
 
@@ -903,3 +905,92 @@ def test_combined_page_seeds_every_board_in_scope(env, repo, tmp_path):
     assert boards[("cons", "j")]["waves"][0]["items"][0]["waiting_on"][0]["item"] == "b"
     assert boards[("oth", "k")]["waves"][0]["items"][0]["blocks"][0]["project"] == "cons"
     assert 'db.collection("boards")' in page and not page.startswith("<!doctype")
+
+
+# ── push batching (owner, 2026-11-08: no push per `set`) ─────────────────────
+
+def pushed_once(env, repo, *items):
+    new_job(env, repo, *(items or (("a", None), ("b", None))))
+    run(env, repo, "link", "j", URL)
+    run(env, repo, "sync")
+    run(env, repo, "pushed", "j", "--version", "1")
+
+
+def sync_entry(env, repo):
+    return json.loads(run(env, repo, "sync", "--json").stdout)[0]
+
+
+def test_the_push_record_carries_the_marks_of_what_was_pushed(env, repo):
+    pushed_once(env, repo)
+    rec = json.loads((repo / ".set/waveboard/j.pushed.json").read_text())
+    assert rec["waves_done"] == [] and rec["blocked"] == [] and len(rec["material"]) == 64
+
+
+def test_a_recorded_hash_other_than_the_payloads_carries_no_marks(env, repo):
+    new_job(env, repo, ("a", None))
+    run(env, repo, "link", "j", URL)
+    run(env, repo, "sync")
+    run(env, repo, "pushed", "j", "--version", "1", "--hash", "f" * 64)
+    assert "material" not in json.loads((repo / ".set/waveboard/j.pushed.json").read_text())
+    run(env, repo, "set", "j", "a", "doing")
+    assert sync_entry(env, repo)["push_class"] == "progress"
+
+
+def test_a_first_push_is_asked_for_at_once(env, repo):
+    pending_repo(env, repo)
+    assert sync_entry(env, repo)["push_class"] == "first"
+    assert json.loads(hook(env, repo).stdout)["decision"] == "block"
+
+
+def test_routine_progress_waits_for_the_debounce(env, repo):
+    pushed_once(env, repo)
+    run(env, repo, "set", "j", "a", "doing")
+    assert sync_entry(env, repo)["push_class"] == "progress"
+    assert hook(env, repo).stdout == ""
+    out = json.loads(hook(env, repo, SET_WAVEBOARD_DEBOUNCE_SECONDS="0").stdout)
+    assert "batched progress" in out["reason"]
+
+
+def test_a_blocked_item_is_a_milestone_and_is_asked_for_at_once(env, repo):
+    pushed_once(env, repo)
+    run(env, repo, "set", "j", "a", "blocked", "--note", "waits on the vendor")
+    assert sync_entry(env, repo)["push_class"] == "milestone"
+    out = json.loads(hook(env, repo).stdout)
+    assert "an item turned blocked" in out["reason"]
+    assert hook(env, repo).stdout == ""  # still once per backoff
+
+
+def test_a_finished_wave_is_a_milestone(env, repo):
+    pushed_once(env, repo)
+    run(env, repo, "set", "j", "a", "done")
+    assert sync_entry(env, repo)["push_class"] == "progress"  # half the wave
+    run(env, repo, "set", "j", "b", "skipped")
+    assert sync_entry(env, repo)["push_class"] == "milestone"
+    assert json.loads(hook(env, repo).stdout)["decision"] == "block"
+
+
+def test_a_notes_only_change_is_never_asked_for(env, repo):
+    pushed_once(env, repo)
+    run(env, repo, "set", "j", "a", "todo", "--note", "looked at it, nothing yet")
+    entry = sync_entry(env, repo)
+    assert entry["push_needed"] and entry["push_class"] == "notes"
+    assert hook(env, repo, SET_WAVEBOARD_DEBOUNCE_SECONDS="0", SET_WAVEBOARD_NAG_SECONDS="0").stdout == ""
+    assert "PENDING j" in run(env, repo, "pending").stdout  # not lost: it rides with the next push
+
+
+def test_board_and_combined_are_asked_for_in_one_block_and_share_one_backoff(env, repo, tmp_path):
+    combined_env(env, tmp_path, repo)
+    new_job(env, repo, ("a", None), ("b", None))
+    run(env, repo, "link", "j", URL)
+    run(env, repo, "sync")
+    run(env, repo, "pushed", "j", "--version", "1")
+    run(env, repo, "set", "j", "a", "todo", "--note", "n")  # the board: notes only
+    # the combined document was never pushed: first → the whole job, both targets, one block
+    reason = json.loads(hook(env, repo).stdout)["reason"]
+    assert "collection=board, doc_id=state" in reason and "collection=boards" in reason
+    assert hook(env, repo).stdout == ""
+    run(env, repo, "pushed", "j", "--combined", "--version", "1")
+    run(env, repo, "set", "j", "a", "doing")
+    entry = sync_entry(env, repo)
+    assert entry["push_class"] == entry["combined_push_class"] == "progress"
+    assert hook(env, repo).stdout == ""
