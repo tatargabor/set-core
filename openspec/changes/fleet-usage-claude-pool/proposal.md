@@ -4,8 +4,8 @@ The usage strip on the fleet header names the wrong things and cannot heal itsel
 2026-11-08 against `GET /api/usage/accounts`:
 
 - The same Claude subscription arrives twice: once as a browser session (`web`) and once as a
-  CLI account (`cc`), same email, same 22 % weekly figure. The strip draws it twice ("Claude
-  itline", "Claude Code itline"), which reads as two subscriptions.
+  CLI account (`cc`), same email, same 22 % weekly figure. The strip draws it twice ("Claude acme", "Claude Code
+  acme"), which reads as two subscriptions.
 - Two different subscriptions on one email domain get the same short label, because the label
   is the domain's first part alone.
 - A browser session whose cookie expired answers nothing and drops out of the bars. The only

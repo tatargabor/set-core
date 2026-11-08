@@ -350,7 +350,7 @@ const TOKEN = /[._+-]+/
  * local-part tokens the group does not share are appended: `user@acme…` and
  * `user.team@acme…` become `acme` and `acme team`. A collision that survives that falls back
  * to the whole local part. Distinctness is a property of the set, so it cannot be decided
- * one account at a time — which is how two subscriptions both came to read `itline`.
+ * one account at a time — which is how two subscriptions came to share one label.
  */
 export function distinctLabels(names: string[]): Map<string, string> {
   const unique = [...new Set(names)]
