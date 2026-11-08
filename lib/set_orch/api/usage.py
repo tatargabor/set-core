@@ -32,10 +32,11 @@ and a test asserts it on every account state rather than trusting that.
 import logging
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ..usage.accounts import purge_accounts
+from ..usage.chrome_scan import RescanBusy, rescan
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,30 @@ def purge_dead_accounts(request: Request, body: PurgeRequest) -> Dict[str, Any]:
     refused = len(results) - removed
     logger.info("purge: %d removed, %d refused", removed, refused)
     return {"results": results, "removed": removed, "refused": refused}
+
+
+@router.post("/api/usage/accounts/rescan")
+def rescan_browser_sessions(request: Request) -> Dict[str, Any]:
+    """Rescan Chrome for Claude session cookies, then measure again at once.
+
+    Asked for by the owner (2026-11-08): an expired browser cookie could only be refreshed from
+    the desktop Control Center. The answer carries the names found and the fresh snapshot,
+    never a cookie. A scan that found nothing leaves the store alone (see `rescan`), and a
+    second request while one runs is refused with 409 rather than queued.
+    """
+    try:
+        result = rescan()
+    except RescanBusy:
+        raise HTTPException(status_code=409, detail="a rescan is already running")
+    except Exception as exc:  # an unreadable store, a write error
+        logger.warning("rescan failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=500, detail=f"rescan failed ({type(exc).__name__})")
+
+    poller = getattr(request.app.state, "usage_poller", None)
+    if result["written"] and poller is not None:
+        poller.refresh()
+    snapshot = poller.snapshot() if poller is not None else None
+    return {**result, "snapshot": snapshot}
 
 
 @router.get("/api/usage/accounts")

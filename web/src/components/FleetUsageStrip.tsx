@@ -43,11 +43,11 @@
  */
 
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, Gauge, TriangleAlert, Unplug } from 'lucide-react'
+import { ChevronDown, ChevronRight, Gauge, RefreshCw, TriangleAlert, Unplug } from 'lucide-react'
 
 import {
-  accountLabel, headlineWindows, rowTitle, stripState,
-  type AccountRow, type UsageSnapshot, type WindowMark,
+  headlineWindows, isClaude, kindsLabel, rowTitle, stripState,
+  type AccountRow, type ClaudePool, type UsageSnapshot, type WindowMark,
 } from '../lib/fleetUsageBars'
 
 /** Every 30 s. The server polls its own upstream once a minute; this only reads. */
@@ -117,9 +117,35 @@ function CompactAccount({ row }: { row: AccountRow }) {
           brighter. */}
       <span className="text-xs text-fg-strong shrink-0"
             data-fleet-usage-compact-label={row.name}>
-        {accountLabel(row.kind, row.name)}
+        {row.label}
       </span>
       {windows.map((w, i) => <WindowBar key={i} mark={w} compact />)}
+    </span>
+  )
+}
+
+/**
+ * The Claude pool: every subscription's 7-day window pooled, against the week's pooled elapsed
+ * share, and one number — the share of the pro-rata budget spent so far. Asked for by the
+ * owner on 2026-11-08. The title carries the per-subscription figures, the equal-share caveat
+ * and whatever was left out.
+ */
+function PoolMark({ pool }: { pool: ClaudePool }) {
+  const ahead = pool.pace !== null && pool.pace > 1
+  return (
+    <span className="inline-flex items-center gap-1 shrink-0" data-fleet-usage-pool={pool.counted.length}
+          data-fleet-usage-pool-pace={pool.pace === null ? 'none' : pool.pace.toFixed(3)}
+          title={pool.title} aria-label={pool.title.split('\n').slice(0, 3).join('; ')}>
+      <span className="relative inline-block h-[11px] w-11 border border-surface-line align-middle">
+        <span className={`absolute left-0 top-0 h-[4px] ${pool.tone}`} style={{ width: `${Math.min(1, pool.consumed) * 100}%` }} />
+        <span className="absolute left-0 top-[5px] h-[4px] bg-fg-ghost" style={{ width: `${pool.elapsed * 100}%` }} />
+      </span>
+      {pool.pace !== null && (
+        <span className={`text-xs tabular-nums ${ahead ? 'text-amber-400' : 'text-fg-strong'}`}
+              data-fleet-usage-pool-number>
+          {Math.round(pool.pace * 100)}%
+        </span>
+      )}
     </span>
   )
 }
@@ -133,6 +159,11 @@ function Row({ row }: { row: AccountRow }) {
       <span className="text-xs text-fg-muted truncate max-w-[14rem]" title={row.name}>
         {row.active ? '● ' : ''}{row.name}
       </span>
+      {row.kinds.length > 1 && (
+        <span className="text-xs text-fg-ghost" data-fleet-usage-kinds={row.kinds.join('+')}>
+          {kindsLabel(row)}
+        </span>
+      )}
       {row.windows.map((w, i) => <WindowBar key={i} mark={w} />)}
       {row.note && (
         <span className="text-xs text-amber-400" data-fleet-usage-note={row.state}>
@@ -169,6 +200,8 @@ export default function FleetUsageStrip() {
   const [purgeTick, setPurgeTick] = useState(0)
   const [purging, setPurging] = useState(false)
   const [purgeError, setPurgeError] = useState<string | null>(null)
+  const [rescanning, setRescanning] = useState(false)
+  const [rescanNote, setRescanNote] = useState<{ ok: boolean; text: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -206,7 +239,7 @@ export default function FleetUsageStrip() {
   // says "did not answer", never "expired": unreachable is also what a network
   // failure looks like, and the confirmation is the human decision that stands
   // in for that missing knowledge.
-  const silentRows = state.rows.filter(r => r.state === 'unreachable')
+  const silentRows = state.silentRows
   const purge = () => {
     if (silentRows.length === 0 || purging) return
     const names = silentRows.map(r => r.name)
@@ -231,13 +264,47 @@ export default function FleetUsageStrip() {
       .finally(() => setPurging(false))
   }
 
+  // Rescan the browser's Claude sessions — before this, only the desktop Control Center could
+  // refresh an expired cookie. The server measures again right after a write, so the answer's
+  // snapshot is drawn at once. The result stays until the detail closes: it says which
+  // sessions were found, or why none were.
+  const rescan = () => {
+    if (rescanning) return
+    setRescanning(true)
+    setRescanNote(null)
+    fetch('/api/usage/accounts/rescan', { method: 'POST' })
+      .then(async r => {
+        const d = await r.json().catch(() => null)
+        if (!r.ok) throw new Error(d?.detail ?? `HTTP ${r.status}`)
+        if (d?.snapshot) { setSnapshot(d.snapshot); setNow(Date.now()) }
+        const found: string[] = Array.isArray(d?.found) ? d.found : []
+        setRescanNote(found.length
+          ? { ok: true, text: `found ${found.length}: ${found.join(', ')}` }
+          : { ok: false, text: d?.reason ?? 'nothing found — the stored sessions were kept' })
+      })
+      .catch(e => setRescanNote({ ok: false, text: `rescan failed: ${String(e?.message ?? e)}` }))
+      .finally(() => setRescanning(false))
+  }
+
+  const claudeRows = state.measuredRows.filter(r => isClaude(r.kind))
+  const otherRows = state.measuredRows.filter(r => !isClaude(r.kind))
+  const hasClaude = state.rows.some(r => isClaude(r.kind))
+
   return (
     <span className="ml-auto inline-flex items-center gap-3 shrink-0"
           data-fleet-usage="ready"
           data-fleet-usage-rows={state.rows.length}
           data-fleet-usage-open={open ? 'open' : 'collapsed'}>
-      {/* The bars themselves — the working accounts, and only those. */}
-      {state.measuredRows.map(row => <CompactAccount key={`${row.kind}:${row.name}`} row={row} />)}
+      {/* Claude first: its name once, the pooled week, then each subscription by short label. */}
+      {hasClaude && (
+        <span className="inline-flex items-center gap-2 shrink-0" data-fleet-usage-claude>
+          <span className="text-xs text-fg-strong font-medium shrink-0">Claude</span>
+          {state.pool && <PoolMark pool={state.pool} />}
+          {claudeRows.map(row => <CompactAccount key={`${row.kind}:${row.name}`} row={row} />)}
+        </span>
+      )}
+      {/* The other providers — their names already carry the vendor. */}
+      {otherRows.map(row => <CompactAccount key={`${row.kind}:${row.name}`} row={row} />)}
 
       {/* The three states that have no bar. Icons and counts, so compacting the
           words cannot compact away a failure with them. */}
@@ -286,6 +353,22 @@ export default function FleetUsageStrip() {
           {state.rows.filter(r => r.state !== 'unreachable').map(row => (
             <Row key={`${row.kind}:${row.name}`} row={row} />
           ))}
+          <div className="flex items-center gap-2 pt-1 mt-0.5 border-t border-surface-line text-xs"
+               data-fleet-usage-rescan={rescanning ? 'busy' : 'ready'}>
+            <button type="button" onClick={rescan} disabled={rescanning}
+                    className="inline-flex items-center gap-1 text-fg-muted hover:text-fg-strong disabled:opacity-50 shrink-0"
+                    title="Read the Claude session cookies from every local Chrome profile again, then measure at once"
+                    data-fleet-usage-rescan-button>
+              <RefreshCw size={12} strokeWidth={1.75} className={rescanning ? 'animate-spin' : ''} aria-hidden />
+              {rescanning ? 'rescanning Chrome…' : 'rescan Chrome sessions'}
+            </button>
+            {rescanNote && (
+              <span className={rescanNote.ok ? 'text-fg-muted' : 'text-amber-400'}
+                    data-fleet-usage-rescan-note={rescanNote.ok ? 'found' : 'none'}>
+                {rescanNote.text}
+              </span>
+            )}
+          </div>
           {state.silentCount > 0 && (
             <div className="text-xs text-amber-400"
                  data-fleet-usage-silent={state.silentCount}

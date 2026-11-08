@@ -76,10 +76,14 @@ export interface UsageSnapshot {
 
 /** What one window draws. `kind` is the only thing callers branch on. */
 export type WindowMark =
-  | { kind: 'unmeasured'; label: string; title: string }
+  | { kind: 'unmeasured'; label: string; title: string; group: string; scoped: boolean }
   | {
       kind: 'measured'
       label: string
+      /** The window group as the server named it (`session`, `weekly`, …). */
+      group: string
+      /** True when the window is limited to one model — a narrower fact than the account's. */
+      scoped: boolean
       /** 0..1 — the consumed stripe. */
       consumed: number
       /** 0..1 — how far the window itself has run. `null` when unknowable. */
@@ -99,12 +103,16 @@ export type WindowMark =
  * and in the expanded rows.
  */
 export function headlineWindows(row: AccountRow): WindowMark[] {
-  return row.windows.filter(w => w.kind === 'measured' && !w.label.includes('('))
+  return row.windows.filter(w => w.kind === 'measured' && !w.scoped)
 }
 
 export interface AccountRow {
   name: string
   kind: string
+  /** Every kind this subscription was reached through (`web`, `cc`) — two after a merge. */
+  kinds: string[]
+  /** The short label drawn before the bars, distinct across the snapshot's accounts. */
+  label: string
   active: boolean
   state: 'measured' | 'unmeasured' | 'unreachable'
   windows: WindowMark[]
@@ -125,8 +133,12 @@ export type StripState =
       measuredRows: AccountRow[]
       /** Answered, and carried no figures. A count, never a bar. */
       unmeasuredCount: number
-      /** Did not answer at all. A different count, for a different cause. */
+      /** Credentials that did not answer at all. A different count, for a different cause. */
       silentCount: number
+      /** The credentials behind `silentCount`, by the identity the purge takes. */
+      silentRows: AccountRow[]
+      /** The pooled Claude week, or null when no subscription has a countable 7-day figure. */
+      pool: ClaudePool | null
     }
 
 /** How long each window group runs, when the server did not say. */
@@ -208,10 +220,14 @@ function windowLabel(window: UsageWindow): string {
 /** What one window draws. A window with no figure is marked, never filled. */
 export function markWindow(window: UsageWindow, now: number): WindowMark {
   const label = windowLabel(window)
+  const group = window.group
+  const scoped = !!window.scope?.model
   if (window.utilization === null || window.utilization === undefined) {
     return {
       kind: 'unmeasured',
       label,
+      group,
+      scoped,
       title: `${label}: the account answered and carried no figure for this window — `
         + 'not measured, which is not the same as nothing consumed',
     }
@@ -228,6 +244,8 @@ export function markWindow(window: UsageWindow, now: number): WindowMark {
   return {
     kind: 'measured',
     label,
+    group,
+    scoped,
     consumed,
     elapsed,
     tone: toneFor(window.severity),
@@ -241,6 +259,8 @@ function rowFor(account: UsageAccount, now: number): AccountRow {
   const base = {
     name: account.name,
     kind: account.kind,
+    kinds: [account.kind],
+    label: account.name,
     active: account.active,
     state: account.outcome,
   }
@@ -282,35 +302,144 @@ export function shortLabel(name: string): string {
   return name.slice(0, 12)
 }
 
+/** The kinds that are Claude subscriptions: a browser session, or a CLI account. */
+export const CLAUDE_KINDS = new Set(['web', 'cc'])
+
+export function isClaude(kind: string): boolean {
+  return CLAUDE_KINDS.has(kind)
+}
+
+const OUTCOME_RANK: Record<AccountRow['state'], number> = { measured: 0, unmeasured: 1, unreachable: 2 }
+
 /**
- * Which product a kind belongs to, for the kinds whose NAME does not say.
+ * One Claude subscription, one row.
  *
- * A browser account is named after its Chrome context (`gmail`, `itline`) and a
- * Claude Code account after its email — neither says whose subscription it is,
- * and once a third and fourth provider joined the strip, "gmail" beside "GLM"
- * and "ChatGPT" reads as a provider nobody can name.
- *
- * `glm` and `astra` are deliberately absent: their names already carry the
- * vendor, and prefixing them would render "GLM GLM".
+ * Measured 2026-11-08: a subscription reached through both a browser session (`web`) and the
+ * CLI (`cc`) arrived as two accounts with the same email and the same weekly figure, and the
+ * strip drew it twice. That read as two subscriptions. Rows of a Claude kind with the same
+ * name (case-folded) are one subscription: the best outcome stands for it, and on a tie the
+ * CLI row, whose token is the live one. Other kinds are never merged.
  */
-const VENDOR: Record<string, string> = {
-  web: 'Claude',
-  cc: 'Claude Code',
+export function mergeSubscriptions(rows: AccountRow[]): AccountRow[] {
+  const out: AccountRow[] = []
+  const at = new Map<string, number>()
+  for (const row of rows) {
+    if (!isClaude(row.kind)) { out.push(row); continue }
+    const key = row.name.trim().toLowerCase()
+    const i = at.get(key)
+    if (i === undefined) { at.set(key, out.length); out.push(row); continue }
+    const held = out[i]
+    const better = OUTCOME_RANK[row.state] < OUTCOME_RANK[held.state]
+      || (OUTCOME_RANK[row.state] === OUTCOME_RANK[held.state] && row.kind === 'cc')
+    const keep = better ? row : held
+    out[i] = {
+      ...keep,
+      kinds: [...new Set([...held.kinds, ...row.kinds])].sort(),
+      active: held.active || row.active,
+    }
+  }
+  return out
+}
+
+const TOKEN = /[._+-]+/
+
+/**
+ * Labels that tell every account apart, computed over the whole set.
+ *
+ * The base is `shortLabel` (an email's domain label). Where two names share a base, the
+ * local-part tokens the group does not share are appended: `user@acme…` and
+ * `user.team@acme…` become `acme` and `acme team`. A collision that survives that falls back
+ * to the whole local part. Distinctness is a property of the set, so it cannot be decided
+ * one account at a time — which is how two subscriptions both came to read `itline`.
+ */
+export function distinctLabels(names: string[]): Map<string, string> {
+  const unique = [...new Set(names)]
+  const out = new Map<string, string>()
+  const byBase = new Map<string, string[]>()
+  for (const n of unique) {
+    const b = shortLabel(n)
+    byBase.set(b, [...(byBase.get(b) ?? []), n])
+  }
+  for (const [base, group] of byBase) {
+    if (group.length === 1) { out.set(group[0], base); continue }
+    const locals = group.map(n => {
+      const at = n.lastIndexOf('@')
+      return at > 0 ? n.slice(0, at) : n
+    })
+    const tokens = locals.map(l => l.split(TOKEN).filter(Boolean))
+    let common = 0
+    while (tokens.every(t => common < t.length && t[common].toLowerCase() === tokens[0][common].toLowerCase())) common++
+    const labels = tokens.map(t => [base, ...t.slice(common)].join(' '))
+    const clash = new Set(labels).size !== labels.length
+    group.forEach((n, i) => out.set(n, (clash ? `${base} ${locals[i]}` : labels[i]).slice(0, 24)))
+  }
+  return out
+}
+
+/** What the Claude pool mark draws. */
+export interface ClaudePool {
+  /** 0..1 — mean consumption of the counted 7-day windows. */
+  consumed: number
+  /** 0..1 — mean elapsed share of the same windows. */
+  elapsed: number
+  /** Σ consumed / Σ elapsed — the share of the pro-rata budget spent; null when no time has run. */
+  pace: number | null
+  /** Names of the subscriptions counted. */
+  counted: string[]
+  /** Names left out, each with why. */
+  left: { name: string; why: string }[]
+  tone: string
+  title: string
 }
 
 /**
- * The label a compact mark carries: the product, then the account.
+ * The Claude week, pooled — asked for by the owner on 2026-11-08 (*"kellene claude-ra egy közös
+ * mutató hogy összevonva őket hány %-on állunk 7 napos időarányosan"*).
  *
- * The two halves are both load-bearing. Measured on the built screen: the strip
- * showed `itline` TWICE — once as a browser session and once as a Claude Code
- * account — two different subscriptions rendered as one repeated word, which is
- * worse than an unlabelled bar because it looks like a duplicate rather than a
- * distinction. The product name is what tells them apart.
+ * Counted: every Claude subscription with a measured, account-wide 7-day window whose elapsed
+ * share is known. Each counts as ONE EQUAL SHARE, because no source reports plan sizes; the
+ * title says so rather than inventing a weight. Pace is Σ consumed / Σ elapsed: how much of the
+ * budget that time alone would allow by now has been spent. Above 100 % is amber (ahead of
+ * time); the critical red stays reserved for a severity a source reports, which no source
+ * reports for a pool.
  */
-export function accountLabel(kind: string, name: string): string {
-  const vendor = VENDOR[kind]
-  const short = shortLabel(name)
-  return vendor ? `${vendor} ${short}` : short
+export function claudePool(rows: AccountRow[]): ClaudePool | null {
+  const counted: { name: string; consumed: number; elapsed: number }[] = []
+  const left: { name: string; why: string }[] = []
+  for (const row of rows) {
+    if (!isClaude(row.kind)) continue
+    if (row.state === 'unreachable') { left.push({ name: row.name, why: 'did not answer' }); continue }
+    const week = row.windows.find(w => w.group === 'weekly' && !w.scoped)
+    if (!week || week.kind !== 'measured') { left.push({ name: row.name, why: 'no 7-day figure' }); continue }
+    if (week.elapsed === null) { left.push({ name: row.name, why: 'its reset time is unknown' }); continue }
+    counted.push({ name: row.name, consumed: week.consumed, elapsed: week.elapsed })
+  }
+  if (counted.length === 0) return null
+  const sumC = counted.reduce((t, c) => t + c.consumed, 0)
+  const sumE = counted.reduce((t, c) => t + c.elapsed, 0)
+  const pace = sumE > 0 ? sumC / sumE : null
+  const consumed = sumC / counted.length
+  const elapsed = sumE / counted.length
+  const pct = (x: number) => `${Math.round(x * 100)}%`
+  const lines = [
+    `Claude, ${counted.length} subscription${counted.length === 1 ? '' : 's'} pooled over 7 days`,
+    `${pct(consumed)} of the pooled quota spent, ${pct(elapsed)} of the week run`,
+    pace === null
+      ? 'no time has run yet, so there is no pace'
+      : `${pct(pace)} of what time alone would allow by now${pace > 1 ? ' — ahead of time' : ''}`,
+    'Each subscription counts as one equal share: plan sizes are not reported.',
+    ...counted.map(c => `· ${c.name}: ${pct(c.consumed)} spent, ${pct(c.elapsed)} run`),
+    ...left.map(l => `· not counted — ${l.name}: ${l.why}`),
+  ]
+  return {
+    consumed,
+    elapsed,
+    pace,
+    counted: counted.map(c => c.name),
+    left,
+    tone: pace !== null && pace > 1 ? 'bg-amber-400' : 'bg-sky-400',
+    title: lines.join('\n'),
+  }
 }
 
 /**
@@ -322,6 +451,13 @@ export function accountLabel(kind: string, name: string): string {
  * header's chips already answer — but a mark whose subject cannot be recovered
  * at all is a different thing from a compact one.
  */
+const KIND_NAME: Record<string, string> = { web: 'browser session', cc: 'Claude Code' }
+
+/** `browser session + Claude Code`, for a detail row reached more than one way. */
+export function kindsLabel(row: AccountRow): string {
+  return row.kinds.map(k => KIND_NAME[k] ?? k).join(' + ')
+}
+
 export function rowTitle(row: AccountRow): string {
   const windows = row.windows.map(w =>
     w.kind === 'measured'
@@ -329,7 +465,8 @@ export function rowTitle(row: AccountRow): string {
         + (w.elapsed === null ? '' : ` of a window ${Math.round(w.elapsed * 100)}% run`)
         + (w.critical ? ' — critical' : '')
       : `${w.label}: not measured`)
-  return [row.name, ...windows, row.note].filter(Boolean).join('\n')
+  const via = row.kinds.length > 1 ? `reached as ${row.kinds.map(k => KIND_NAME[k] ?? k).join(' and ')}` : null
+  return [row.name, via, ...windows, row.note].filter(Boolean).join('\n')
 }
 
 /** How many windows the measurement reported critical. Drives the collapsed mark. */
@@ -370,7 +507,13 @@ export function stripState(
   // honest yardstick, and it comes from the server that owns the clock.
   const stale = Number.isNaN(measured) ? true : now - measured > interval
 
-  const rows = snapshot.accounts.map((a) => rowFor(a, now))
+  const raw = snapshot.accounts.map((a) => rowFor(a, now))
+  const labels = distinctLabels(raw.filter(r => isClaude(r.kind)).map(r => r.name))
+  for (const r of raw) r.label = isClaude(r.kind) ? (labels.get(r.name) ?? shortLabel(r.name)) : shortLabel(r.name)
+  // A dead credential behind a subscription that IS measured through its other kind is still
+  // a dead credential: it is counted and purgeable, it just does not get a row of its own.
+  const silentRows = raw.filter(r => r.state === 'unreachable')
+  const rows = mergeSubscriptions(raw)
 
   // The three groups are counted here rather than in the component, so the
   // compact mark and the expanded rows cannot disagree about which account is in
@@ -385,6 +528,8 @@ export function stripState(
     criticalCount: criticalCount(snapshot),
     measuredRows: rows.filter(r => r.state === 'measured'),
     unmeasuredCount: rows.filter(r => r.state === 'unmeasured').length,
-    silentCount: rows.filter(r => r.state === 'unreachable').length,
+    silentCount: silentRows.length,
+    silentRows,
+    pool: claudePool(rows),
   }
 }

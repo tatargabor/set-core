@@ -10,8 +10,10 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  accountLabel,
+  claudePool,
   criticalCount,
+  distinctLabels,
+  mergeSubscriptions,
   elapsedFraction,
   shortLabel,
   markWindow,
@@ -336,29 +338,123 @@ describe('the compact label before the bars', () => {
   })
 })
 
-describe('accountLabel — the product, then the account', () => {
-  it('names Claude for a browser session, whose Chrome context does not', () => {
-    expect(accountLabel('web', 'user@gmail.com')).toBe('Claude gmail')
+describe('one subscription, one mark', () => {
+  // AC-2. Measured 2026-11-08: the same subscription arrived as a browser session AND a CLI
+  // account, same email, same weekly figure, and the strip drew it twice.
+  it('merges a browser session and a CLI account of the same name', () => {
+    const s = stripState(snapshot({
+      accounts: [
+        account({ name: 'user@acme.example', kind: 'web' }),
+        account({ name: 'User@acme.example', kind: 'cc', active: true }),
+        account({ name: 'GLM', kind: 'glm' }),
+      ],
+    }), NOW)
+    if (s.kind !== 'ready') throw new Error(s.kind)
+    expect(s.rows.map(r => [r.kind, r.kinds])).toEqual([['cc', ['cc', 'web']], ['glm', ['glm']]])
+    expect(s.rows[0].active).toBe(true)
   })
 
-  it('tells the two itline accounts apart, which was the whole problem', () => {
-    // Measured on the built screen: `itline` appeared TWICE — a browser session
-    // and a Claude Code account — reading as a duplicate rather than as two
-    // different subscriptions.
-    const web = accountLabel('web', 'user@acme.example')
-    const cc = accountLabel('cc', 'user@acme.example')
-    expect(web).toBe('Claude acme')
-    expect(cc).toBe('Claude Code acme')
-    expect(web).not.toBe(cc)
+  it('keeps the measured kind when the other did not answer, and still counts the dead credential', () => {
+    const s = stripState(snapshot({
+      accounts: [
+        account({ name: 'user@acme.example', kind: 'web', outcome: 'unreachable', windows: [] }),
+        account({ name: 'user@acme.example', kind: 'cc' }),
+      ],
+    }), NOW)
+    if (s.kind !== 'ready') throw new Error(s.kind)
+    expect(s.rows.map(r => r.state)).toEqual(['measured'])
+    expect(s.silentCount).toBe(1)
+    expect(s.silentRows.map(r => r.kind)).toEqual(['web'])
   })
 
-  it('does not prefix a name that already carries its vendor', () => {
-    // "GLM GLM" and "ChatGPT ChatGPT" are the failure this guards.
-    expect(accountLabel('glm', 'GLM')).toBe('GLM')
-    expect(accountLabel('astra', 'ChatGPT')).toBe('ChatGPT')
+  it('never merges across non-Claude kinds', () => {
+    const rows = mergeSubscriptions(stripRows([
+      account({ name: 'same', kind: 'glm' }), account({ name: 'same', kind: 'astra' }),
+    ]))
+    expect(rows).toHaveLength(2)
+  })
+})
+
+function stripRows(accounts: UsageAccount[]) {
+  const s = stripState(snapshot({ accounts }), NOW)
+  if (s.kind !== 'ready') throw new Error(s.kind)
+  return s.rows
+}
+
+describe('labels that tell accounts apart', () => {
+  it('adds what differs when two emails share a domain', () => {
+    // AC-1
+    const l = distinctLabels(['user@acme.example', 'user.team@acme.example', 'x@other.example'])
+    expect([...l.values()]).toEqual(['acme', 'acme team', 'other'])
   })
 
-  it('falls back to the bare name for a kind it does not know', () => {
-    expect(accountLabel('something-new', 'whatever')).toBe('whatever')
+  it('uses the whole local part when nothing is shared', () => {
+    const l = distinctLabels(['a@gmail.example', 'b@gmail.example'])
+    expect([...l.values()]).toEqual(['gmail a', 'gmail b'])
+  })
+
+  it('draws the distinct label on the row, and a provider by its own name', () => {
+    const rows = stripRows([
+      account({ name: 'user@acme.example' }),
+      account({ name: 'user.team@acme.example', kind: 'cc' }),
+      account({ name: 'GLM', kind: 'glm' }),
+    ])
+    expect(rows.map(r => r.label)).toEqual(['acme', 'acme team', 'GLM'])
+  })
+})
+
+/** A 7-day window `spent` % consumed with `run` (0..1) of the week elapsed at NOW. */
+function week(spent: number | null, run: number): UsageWindow {
+  const len = 7 * 24 * 3600
+  return window({
+    group: 'weekly', kind: 'weekly', utilization: spent, window_seconds: len,
+    resets_at: new Date(NOW + (1 - run) * len * 1000).toISOString(),
+  })
+}
+
+describe('the Claude pool', () => {
+  it('pools equal shares and reads spending against time', () => {
+    // AC-3: 20 % at 50 % run and 60 % at 40 % run → 40 % over 45 %, 80/90 = 89 %.
+    const pool = claudePool(stripRows([
+      account({ name: 'a@x.example', windows: [week(20, 0.5)] }),
+      account({ name: 'b@y.example', kind: 'cc', windows: [week(60, 0.4)] }),
+      account({ name: 'GLM', kind: 'glm', windows: [week(99, 0.1)] }),
+    ]))!
+    expect(pool.consumed).toBeCloseTo(0.4, 6)
+    expect(pool.elapsed).toBeCloseTo(0.45, 6)
+    expect(Math.round(pool.pace! * 100)).toBe(89)
+    expect(pool.counted).toEqual(['a@x.example', 'b@y.example'])
+    expect(pool.tone).toBe('bg-sky-400')
+    expect(pool.title).toMatch(/one equal share/)
+  })
+
+  it('leaves out and names what it cannot count', () => {
+    // AC-4
+    const pool = claudePool(stripRows([
+      account({ name: 'a@x.example', windows: [week(20, 0.5)] }),
+      account({ name: 'none@x.example', outcome: 'unmeasured', windows: [week(null, 0.5)] }),
+      account({ name: 'dead@x.example', outcome: 'unreachable', windows: [] }),
+      account({ name: 'scoped@x.example', windows: [{ ...week(50, 0.5), scope: { model: 'M', surface: null } }] }),
+    ]))!
+    expect(pool.counted).toEqual(['a@x.example'])
+    expect(pool.left.map(l => [l.name, l.why])).toEqual([
+      ['none@x.example', 'no 7-day figure'],
+      ['dead@x.example', 'did not answer'],
+      ['scoped@x.example', 'no 7-day figure'],
+    ])
+    expect(pool.title).toMatch(/not counted — dead@x\.example: did not answer/)
+  })
+
+  it('is amber when ahead of time, and never the critical colour', () => {
+    // AC-5
+    const pool = claudePool(stripRows([
+      account({ name: 'a@x.example', windows: [{ ...week(90, 0.3), severity: 'critical' }] }),
+    ]))!
+    expect(pool.pace!).toBeGreaterThan(1)
+    expect(pool.tone).toBe('bg-amber-400')
+  })
+
+  it('draws nothing without a countable subscription', () => {
+    expect(claudePool(stripRows([account({ windows: [window()] })]))).toBeNull()
   })
 })

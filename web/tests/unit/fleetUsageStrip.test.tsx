@@ -488,10 +488,10 @@ describe('the compact label', () => {
 
     await waitFor(() => {
       const labels = Array.from(container.querySelectorAll('[data-fleet-usage-compact-label]'))
-      // The label now names the PRODUCT before the account, because the account
-      // half alone does not say whose subscription it is — and a name that
-      // already carries its vendor is not prefixed twice.
-      expect(labels.map(l => l.textContent)).toEqual(['Claude beta', 'GLM'])
+      // The Claude subscriptions sit under one "Claude" word (with the pool), so each one
+      // carries only what tells it apart; a provider name already carries its vendor.
+      expect(labels.map(l => l.textContent)).toEqual(['beta', 'GLM'])
+      expect(container.querySelector('[data-fleet-usage-claude]')?.textContent).toMatch(/^Claude/)
     })
   })
 
@@ -508,5 +508,73 @@ describe('the compact label', () => {
       expect(label!.className).toContain('text-fg-strong')
       expect(label!.className).not.toContain('text-fg-ghost')
     })
+  })
+})
+
+describe('the Claude pool and the rescan', () => {
+  it('draws the pooled week with its number before the Claude bars', async () => {
+    const len = 7 * 24 * 3600
+    const wk = (u: number, run: number) => usageWindow({
+      group: 'weekly', kind: 'weekly', utilization: u, window_seconds: len,
+      resets_at: new Date(Date.now() + (1 - run) * len * 1000).toISOString(),
+    })
+    installFetch(snapshot({ accounts: [
+      usageAccount({ name: 'a@x.invalid', windows: [wk(20, 0.5)] }),
+      usageAccount({ name: 'b@y.invalid', kind: 'cc', windows: [wk(60, 0.4)] }),
+    ] }))
+    const { container } = render(<FleetUsageStrip />)
+    await waitFor(() => {
+      expect(container.querySelector('[data-fleet-usage-pool="2"]')).toBeTruthy()
+      expect(container.querySelector('[data-fleet-usage-pool-number]')?.textContent).toBe('89%')
+    })
+  })
+
+  it('rescans from the detail, draws the fresh snapshot and names what it found', async () => {
+    // AC-6
+    const dead = snapshot({ accounts: [
+      usageAccount({ name: 'a@x.invalid', outcome: 'unreachable', windows: [] }),
+    ] })
+    const fresh = snapshot({ accounts: [usageAccount({ name: 'a@x.invalid' })] })
+    const calls: string[] = []
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url)
+      calls.push(`${init?.method ?? 'GET'} ${u}`)
+      if (u.endsWith('/api/usage/accounts/rescan')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({
+          found: ['a@x.invalid'], written: true, reason: null, snapshot: fresh }) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(dead) } as Response)
+    }))
+    const { container } = render(<FleetUsageStrip />)
+    // The dead state is drawn first: no bar for the account, one silent credential.
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-silent="1"]')).toBeTruthy())
+    expect(container.querySelector('[data-fleet-usage-compact="a@x.invalid"]')).toBeFalsy()
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-toggle]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+    fireEvent.click(container.querySelector('[data-fleet-usage-rescan-button]')!)
+    await waitFor(() => {
+      expect(container.querySelector('[data-fleet-usage-rescan-note="found"]')?.textContent).toMatch(/a@x\.invalid/)
+      expect(container.querySelector('[data-fleet-usage-compact="a@x.invalid"]')).toBeTruthy()
+    })
+    expect(calls).toContain('POST /api/usage/accounts/rescan')
+  })
+
+  it('says why when the rescan found nothing, and keeps the figures', async () => {
+    // AC-7
+    const s = snapshot()
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (String(url).endsWith('/rescan')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({
+          found: [], written: false, reason: 'no Claude session was found', snapshot: s }) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(s) } as Response)
+    }))
+    const { container } = render(<FleetUsageStrip />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-toggle]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+    fireEvent.click(container.querySelector('[data-fleet-usage-rescan-button]')!)
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-rescan-note="none"]')?.textContent)
+      .toMatch(/no Claude session/))
+    expect(container.querySelector('[data-fleet-usage-compact="alpha@example.invalid"]')).toBeTruthy()
   })
 })

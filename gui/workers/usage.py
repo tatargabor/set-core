@@ -14,6 +14,7 @@ plumbing must not move the meaning.
 """
 
 import json
+import os
 import logging
 from datetime import datetime, timezone
 
@@ -103,8 +104,11 @@ def save_accounts(accounts):
     """
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     tmp = CLAUDE_SESSION_FILE.with_suffix(".tmp")
-    with open(tmp, "w") as f:
+    # Owner-only: the file holds live session cookies.
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
         json.dump({"accounts": accounts}, f, indent=2)
+    os.chmod(tmp, 0o600)
     tmp.replace(CLAUDE_SESSION_FILE)
 
 

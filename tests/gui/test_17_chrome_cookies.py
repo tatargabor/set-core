@@ -18,7 +18,7 @@ import pytest
 
 def test_discover_profiles_finds_default_and_numbered(tmp_path):
     """Discovers Default and Profile N directories with Preferences files."""
-    from gui.workers.chrome_cookies import _discover_profiles
+    from set_orch.usage.chrome_scan import _discover_profiles
 
     # Create valid profiles
     for name in ("Default", "Profile 1", "Profile 2"):
@@ -37,7 +37,7 @@ def test_discover_profiles_finds_default_and_numbered(tmp_path):
 
 def test_discover_profiles_skips_without_preferences(tmp_path):
     """Skips profile directories that don't have a Preferences file."""
-    from gui.workers.chrome_cookies import _discover_profiles
+    from set_orch.usage.chrome_scan import _discover_profiles
 
     (tmp_path / "Default").mkdir()  # No Preferences file
     p1 = tmp_path / "Profile 1"
@@ -51,7 +51,7 @@ def test_discover_profiles_skips_without_preferences(tmp_path):
 
 def test_discover_profiles_empty_dir(tmp_path):
     """Returns empty list for a directory with no profiles."""
-    from gui.workers.chrome_cookies import _discover_profiles
+    from set_orch.usage.chrome_scan import _discover_profiles
 
     profiles = _discover_profiles(tmp_path)
     assert profiles == []
@@ -62,7 +62,7 @@ def test_discover_profiles_empty_dir(tmp_path):
 
 def test_resolve_name_google_account(tmp_path):
     """Uses Google account full_name when available."""
-    from gui.workers.chrome_cookies import _resolve_profile_name
+    from set_orch.usage.chrome_scan import _resolve_profile_name
 
     profile = tmp_path / "Profile 1"
     profile.mkdir()
@@ -77,7 +77,7 @@ def test_resolve_name_google_account(tmp_path):
 
 def test_resolve_name_chrome_profile_fallback(tmp_path):
     """Falls back to Chrome profile name when no Google account."""
-    from gui.workers.chrome_cookies import _resolve_profile_name
+    from set_orch.usage.chrome_scan import _resolve_profile_name
 
     profile = tmp_path / "Default"
     profile.mkdir()
@@ -91,7 +91,7 @@ def test_resolve_name_chrome_profile_fallback(tmp_path):
 
 def test_resolve_name_directory_fallback(tmp_path):
     """Falls back to directory name when no name in Preferences."""
-    from gui.workers.chrome_cookies import _resolve_profile_name
+    from set_orch.usage.chrome_scan import _resolve_profile_name
 
     profile = tmp_path / "Profile 3"
     profile.mkdir()
@@ -103,7 +103,7 @@ def test_resolve_name_directory_fallback(tmp_path):
 
 def test_resolve_name_broken_preferences(tmp_path):
     """Falls back to directory name when Preferences is invalid JSON."""
-    from gui.workers.chrome_cookies import _resolve_profile_name
+    from set_orch.usage.chrome_scan import _resolve_profile_name
 
     profile = tmp_path / "Default"
     profile.mkdir()
@@ -115,7 +115,7 @@ def test_resolve_name_broken_preferences(tmp_path):
 
 def test_resolve_name_empty_account_info(tmp_path):
     """Falls back when account_info is empty list."""
-    from gui.workers.chrome_cookies import _resolve_profile_name
+    from set_orch.usage.chrome_scan import _resolve_profile_name
 
     profile = tmp_path / "Profile 1"
     profile.mkdir()
@@ -142,7 +142,7 @@ def test_extract_cookie_success(tmp_path):
     mock_module.chrome_cookies = mock_chrome_cookies
     with patch.dict("sys.modules", {"pycookiecheat": mock_module}):
         import importlib
-        import gui.workers.chrome_cookies as mod
+        import set_orch.usage.chrome_scan as mod
         importlib.reload(mod)
 
         result = mod._extract_session_cookie(profile, password="testpass")
@@ -155,7 +155,7 @@ def test_extract_cookie_success(tmp_path):
 
 def test_extract_cookie_no_cookies_file(tmp_path):
     """Returns None when Cookies file doesn't exist."""
-    from gui.workers.chrome_cookies import _extract_session_cookie
+    from set_orch.usage.chrome_scan import _extract_session_cookie
 
     profile = tmp_path / "Default"
     profile.mkdir()
@@ -176,7 +176,7 @@ def test_extract_cookie_no_session_key(tmp_path):
     mock_module.chrome_cookies = mock_chrome_cookies
     with patch.dict("sys.modules", {"pycookiecheat": mock_module}):
         import importlib
-        import gui.workers.chrome_cookies as mod
+        import set_orch.usage.chrome_scan as mod
         importlib.reload(mod)
 
         result = mod._extract_session_cookie(profile)
@@ -195,7 +195,7 @@ def test_extract_cookie_no_password(tmp_path):
     mock_module.chrome_cookies = mock_chrome_cookies
     with patch.dict("sys.modules", {"pycookiecheat": mock_module}):
         import importlib
-        import gui.workers.chrome_cookies as mod
+        import set_orch.usage.chrome_scan as mod
         importlib.reload(mod)
 
         result = mod._extract_session_cookie(profile, password=None)
@@ -210,7 +210,7 @@ def test_extract_cookie_no_password(tmp_path):
 
 def test_get_chrome_data_dir_linux(tmp_path, monkeypatch):
     """Returns correct path on Linux."""
-    from gui.workers import chrome_cookies as mod
+    from set_orch.usage import chrome_scan as mod
 
     monkeypatch.setattr(sys, "platform", "linux")
     chrome_dir = tmp_path / ".config" / "google-chrome"
@@ -223,7 +223,7 @@ def test_get_chrome_data_dir_linux(tmp_path, monkeypatch):
 
 def test_get_chrome_data_dir_missing(tmp_path, monkeypatch):
     """Returns None when Chrome dir doesn't exist."""
-    from gui.workers import chrome_cookies as mod
+    from set_orch.usage import chrome_scan as mod
 
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -245,7 +245,7 @@ def _make_mock_cffi(mock_resp):
 def _reload_with_cffi(mock_requests):
     """Helper: reload chrome_cookies with a mocked curl_cffi.requests."""
     import importlib
-    import gui.workers.chrome_cookies as mod
+    import set_orch.usage.chrome_scan as mod
     with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
         importlib.reload(mod)
         # _validate_session imports curl_cffi inside the function, so we need to
@@ -262,7 +262,7 @@ def test_validate_session_valid():
 
     mock_requests = _make_mock_cffi(mock_resp)
     import importlib
-    import gui.workers.chrome_cookies as mod
+    import set_orch.usage.chrome_scan as mod
     with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
         importlib.reload(mod)
         status, org_name = mod._validate_session("sk-test")
@@ -278,7 +278,7 @@ def test_validate_session_expired_401():
 
     mock_requests = _make_mock_cffi(mock_resp)
     import importlib
-    import gui.workers.chrome_cookies as mod
+    import set_orch.usage.chrome_scan as mod
     with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
         importlib.reload(mod)
         status, org_name = mod._validate_session("sk-expired")
@@ -294,7 +294,7 @@ def test_validate_session_expired_403():
 
     mock_requests = _make_mock_cffi(mock_resp)
     import importlib
-    import gui.workers.chrome_cookies as mod
+    import set_orch.usage.chrome_scan as mod
     with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
         importlib.reload(mod)
         status, org_name = mod._validate_session("sk-expired")
@@ -311,7 +311,7 @@ def test_validate_session_expired_empty_list():
 
     mock_requests = _make_mock_cffi(mock_resp)
     import importlib
-    import gui.workers.chrome_cookies as mod
+    import set_orch.usage.chrome_scan as mod
     with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
         importlib.reload(mod)
         status, org_name = mod._validate_session("sk-empty")
@@ -328,7 +328,7 @@ def test_validate_session_expired_html_response():
 
     mock_requests = _make_mock_cffi(mock_resp)
     import importlib
-    import gui.workers.chrome_cookies as mod
+    import set_orch.usage.chrome_scan as mod
     with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
         importlib.reload(mod)
         status, org_name = mod._validate_session("sk-html")
@@ -343,7 +343,7 @@ def test_validate_session_network_error():
     mock_requests.get.side_effect = ConnectionError("network down")
 
     import importlib
-    import gui.workers.chrome_cookies as mod
+    import set_orch.usage.chrome_scan as mod
     with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
         importlib.reload(mod)
         # Also mock subprocess to fail
@@ -359,7 +359,7 @@ def test_validate_session_network_error():
 
 def test_scan_raises_without_pycookiecheat(monkeypatch):
     """scan_chrome_sessions raises ImportError when pycookiecheat is missing."""
-    from gui.workers import chrome_cookies as mod
+    from set_orch.usage import chrome_scan as mod
 
     monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: False)
 
@@ -369,7 +369,7 @@ def test_scan_raises_without_pycookiecheat(monkeypatch):
 
 def test_scan_returns_empty_no_chrome(monkeypatch):
     """Returns empty list when Chrome data dir is not found."""
-    from gui.workers import chrome_cookies as mod
+    from set_orch.usage import chrome_scan as mod
 
     monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
     monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: None)
@@ -380,7 +380,7 @@ def test_scan_returns_empty_no_chrome(monkeypatch):
 
 def test_scan_end_to_end(tmp_path, monkeypatch):
     """Full scan with mocked pycookiecheat discovers profiles and extracts cookies."""
-    from gui.workers import chrome_cookies as mod
+    from set_orch.usage import chrome_scan as mod
 
     # Create two profiles
     p1 = tmp_path / "Default"
@@ -443,7 +443,7 @@ def test_scan_end_to_end(tmp_path, monkeypatch):
 
 def test_scan_excludes_expired_sessions(tmp_path, monkeypatch):
     """Scan excludes sessions where _validate_session returns 'expired'."""
-    from gui.workers import chrome_cookies as mod
+    from set_orch.usage import chrome_scan as mod
 
     p1 = tmp_path / "Default"
     p1.mkdir()
@@ -492,7 +492,7 @@ def test_scan_excludes_expired_sessions(tmp_path, monkeypatch):
 
 def test_scan_includes_unverified_on_error(tmp_path, monkeypatch):
     """Scan includes sessions with verified=False when validation returns 'error'."""
-    from gui.workers import chrome_cookies as mod
+    from set_orch.usage import chrome_scan as mod
 
     p1 = tmp_path / "Default"
     p1.mkdir()
@@ -530,7 +530,7 @@ def test_scan_includes_unverified_on_error(tmp_path, monkeypatch):
 
 def test_scan_uses_cached_org_name(tmp_path, monkeypatch):
     """Scan skips _validate_session when cache has valid org_name for same sessionKey."""
-    from gui.workers import chrome_cookies as mod
+    from set_orch.usage import chrome_scan as mod
 
     p1 = tmp_path / "Default"
     p1.mkdir()
@@ -572,7 +572,7 @@ def test_scan_uses_cached_org_name(tmp_path, monkeypatch):
 
 def test_scan_force_refresh_ignores_cache(tmp_path, monkeypatch):
     """force_refresh=True always calls _validate_session even with valid cache."""
-    from gui.workers import chrome_cookies as mod
+    from set_orch.usage import chrome_scan as mod
 
     p1 = tmp_path / "Default"
     p1.mkdir()
@@ -615,7 +615,7 @@ def test_scan_force_refresh_ignores_cache(tmp_path, monkeypatch):
 
 def test_merge_preserves_manual_accounts():
     """merge_scan_results keeps manual accounts and adds scan results."""
-    from gui.workers.chrome_cookies import merge_scan_results
+    from set_orch.usage.chrome_scan import merge_scan_results
 
     existing = [
         {"name": "Manual", "sessionKey": "sk-manual", "source": "manual"},
