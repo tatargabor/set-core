@@ -6,8 +6,9 @@
 
 The tool SHALL read a machine-local editor list. Its path is `SET_WAVEBOARD_EDITORS`, or failing that
 `~/.config/set-core/waveboard-editors.json`. The list is a JSON object with `owner_account` (a string) and `editors`
-(a list of strings). The tool SHALL NOT write the list, and SHALL NOT copy any address from it into the job file, the
-payload or a log line.
+(a list of strings), and optionally `combined_url` and `projects` (see the combined board). The tool SHALL NOT write the
+list, except that `combined-link` sets the `combined_url` key and leaves every other key as it was. It SHALL NOT copy
+any address from the list into the job file, the payload or a log line.
 
 The tool SHALL read the account the session is signed in as from `oauthAccount.emailAddress` in
 `$CLAUDE_CONFIG_DIR/.claude.json`, or in `~/.claude.json` when that variable is unset. When it cannot be read, the
@@ -172,9 +173,10 @@ synced. A payload without these fields SHALL render as it did before.
 - **WHEN** the state has no `waiting_on` or `blocks` fields
 - **THEN** every item renders in its own status, as before
 
-### Requirement: `overview` is the combined view over every registered project
+### Requirement: `overview` is the combined view over the team's projects
 
-`set-wave-board overview` SHALL read every registered project's `docs/waveboard/*.json` and print:
+`set-wave-board overview` SHALL read the `docs/waveboard/*.json` of every registered project inside the team scope (the
+editor list's `projects`; every registered project when no scope is set, or with `--all`) and print:
 - one line per board, with its counts, its waiting items and the items it blocks;
 - one line per dependency edge, saying met or unmet, with the reason when unresolved.
 
@@ -185,3 +187,68 @@ out. It SHALL NOT write anything.
 
 - **WHEN** project A's board has an item depending on project B's item, which is `doing`
 - **THEN** `overview --json` lists both boards and one edge from A to B with `met` false
+
+### Requirement: The combined board is scoped to the team's projects
+
+*Asked for by the owner on 2026-11-08: the combined board covers the team's development, not every project on the
+machine.*
+
+The editor list MAY carry `projects`: a list of registry names or `fnmatch` patterns. A repository SHALL be inside the
+team scope when one of its registry names matches. Nothing outside the scope SHALL reach the combined board. Without
+`projects`, nothing SHALL be pushed to it, and `combined-page` SHALL exit 2 and say how to set the scope. The page is
+shared with other people, and one machine holds more projects than one team works on.
+
+#### Scenario: A project outside the scope
+
+- **WHEN** `combined_url` is set and the repository's registry name matches no entry of `projects`
+- **THEN** sync writes no combined document and prints no `PUSH-COMBINED`, and `pending` lists none
+
+#### Scenario: No scope
+
+- **WHEN** `combined_url` is set and `projects` is absent
+- **THEN** nothing goes to the combined board and `combined-page` exits 2
+
+### Requirement: Every board in scope is one document on the combined board
+
+When the editor list has a `combined_url` and the repository is inside the team scope, `sync` SHALL write
+`.set/waveboard/<job>.combined.json`. That payload holds the board's content plus `project` (the matching registry name)
+and `artifact_url`, with its own content hash. `sync` SHALL print `PUSH-COMBINED <job> <url> boards/<project>--<job>
+<payload>` when this machine has not recorded a push of that hash to that URL.
+
+`pushed <job> --combined --version N` SHALL record the push with the URL. A different `combined_url` SHALL make every
+board pending again. `pending` SHALL list combined pushes as `PENDING-COMBINED`.
+
+The Stop hook SHALL include the combined push in its one block, with collection `boards`, the document id, `if_version`
+when one is recorded, and the `pushed --combined` command.
+
+#### Scenario: The push cycle on the combined board
+
+- **WHEN** a board in scope is synced, pushed with `--combined`, and then changes
+- **THEN** it is pending before the record, not pending after it, and pending again after the change
+
+#### Scenario: One block for both pushes
+
+- **WHEN** a board is pending on its own page and on the combined board
+- **THEN** the hook prints one block naming `collection=board, doc_id=state` and `collection=boards,
+  doc_id=<project>--<job>`
+
+### Requirement: The combined page lists every board and the edges between them
+
+`combined-page [-o FILE] [--bare]` SHALL render `templates/waveboard/combined.html`, seeded with every in-scope board
+this machine can read, `waiting_on` and `blocks` included. `combined-link <url>` SHALL record the URL and print the
+share step.
+
+The page SHALL subscribe to collection `boards` through the `db` capability and fall back to the seed. It SHALL show:
+- totals over every board;
+- the dependency edges, unmet first, each with its target's status, or with the reason it is unresolved;
+- one row per board, grouped by project, with a proportional status bar, its counts and its blocked, waiting and
+  blocks figures;
+- in each row, a fold holding the board's open items and their waits-on chips.
+
+It SHALL NOT write. When the live data has not answered within 10 seconds, it SHALL say so.
+
+#### Scenario: Two boards in scope linked by an edge
+
+- **WHEN** `combined-page` runs with two in-scope projects whose boards are linked by one dependency, and a third
+  project outside the scope
+- **THEN** the seed holds the two boards, with `waiting_on` and `blocks` filled in, and not the third

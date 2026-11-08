@@ -1,0 +1,395 @@
+<title>Wave Boards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,500..800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* The combined board: every project's wave boards on one shared page, one row per board,
+   and the dependencies between them. Same tokens as the single-board page. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a23; --muted: #5b6273; --line: #dde0e7;
+  --accent: #3446a8; --done: #23854f; --doing: #b86e00; --blocked: #c23a32; --todo: #c9cdd6;
+  --skipped: #9aa0ad; --chip-done: #e3f3ea; --chip-doing: #fbefdb; --chip-blocked: #fbe4e2;
+  --chip-todo: #eef0f4; --chip-skipped: #f0f1f3;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12141a; --surface: #1a1d25; --ink: #e8eaf0; --muted: #9aa1b2; --line: #2c303b;
+    --accent: #8d9cff; --done: #4cc184; --doing: #f0a63a; --blocked: #f07068; --todo: #3a3f4c;
+    --skipped: #6c7280; --chip-done: #173527; --chip-doing: #3a2a10; --chip-blocked: #3d1d1b;
+    --chip-todo: #232733; --chip-skipped: #20232b; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12141a; --surface: #1a1d25; --ink: #e8eaf0; --muted: #9aa1b2; --line: #2c303b;
+  --accent: #8d9cff; --done: #4cc184; --doing: #f0a63a; --blocked: #f07068; --todo: #3a3f4c;
+  --skipped: #6c7280; --chip-done: #173527; --chip-doing: #3a2a10; --chip-blocked: #3d1d1b;
+  --chip-todo: #232733; --chip-skipped: #20232b; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; margin: 0; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 28px 16px 48px; display: grid; gap: 26px; }
+.wrap > * { min-width: 0; }
+header { display: grid; gap: 12px; }
+.eyebrow {
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+}
+h1 { font-family: var(--font-display); font-stretch: 112%; font-weight: 750; font-size: clamp(26px, 5vw, 38px); line-height: 1.1; margin: 0; }
+h2 { font-family: var(--font-display); font-stretch: 104%; font-weight: 650; font-size: 19px; margin: 0; }
+.source { display: inline-flex; align-items: center; gap: 6px; }
+.source::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--skipped); }
+.source[data-kind="live"]::before { background: var(--done); }
+.summary { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: baseline; font-variant-numeric: tabular-nums; }
+.summary .big { font-family: var(--font-display); font-weight: 700; font-size: 22px; }
+.summary .big small { font-size: 15px; font-weight: 500; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 12px;
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap; background: var(--chip-todo); color: var(--muted);
+}
+.chip.done { background: var(--chip-done); color: var(--done); }
+.chip.doing { background: var(--chip-doing); color: var(--doing); }
+.chip.blocked { background: var(--chip-blocked); color: var(--blocked); }
+.chip.skipped { background: var(--chip-skipped); color: var(--skipped); }
+/* One proportional segment per status, not one per item: a board of 266 items has to fit a row. */
+.strip { display: flex; gap: 2px; height: 8px; min-width: 0; overflow: hidden; border-radius: 2px; }
+.seg { flex: 0 1 auto; min-width: 3px; border-radius: 2px; background: var(--todo); }
+.seg.done { background: var(--done); } .seg.doing { background: var(--doing); } .seg.blocked { background: var(--blocked); }
+.seg.skipped { background: repeating-linear-gradient(135deg, var(--skipped) 0 3px, transparent 3px 6px); }
+.project { display: grid; gap: 8px; }
+.project-name { font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+.boards { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.board { border-top: 1px solid var(--line); }
+.board:first-child { border-top: 0; }
+.board summary {
+  list-style: none; cursor: pointer; display: grid; gap: 4px 14px; padding: 10px 12px; align-items: center;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 15em;
+}
+.board summary::-webkit-details-marker { display: none; }
+.board summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.b-title { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.b-title a { color: inherit; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.b-title .wave { font-family: var(--font-mono); font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 8px; }
+.b-meta { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; display: flex; gap: 10px; justify-content: flex-end; }
+.b-meta .bl { color: var(--blocked); }
+.b-meta .wt { color: var(--blocked); }
+.b-meta .bk { color: var(--accent); }
+.b-body { padding: 0 12px 12px; display: grid; gap: 6px; }
+.b-item { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 2px 10px; align-items: baseline; font-size: 14px; }
+.b-item .id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-right: 6px; }
+.b-item .t { overflow-wrap: anywhere; }
+.deps { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
+.dep { font-family: var(--font-mono); font-size: 11px; padding: 0 7px; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); max-width: 100%; overflow-wrap: anywhere; }
+.dep.waits { border-color: var(--blocked); color: var(--blocked); }
+.empty { border: 1px dashed var(--line); border-radius: 8px; padding: 22px; color: var(--muted); background: var(--surface); }
+.empty code, .foot code { font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
+.edges { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.edge { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; padding: 8px 12px; border-top: 1px solid var(--line); font-family: var(--font-mono); font-size: 12px; align-items: baseline; }
+.edge:first-child { border-top: 0; }
+.edge .ref { overflow-wrap: anywhere; color: var(--ink); }
+.edge .why { grid-column: 2; color: var(--muted); }
+.note { font-size: 13px; color: var(--blocked); }
+.foot { font-size: 13px; color: var(--muted); }
+@media (max-width: 640px) {
+  .board summary { grid-template-columns: minmax(0, 1fr); }
+  .b-meta { justify-content: flex-start; }
+  .b-item { grid-template-columns: minmax(0, 1fr); }
+  .deps { grid-column: 1; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">
+      <span>wave boards · the team's projects</span>
+      <span class="source" id="source" data-kind="none">No data yet</span>
+      <span id="synced"></span>
+    </div>
+    <h1>Wave Boards</h1>
+    <div class="summary" id="summary" hidden>
+      <span class="big" id="overall"></span>
+      <span class="legend" id="legend"></span>
+    </div>
+    <p class="note" id="note" hidden></p>
+  </header>
+  <section id="edges-wrap" hidden>
+    <h2 id="edges-title">Dependencies</h2>
+    <ul class="edges" id="edges"></ul>
+  </section>
+  <main id="projects">
+    <div class="empty" id="empty">
+      No board has been pushed here yet. Each project's agent pushes its boards after
+      <code>set-wave-board sync</code> once this page's URL is in its machine's editor list
+      (<code>set-wave-board combined-link &lt;url&gt;</code>).
+    </div>
+  </main>
+  <p class="foot">Read-only. One row per job board, pushed by the agents of every machine that
+    runs the job; a board appears once some machine with its project has synced and pushed it.
+    Updated by <code>set-wave-board</code>.</p>
+</div>
+
+<script type="application/json" id="seed">null</script>
+<script>
+(function () {
+  "use strict";
+  var STATUSES = ["done", "doing", "blocked", "todo", "skipped"];
+  var LABEL = { done: "done", doing: "in progress", blocked: "blocked", todo: "to do", skipped: "skipped" };
+  var state = null;
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function norm(s) { return STATUSES.indexOf(s) >= 0 ? s : "todo"; }
+  function waits(it) { return Array.isArray(it.waiting_on) && it.waiting_on.length > 0; }
+  function eff(it) { var s = norm(it.status); return s === "todo" && waits(it) ? "blocked" : s; }
+  function items(b) {
+    var out = [];
+    (Array.isArray(b.waves) ? b.waves : []).forEach(function (w, i) {
+      (w.items || []).forEach(function (it) { out.push({ it: it, w: w, i: i }); });
+    });
+    return out;
+  }
+  function refText(r) { return (r.project ? r.project + "/" : "") + (r.job || "?") + "/" + (r.item || "?"); }
+  function ago(iso) {
+    var t = Date.parse(iso);
+    if (isNaN(t)) return "";
+    var m = Math.round(Math.max(0, Date.now() - t) / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return m + " min ago";
+    var h = Math.round(m / 60);
+    return h < 48 ? h + " h ago" : Math.round(h / 24) + " days ago";
+  }
+  function setSource(kind, text) {
+    var s = document.getElementById("source");
+    s.dataset.kind = kind;
+    s.textContent = text;
+  }
+
+  // Every item of every board, by project/job/item, for the dependency edges.
+  function indexOf(boards) {
+    var idx = {};
+    boards.forEach(function (b) {
+      items(b).forEach(function (r) { idx[b.project + "/" + b.job + "/" + r.it.id] = r.it; });
+    });
+    return idx;
+  }
+
+  function edgesOf(boards, idx) {
+    var edges = [];
+    boards.forEach(function (b) {
+      items(b).forEach(function (r) {
+        (Array.isArray(r.it.depends_on) ? r.it.depends_on : []).forEach(function (ref) {
+          var to = { project: ref.project || b.project, job: ref.job, item: ref.item };
+          var target = idx[to.project + "/" + to.job + "/" + to.item];
+          var status = target ? norm(target.status) : null;
+          var why = null;
+          if (!target) {
+            // Not on this page: fall back to what the dependent's own machine saw.
+            var seen = (r.it.waiting_on || []).filter(function (w) {
+              return (w.project || b.project) === to.project && w.job === to.job && w.item === to.item;
+            })[0];
+            why = seen ? (seen.status || seen.reason || "unresolved") : "not on this page";
+          }
+          edges.push({ from: { project: b.project, job: b.job, item: r.it.id }, to: to,
+                       status: status, met: status === "done", why: why,
+                       open: ["done", "skipped"].indexOf(norm(r.it.status)) < 0 });
+        });
+      });
+    });
+    // Unmet first, then by the waiting board.
+    edges.sort(function (a, b) {
+      return (a.met - b.met) || refText(a.from).localeCompare(refText(b.from));
+    });
+    return edges;
+  }
+
+  function render(next) {
+    state = next;
+    var boards = (next && Array.isArray(next.boards) ? next.boards : [])
+      .filter(function (b) { return b && b.project && b.job; });
+    var host = document.getElementById("projects");
+    var opened = {};
+    Array.prototype.forEach.call(host.querySelectorAll("details[open][data-key]"), function (d) {
+      opened[d.dataset.key] = true;
+    });
+    host.textContent = "";
+    var summary = document.getElementById("summary");
+    if (!boards.length) {
+      host.appendChild(document.getElementById("empty") || el("div", "empty", "No boards yet."));
+      summary.hidden = true;
+      document.getElementById("edges-wrap").hidden = true;
+      return;
+    }
+    var idx = indexOf(boards);
+    var total = { done: 0, doing: 0, blocked: 0, todo: 0, skipped: 0 };
+    var waitingAll = 0;
+    boards.forEach(function (b) {
+      items(b).forEach(function (r) { total[eff(r.it)] += 1; if (waits(r.it)) waitingAll += 1; });
+    });
+    var counted = total.done + total.doing + total.blocked + total.todo;
+    var overall = document.getElementById("overall");
+    overall.textContent = boards.length + " board" + (boards.length === 1 ? "" : "s") + " ";
+    overall.appendChild(el("small", null, "· " + total.done + " of " + counted + " items done"));
+    var legend = document.getElementById("legend");
+    legend.textContent = "";
+    STATUSES.forEach(function (s) {
+      if (total[s]) legend.appendChild(el("span", "chip " + s, total[s] + " " + LABEL[s]));
+    });
+    if (waitingAll) legend.appendChild(el("span", "chip blocked", waitingAll + " waiting on another item"));
+    summary.hidden = false;
+
+    // Dependencies first: they are what this page adds over the single boards.
+    var edges = edgesOf(boards, idx);
+    var ew = document.getElementById("edges-wrap");
+    var list = document.getElementById("edges");
+    list.textContent = "";
+    ew.hidden = !edges.length;
+    var unmet = edges.filter(function (e) { return !e.met; }).length;
+    document.getElementById("edges-title").textContent =
+      "Dependencies · " + unmet + " open of " + edges.length;
+    edges.forEach(function (e) {
+      var li = el("li", "edge");
+      li.appendChild(el("span", "chip " + (e.met ? "done" : "blocked"), e.met ? "met" : "waits"));
+      var ref = el("span", "ref", refText(e.from) + " → " + refText(e.to));
+      li.appendChild(ref);
+      li.appendChild(el("span", "why", e.status ? "that item is " + LABEL[e.status] : e.why));
+      list.appendChild(li);
+    });
+
+    // Boards grouped by project, projects by name.
+    var byProject = {};
+    boards.forEach(function (b) { (byProject[b.project] = byProject[b.project] || []).push(b); });
+    Object.keys(byProject).sort().forEach(function (name) {
+      var sec = el("section", "project");
+      sec.appendChild(el("div", "project-name", name));
+      var ul = el("ul", "boards");
+      byProject[name].sort(function (a, b) { return a.job.localeCompare(b.job); }).forEach(function (b) {
+        ul.appendChild(boardRow(b, idx, opened));
+      });
+      sec.appendChild(ul);
+      host.appendChild(sec);
+    });
+  }
+
+  function boardRow(b, idx, opened) {
+    var rows = items(b);
+    var c = { done: 0, doing: 0, blocked: 0, todo: 0, skipped: 0 };
+    var waiting = 0;
+    var current = null;
+    rows.forEach(function (r) {
+      c[eff(r.it)] += 1;
+      if (waits(r.it)) waiting += 1;
+      if (!current && ["done", "skipped"].indexOf(norm(r.it.status)) < 0) current = r.w;
+    });
+    var blocks = 0;
+    rows.forEach(function (r) {
+      blocks += (Array.isArray(r.it.blocks) ? r.it.blocks : []).filter(function (x) { return x.status !== "done"; }).length;
+    });
+    var li = el("li", "board");
+    var d = el("details");
+    d.dataset.key = b.project + "/" + b.job;
+    d.open = !!opened[d.dataset.key];
+    var sum = el("summary");
+    var title = el("div", "b-title");
+    if (b.artifact_url && /^https:\/\//.test(b.artifact_url)) {
+      var a = el("a", null, b.title || b.job);
+      a.href = b.artifact_url; a.target = "_blank"; a.rel = "noopener noreferrer";
+      a.addEventListener("click", function (e) { e.stopPropagation(); });
+      title.appendChild(a);
+    } else {
+      title.appendChild(document.createTextNode(b.title || b.job));
+    }
+    title.appendChild(el("span", "wave", current ? "wave " + (current.id || "") : "finished"));
+    sum.appendChild(title);
+    var st = el("div", "strip");
+    st.setAttribute("aria-hidden", "true");
+    ["done", "doing", "blocked", "todo", "skipped"].forEach(function (k) {
+      if (!c[k]) return;
+      var seg = el("span", "seg " + k);
+      seg.style.flexGrow = String(c[k]);
+      seg.title = c[k] + " " + LABEL[k];
+      st.appendChild(seg);
+    });
+    sum.appendChild(st);
+    var meta = el("div", "b-meta");
+    meta.appendChild(el("span", null, c.done + "/" + (rows.length - c.skipped)));
+    if (c.blocked) meta.appendChild(el("span", "bl", c.blocked + " blocked"));
+    if (waiting) meta.appendChild(el("span", "wt", "waits " + waiting));
+    if (blocks) meta.appendChild(el("span", "bk", "blocks " + blocks));
+    if (b.synced_at) meta.appendChild(el("span", null, ago(b.synced_at)));
+    sum.appendChild(meta);
+    d.appendChild(sum);
+
+    var body = el("div", "b-body");
+    var open = rows.filter(function (r) { return ["done", "skipped"].indexOf(norm(r.it.status)) < 0; });
+    if (!open.length) body.appendChild(el("div", "b-item", "Every item is done or skipped."));
+    open.forEach(function (r) {
+      var row = el("div", "b-item");
+      var s = eff(r.it);
+      row.appendChild(el("span", "chip " + s, norm(r.it.status) === "todo" && waits(r.it) ? "waiting" : LABEL[s]));
+      var t = el("div");
+      t.appendChild(el("span", "id", r.it.id || ""));
+      t.appendChild(el("span", "t", r.it.title || ""));
+      row.appendChild(t);
+      var w = Array.isArray(r.it.waiting_on) ? r.it.waiting_on : [];
+      if (w.length) {
+        var dd = el("div", "deps");
+        w.forEach(function (x) {
+          var live = idx[(x.project || b.project) + "/" + x.job + "/" + x.item];
+          var why = live ? LABEL[norm(live.status)] : (x.status || x.reason || "unresolved");
+          dd.appendChild(el("span", "dep waits", "waits on " + refText(x) + " · " + why));
+        });
+        row.appendChild(dd);
+      }
+      body.appendChild(row);
+    });
+    d.appendChild(body);
+    li.appendChild(d);
+    return li;
+  }
+
+  function renderSynced(text) { document.getElementById("synced").textContent = text || ""; }
+
+  var seed = null;
+  try { seed = JSON.parse(document.getElementById("seed").textContent || "null"); } catch (e) { seed = null; }
+  if (seed) {
+    setSource("snapshot", "Snapshot");
+    renderSynced(seed.synced_at ? "rendered " + ago(seed.synced_at) + (seed.synced_by ? " · " + seed.synced_by : "") : "");
+  }
+  render(seed);
+
+  // Live data: collection `boards`, one document per board. The page only reads it.
+  var c = window.claude;
+  if (c && typeof c.use === "function") {
+    c.use("db").then(function (db) {
+      if (!db) return;
+      var note = document.getElementById("note");
+      var timer = setTimeout(function () {
+        note.hidden = false;
+        note.textContent = seed ? "Live data cannot be reached yet; this is the snapshot it was published with."
+                                : "Live data cannot be reached yet.";
+      }, 10000);
+      db.collection("boards").onSnapshot(function (snap) {
+        if (!snap.metadata || !snap.metadata.fromCache) { clearTimeout(timer); note.hidden = true; }
+        var boards = snap.docs.map(function (d) { return d.data(); }).filter(Boolean);
+        if (!boards.length && seed) { setSource("live", "Live · nothing pushed yet, showing the snapshot"); return; }
+        setSource("live", "Live");
+        renderSynced("");
+        render({ boards: boards });
+      }, function () {
+        clearTimeout(timer);
+        note.hidden = false;
+        note.textContent = "Live updates stopped; the page shows the last data it had.";
+        setSource("snapshot", state ? "Snapshot · live updates stopped" : "Live updates unavailable");
+      });
+    }, function () { /* no db on this view: the seed stays */ });
+  }
+})();
+</script>

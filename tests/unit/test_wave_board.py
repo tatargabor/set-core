@@ -790,3 +790,116 @@ def test_render_carries_the_dependency_chips(env, repo, tmp_path):
     run(env, repo, "render", "j", "-o", str(out))
     page = out.read_text()
     assert "waits on " in page and '"waiting_on"' in page and "function eff(" in page
+
+
+# ── the combined board (change `wave-board-shared-linked`, round 2) ──────────
+
+CURL = "https://claude.ai/code/artifact/11111111-1111-1111-1111-111111111111"
+
+
+def combined_env(env, tmp_path, repo, name="cons", scope=("con*",)):
+    editors(env, tmp_path)
+    lst = Path(env["SET_WAVEBOARD_EDITORS"])
+    extra = {"combined_url": CURL}
+    if scope is not None:
+        extra["projects"] = list(scope)
+    lst.write_text(json.dumps({**json.loads(lst.read_text()), **extra}))
+    Path(env["SET_CORE_REGISTRY"]).write_text(json.dumps({"projects": {name: {"path": str(repo)}}}))
+    return env
+
+
+def test_sync_writes_the_combined_document_and_asks_for_its_push(env, repo, tmp_path):
+    combined_env(env, tmp_path, repo)
+    new_job(env, repo, ("a", None))
+    out = run(env, repo, "sync").stdout
+    assert f"PUSH-COMBINED j {CURL} boards/cons--j " in out
+    body = json.loads((repo / ".set" / "waveboard" / "j.combined.json").read_text())
+    assert body["project"] == "cons" and body["job"] == "j" and body["waves"][0]["items"][0]["id"] == "a"
+    assert "PENDING-COMBINED j" in run(env, repo, "pending").stdout
+    run(env, repo, "pushed", "j", "--combined", "--version", "4")
+    assert "PENDING-COMBINED" not in run(env, repo, "pending").stdout
+    assert "PUSH-COMBINED" not in run(env, repo, "sync").stdout
+    run(env, repo, "set", "j", "a", "doing")
+    assert "PENDING-COMBINED j" in run(env, repo, "pending").stdout
+
+
+def test_a_new_combined_url_makes_every_board_pending_again(env, repo, tmp_path):
+    combined_env(env, tmp_path, repo)
+    new_job(env, repo, ("a", None))
+    run(env, repo, "sync")
+    run(env, repo, "pushed", "j", "--combined", "--version", "1")
+    lst = Path(env["SET_WAVEBOARD_EDITORS"])
+    lst.write_text(json.dumps({**json.loads(lst.read_text()), "combined_url": CURL + "2"}))
+    assert "PUSH-COMBINED j" in run(env, repo, "sync").stdout
+
+
+def test_hook_carries_the_combined_push(env, repo, tmp_path):
+    combined_env(env, tmp_path, repo)
+    pending_repo(env, repo)
+    reason = json.loads(hook(env, repo).stdout)["reason"]
+    assert "collection=board, doc_id=state" in reason
+    assert f"url={CURL}, collection=boards, doc_id=cons--j" in reason
+    assert "--combined --version" in reason
+
+
+def test_without_a_combined_url_nothing_combined_happens(env, repo):
+    new_job(env, repo, ("a", None))
+    assert "COMBINED" not in run(env, repo, "sync").stdout
+    assert not (repo / ".set" / "waveboard" / "j.combined.json").exists()
+
+
+def test_combined_link_writes_only_its_key(env, repo, tmp_path):
+    editors(env, tmp_path)
+    lst = Path(env["SET_WAVEBOARD_EDITORS"])
+    before = json.loads(lst.read_text())
+    out = run(env, repo, "combined-link", CURL).stdout
+    after = json.loads(lst.read_text())
+    assert after == {**before, "combined_url": CURL}
+    assert oct(lst.stat().st_mode & 0o777) == "0o600"
+    assert f"SHARE combined {CURL}" in out
+
+
+def test_combined_link_without_a_list_is_refused(env, repo):
+    assert run(env, repo, "combined-link", CURL, check=False).returncode == 2
+
+
+def test_a_project_outside_the_team_scope_never_reaches_the_combined_board(env, repo, tmp_path):
+    combined_env(env, tmp_path, repo, name="private-thing")
+    new_job(env, repo, ("a", None))
+    assert "COMBINED" not in run(env, repo, "sync").stdout
+    assert "COMBINED" not in run(env, repo, "pending").stdout
+    assert not (repo / ".set" / "waveboard" / "j.combined.json").exists()
+
+
+def test_without_a_scope_nothing_goes_to_the_combined_board(env, repo, tmp_path):
+    combined_env(env, tmp_path, repo, scope=None)
+    new_job(env, repo, ("a", None))
+    assert "COMBINED" not in run(env, repo, "sync").stdout
+    assert run(env, repo, "combined-page", "-o", str(tmp_path / "x.html"), check=False).returncode == 2
+
+
+def test_combined_page_seeds_every_board_in_scope(env, repo, tmp_path):
+    other = make_repo(tmp_path / "other")
+    outside = make_repo(tmp_path / "outside")
+    combined_env(env, tmp_path, repo, scope=("cons", "oth"))
+    run(env, outside, "init", "z", "--title", "Z")
+    Path(env["SET_CORE_REGISTRY"]).write_text(
+        json.dumps({"projects": {"cons": {"path": str(repo)}, "oth": {"path": str(other)},
+                                 "zzz": {"path": str(outside)}}}))
+    run(env, other, "init", "k", "--title", "K")
+    run(env, other, "add", "k", "--wave", "w0", "--item", "b", "--title", "B")
+    run(env, repo, "init", "j", "--title", "J")
+    run(env, repo, "add", "j", "--wave", "w0", "--item", "a", "--title", "A", "--depends-on", "oth:k/b")
+    ov = json.loads(run(env, repo, "overview", "--json").stdout)
+    assert {b["project"] for b in ov["boards"]} == {"cons", "oth"}
+    ov_all = json.loads(run(env, repo, "overview", "--all", "--json").stdout)
+    assert {b["project"] for b in ov_all["boards"]} == {"cons", "oth", "zzz"}
+    target = tmp_path / "combined.html"
+    run(env, repo, "combined-page", "-o", str(target), "--bare")
+    page = target.read_text()
+    seed = json.loads(page.split('<script type="application/json" id="seed">', 1)[1].split("</script>", 1)[0])
+    boards = {(b["project"], b["job"]): b for b in seed["boards"]}
+    assert set(boards) == {("cons", "j"), ("oth", "k")}
+    assert boards[("cons", "j")]["waves"][0]["items"][0]["waiting_on"][0]["item"] == "b"
+    assert boards[("oth", "k")]["waves"][0]["items"][0]["blocks"][0]["project"] == "cons"
+    assert 'db.collection("boards")' in page and not page.startswith("<!doctype")

@@ -27,6 +27,19 @@
 - [x] 5.3 Visual check in Chrome: the fleet's wave list with a dependency, and a rendered board page with waits-on and blocks — 2026-11-08, a second server from this tree on 127.0.0.1:7499 (set-web was not restarted: its cgroup holds a viewer the user opened), two temporary boards in set-core, removed afterwards. Fleet: chip `19 · 33 · 8 · ⛓1` with aria `1 dangling dependency`; rows `blocks 1` and `waits on 2` (amber, one reference dangling); the list floats. Page: Waves shows `waiting` chips with `waits on vc-build/cli · todo` and `waits on nowhere/x · no board 'nowhere' there`; Kanban puts both in blocked; the prerequisite board shows `blocks 1` with the tooltip naming `vc-rollout/migrate (todo)`
 - [x] 5.4 Live: `share` over this machine's boards prints the step with the editor list (values not copied anywhere) — `share --repo <consumer>`: 2 boards, SHARE line with 3 editors, session is the owner account; the consumer tree unchanged (`git status` empty). The CLI cannot see who OWNS an existing artifact, only which account the session is
 
+## 6. Round 2 — the combined board (2026-11-08)
+
+- [x] 6.1 Team scope: `projects` in the editor list, fnmatch over registry names; nothing outside it reaches the combined board; no scope = nothing pushed [REQ: the-combined-board-is-scoped-to-the-team-s-projects] — the owner narrowed it mid-round: the AI+ development, not every project on the machine
+- [x] 6.2 `sync` writes the combined document, `PUSH-COMBINED`, `pending`, `pushed --combined`; the hook carries both pushes in one block [REQ: every-board-in-scope-is-one-document-on-the-combined-board]
+- [x] 6.3 `templates/waveboard/combined.html`, `combined-page`, `combined-link`; `overview` follows the scope, `--all` widens it [REQ: the-combined-page-lists-every-board-and-the-edges-between-them]
+- [x] 6.4 Tests: 9 new in `tests/unit/test_wave_board.py` (71 passed); mutations caught: scope ignored in sync (1 fail), scope ignored in the seed (1), an empty scope matching all (1)
+- [x] 6.5 Visual check of the rendered page in Chrome (local server): a 266-item board's per-item strip overflowed its row, so the strip became one proportional segment per status, and the strips now share one left edge (measured: one x for all 13). An opened row lists the open items. The published page could NOT be looked at live: the browser is signed in as an account it is not shared with yet ("Page not found"), which is the share step's job
+- [x] 6.6 Live: published the combined Artifact from the owner account (session = owner, measured); `combined-link` recorded it (list stays 0600); the scope was set from the umbrella's own `docs/projects.json` relations (self, base, product, product-support, public-channel; white-label twin and tooling left out), 12 of its 22 names are registered here; 13 boards written as `boards/<project>--<job>`. One document was already there, pushed by a consumer agent's own Stop hook minutes after `combined-link`, so the chain ran end to end without help
+
+- [x] AC-15 Outside the scope or without a scope, nothing reaches the combined board [REQ: the-combined-board-is-scoped-to-the-team-s-projects]
+- [x] AC-16 Combined push cycle and one hook block for both pushes [REQ: every-board-in-scope-is-one-document-on-the-combined-board]
+- [x] AC-17 The seed holds the in-scope boards with their edges, not the out-of-scope one [REQ: the-combined-page-lists-every-board-and-the-edges-between-them]
+
 ## Acceptance Criteria (from spec scenarios)
 
 - [x] AC-1 `link` prints the URL, every editor with edit access, and the owner [REQ: the-share-step-names-the-editors-and-the-owner-account]

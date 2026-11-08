@@ -11,6 +11,8 @@ Usage:
     set-wave-board depend <job> <item> [PROJECT:]JOB/ITEM...
     set-wave-board undepend <job> <item> [PROJECT:]JOB/ITEM...
     set-wave-board overview
+    set-wave-board combined-page [-o FILE] [--bare]
+    set-wave-board combined-link <url>
     set-wave-board sync [<job>...]
     set-wave-board pushed <job> --version N [--hash H]
     set-wave-board pending
@@ -57,6 +59,19 @@ SHARING — EVERY EDITOR CAN WRITE THE BOARD
     repository, a payload or a log. A push refused for lack of access is answered by asking
     the owner for edit access, not by switching the reminder off.
 
+THE COMBINED BOARD — EVERY PROJECT'S BOARDS IN ONE SHARED PAGE
+    Scope: only projects matching `projects` in the editor list (registry names or fnmatch
+    patterns) go there, because the page is shared and a machine holds more projects than
+    one team's; without `projects` nothing is pushed to it. `overview` follows the same
+    scope unless --all.
+    One more Artifact, published from the owner account and shared with the editors, whose
+    database holds collection `boards`, one document per board (`<project>--<job>`). Its URL
+    is `combined_url` in the editor list (`combined-link <url>` writes it; that is the
+    tool's only write to the list). With it set, `sync` also writes the board's combined
+    payload and prints PUSH-COMBINED; the Stop hook asks for that push too, and `pushed
+    --combined` records it. `combined-page` renders the page with this machine's boards as
+    its first frame.
+
 DEPENDENCIES — AN ITEM MAY WAIT ON ANOTHER BOARD'S ITEM
     `depends_on: [{"project"?, "job", "item"}]`, written `[project:]job/item`; no project means
     this repository, a project is resolved by registry name. A dependency is met only when
@@ -85,6 +100,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import fnmatch
 import hashlib
 import html
 import json
@@ -265,7 +281,51 @@ def load_editors():
         logger.warning("editor list %s does not have the expected shape", p)
         return None, f"the editor list at {p} does not have the shape {EDITORS_SHAPE}"
     logger.debug("editor list: %d editor(s)", len(editors))
-    return {"owner_account": owner.strip(), "editors": [e.strip() for e in editors]}, None
+    combined = data.get("combined_url")
+    if combined is not None and not (isinstance(combined, str) and re.match(r"^https://\S+$", combined)):
+        logger.warning("editor list %s: combined_url is not an https URL; ignored", p)
+        combined = None
+    scope = data.get("projects")
+    if scope is not None and not (isinstance(scope, list) and all(isinstance(x, str) and x.strip() for x in scope)):
+        logger.warning("editor list %s: projects is not a list of names or patterns; ignored", p)
+        scope = None
+    return {"owner_account": owner.strip(), "editors": [e.strip() for e in editors],
+            "combined_url": combined, "projects": [x.strip() for x in scope] if scope else None}, None
+
+
+def team_scope():
+    """The registry names (fnmatch patterns) whose boards belong to the team's combined board.
+
+    None when the list sets none. The combined board is shared with other people, so a board
+    outside the scope never goes there — a machine holds more projects than one team's.
+    """
+    lst, _ = load_editors()
+    return lst.get("projects") if lst else None
+
+
+def in_scope(name: str, scope) -> bool:
+    return bool(scope) and any(fnmatch.fnmatchcase(name, pat) for pat in scope)
+
+
+def scoped_name(root: Path):
+    """This repository's registry name inside the team scope, or None."""
+    scope = team_scope()
+    return next((n for n in sorted(names_of(root)) if in_scope(n, scope)), None)
+
+
+def combined_url():
+    lst, _ = load_editors()
+    return lst.get("combined_url") if lst else None
+
+
+def project_name(root: Path) -> str:
+    """This repository's name on the combined board: its registry name, else its folder."""
+    names = sorted(names_of(root))
+    return names[0] if names else Path(os.path.realpath(root)).name
+
+
+def combined_doc_id(project: str, job: str) -> str:
+    return f"{project}--{job}"
 
 
 def session_account():
@@ -642,7 +702,30 @@ def sync_job(root: Path, job: str) -> dict:
         state_changed = write_if_changed(payload, dump(state))
     pushed = read_json(sdir / f"{job}.pushed.json") or {}
     url = data.get("artifact_url")
+
+    # The combined board (change `wave-board-shared-linked`, round 2): one document per
+    # board in the combined Artifact's `boards` collection, keyed <project>--<job>.
+    curl = combined_url()
+    project = scoped_name(root) if curl else None
+    combined = {"combined_url": curl if project else None, "combined_doc": None, "combined_payload": None,
+                "combined_hash": None, "combined_pushed_version": None, "combined_push_needed": False}
+    if curl and project is None:
+        logger.debug("%s: not in the team scope; no combined push", job)
+    if curl and project:
+        doc = combined_doc_id(project, job)
+        body = dict(content, project=project, artifact_url=url)
+        ch = content_hash(body)
+        cpath = sdir / f"{job}.combined.json"
+        cold = read_json(cpath)
+        if not isinstance(cold, dict) or cold.get("content_hash") != ch:
+            write_if_changed(cpath, dump(dict(body, synced_at=stamp, synced_by=who, content_hash=ch)))
+        cpushed = read_json(sdir / f"{job}.combined-pushed.json") or {}
+        same_target = cpushed.get("url") == curl
+        combined.update(combined_doc=doc, combined_payload=str(cpath), combined_hash=ch,
+                        combined_pushed_version=cpushed.get("version") if same_target else None,
+                        combined_push_needed=not same_target or cpushed.get("hash") != ch)
     return {
+        **combined,
         "job": job,
         "artifact_url": url,
         "payload": str(payload),
@@ -763,6 +846,14 @@ def push_line(r: dict) -> str:
     return f"PUSH {r['job']} {r['artifact_url']} {r['payload']}"
 
 
+def push_lines(r: dict) -> list:
+    lines = [push_line(r)] if r.get("push_needed") else []
+    if r.get("combined_push_needed"):
+        lines.append(f"PUSH-COMBINED {r['job']} {r['combined_url']} boards/{r['combined_doc']} "
+                     f"{r['combined_payload']}")
+    return lines
+
+
 def cmd_init(args, root):
     job = check_id("job", args.job)
     p = job_path(root, job)
@@ -846,7 +937,7 @@ def cmd_set(args, root):
     final = find_item(load_job(root, args.job), args.item)[1].get("status")
     if final != args.status:
         logger.warning("%s/%s: evidence says %s, not %s", args.job, args.item, final, args.status)
-    lines = [f"{args.job}/{args.item}: {final}"] + ([push_line(r)] if r["push_needed"] else [])
+    lines = [f"{args.job}/{args.item}: {final}"] + push_lines(r)
     out(args, dict(r, item=args.item, status=final), lines)
     return 0
 
@@ -926,9 +1017,10 @@ def cmd_undepend(args, root):
 
 def cmd_overview(args, root):
     """Every registered project's boards and the edges between them (design D10)."""
+    scope = None if args.all else team_scope()
     repos, seen = [], set()
     for name, path in registry_entries():
-        if path not in seen and os.path.isdir(path):
+        if path not in seen and os.path.isdir(path) and (scope is None or in_scope(name, scope)):
             seen.add(path)
             repos.append((name, Path(path)))
     boards, edges = [], []
@@ -992,7 +1084,7 @@ def cmd_sync(args, root):
         except UsageError as e:
             logger.error("%s: %s", job, e)
             rc = 1
-    out(args, results, [push_line(r) for r in results if r["push_needed"]])
+    out(args, results, [line for r in results for line in push_lines(r)])
     return rc
 
 
@@ -1034,13 +1126,26 @@ def pending_jobs(root: Path):
             logger.error("%s: %s", job, e)
             continue
         url = data.get("artifact_url")
+        sdir = root / STATE_DIR
+        curl = combined_url()
+        cproject = scoped_name(root) if curl else None
+        if curl and cproject:
+            cstate = read_json(sdir / f"{job}.combined.json") or {}
+            cpushed = read_json(sdir / f"{job}.combined-pushed.json") or {}
+            same = cpushed.get("url") == curl
+            if not cstate.get("content_hash") or not same or cstate.get("content_hash") != cpushed.get("hash"):
+                res.append({"job": job, "target": "combined", "artifact_url": curl,
+                            "doc_id": combined_doc_id(cproject, job),
+                            "payload": str(sdir / f"{job}.combined.json"),
+                            "synced": bool(cstate.get("content_hash")),
+                            "content_hash": cstate.get("content_hash"),
+                            "pushed_version": cpushed.get("version") if same else None})
         if not url:
             continue
-        sdir = root / STATE_DIR
         state = read_json(sdir / f"{job}.state.json") or {}
         pushed = read_json(sdir / f"{job}.pushed.json") or {}
         if not state.get("content_hash") or state.get("content_hash") != pushed.get("hash"):
-            res.append({"job": job, "artifact_url": url,
+            res.append({"job": job, "target": "board", "artifact_url": url, "doc_id": "state",
                         "payload": str(sdir / f"{job}.state.json"),
                         "synced": bool(state.get("content_hash")),
                         "content_hash": state.get("content_hash"),
@@ -1053,7 +1158,9 @@ def cmd_pending(args, root):
     lines = []
     for r in res:
         extra = f" if_version={r['pushed_version']}" if r["pushed_version"] else ""
-        lines.append(f"PENDING {r['job']} {r['artifact_url']} {r['payload']}{extra}"
+        kind = "PENDING-COMBINED" if r["target"] == "combined" else "PENDING"
+        where = f" boards/{r['doc_id']}" if r["target"] == "combined" else ""
+        lines.append(f"{kind} {r['job']} {r['artifact_url']}{where} {r['payload']}{extra}"
                      + ("" if r["synced"] else " (not synced yet — run sync)"))
     out(args, res, lines)
     return 0
@@ -1062,16 +1169,24 @@ def cmd_pending(args, root):
 def cmd_pushed(args, root):
     load_job(root, args.job)
     sdir = state_dir(root)
+    payload, record, nag = ((f"{args.job}.combined.json", f"{args.job}.combined-pushed.json",
+                             f"{args.job}.combined.nag") if args.combined else
+                            (f"{args.job}.state.json", f"{args.job}.pushed.json", f"{args.job}.nag"))
     h = args.hash
     if not h:
-        state = read_json(sdir / f"{args.job}.state.json") or {}
+        state = read_json(sdir / payload) or {}
         h = state.get("content_hash")
         if not h:
-            raise UsageError(f"no payload for {args.job}; run sync first")
+            raise UsageError(f"no {'combined ' if args.combined else ''}payload for {args.job}; run sync first")
     rec = {"hash": h, "version": args.version, "pushed_at": now_iso(), "by": host_label()}
-    write_if_changed(sdir / f"{args.job}.pushed.json", dump(rec))
+    if args.combined:
+        curl = combined_url()
+        if not curl:
+            raise UsageError("no combined_url in the editor list; nothing to record")
+        rec["url"] = curl
+    write_if_changed(sdir / record, dump(rec))
     try:
-        (sdir / f"{args.job}.nag").unlink()
+        (sdir / nag).unlink()
     except FileNotFoundError:
         pass
     logger.info("recorded push of %s: version %s hash %s", args.job, args.version, h[:12])
@@ -1108,6 +1223,90 @@ def render_html(state: dict, bare: bool) -> str:
     return ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
             '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
             '</head>\n<body>\n' + page + '\n</body>\n</html>\n')
+
+
+def combined_seed() -> dict:
+    """Every board this machine can read — registered projects — as the combined page's seed."""
+    scope = team_scope()
+    if not scope:
+        raise UsageError(f"no team scope: add \"projects\": [<registry name or pattern>, ...] to "
+                         f"{editors_path()} — the combined board is shared, so it takes only the "
+                         "team's projects, never every project on this machine")
+    boards = []
+    seen = set()
+    for name, path in registry_entries():
+        if path in seen or not os.path.isdir(path) or not in_scope(name, scope):
+            continue
+        seen.add(path)
+        proot = Path(path)
+        d = proot / JOB_DIR
+        if not d.is_dir():
+            continue
+        for jp in sorted(d.glob("*.json")):
+            data, reason = board_data(proot, jp.stem)
+            if data is None:
+                logger.warning("combined: %s/%s skipped: %s", name, jp.stem, reason)
+                continue
+            data = dict(data, job=jp.stem)
+            body = dict(content_of(data, dependency_view(proot, jp.stem, data)), project=name,
+                        artifact_url=data.get("artifact_url"))
+            boards.append(body)
+    logger.info("combined: %d board(s) in the seed", len(boards))
+    return {"boards": boards, "synced_at": now_iso(), "synced_by": host_label()}
+
+
+def combined_template_path() -> Path:
+    return template_path().parent / "combined.html"
+
+
+def cmd_combined_page(args, root):
+    tpl = combined_template_path().read_text(encoding="utf-8")
+    if SEED_MARKER not in tpl:
+        raise UsageError("combined template has no seed marker")
+    seed = (json.dumps(combined_seed(), ensure_ascii=False)
+            .replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e"))
+    page = tpl.replace(SEED_MARKER, f'<script type="application/json" id="seed">{seed}</script>')
+    if not args.bare:
+        page = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+                '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
+                '</head>\n<body>\n' + page + '\n</body>\n</html>\n')
+    target = Path(args.output) if args.output else Path.home() / ".cache" / "set-core" / "waveboard-combined.html"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(page, encoding="utf-8")
+    curl = combined_url()
+    lines = [str(target.resolve())]
+    if curl:
+        lines.append(f"combined board: {curl} — republish this file to it to refresh the page itself; "
+                     "the data arrives through each project's push")
+    else:
+        lines.append("no combined_url yet: publish this file as an Artifact (capabilities {\"db\": {}}) from "
+                     "the owner account, then run `set-wave-board combined-link <url>` on EVERY machine")
+    if curl:
+        lines += share_lines("combined", share_info(curl))
+    out(args, {"file": str(target.resolve()), "combined_url": curl}, lines)
+    return 0
+
+
+def cmd_combined_link(args, root):
+    """Record the combined board's URL in the machine-local editor list — its only write to it."""
+    check_url(args.url)
+    p = editors_path()
+    lst, reason = load_editors()
+    if lst is None:
+        raise UsageError(f"{reason}; create it first as {EDITORS_SHAPE}")
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    raw["combined_url"] = args.url
+    tmp = p.with_name(p.name + ".tmp")
+    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(dump(raw))
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, p)
+    logger.info("combined_url recorded in the editor list")
+    info = share_info(args.url)
+    out(args, {"combined_url": args.url, "share": info},
+        [f"combined board -> {args.url}"] + share_lines("combined", info))
+    return 0
 
 
 def cmd_render(args, root):
@@ -1178,7 +1377,8 @@ def build_parser() -> argparse.ArgumentParser:
         s.set_defaults(fn=fn)
 
     s = sub.add_parser("overview", parents=[common],
-                       help="every registered project's boards and the dependencies between them")
+                       help="the team's boards (or --all registered projects) and their dependencies")
+    s.add_argument("--all", action="store_true", help="every registered project, not only the team scope")
     s.set_defaults(fn=cmd_overview)
 
     s = sub.add_parser("sync", parents=[common], help="derive status from evidence, write payloads")
@@ -1189,6 +1389,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("job")
     s.add_argument("--version", type=int, required=True, help="the db document version after the write")
     s.add_argument("--hash", help="the content hash pushed (default: the current payload's)")
+    s.add_argument("--combined", action="store_true",
+                   help="record the push to the combined board instead of the job's own page")
     s.set_defaults(fn=cmd_pushed)
 
     s = sub.add_parser("pending", parents=[common], help="list jobs whose payload is not pushed")
@@ -1203,6 +1405,17 @@ def build_parser() -> argparse.ArgumentParser:
                        help="record that the items only an agent can move were checked and are current")
     s.add_argument("job")
     s.set_defaults(fn=cmd_reviewed)
+
+    s = sub.add_parser("combined-page", parents=[common],
+                       help="render the combined board page over every registered project")
+    s.add_argument("-o", "--output")
+    s.add_argument("--bare", action="store_true", help="no document skeleton (for publishing)")
+    s.set_defaults(fn=cmd_combined_page)
+
+    s = sub.add_parser("combined-link", parents=[common],
+                       help="record the combined board URL in this machine's editor list")
+    s.add_argument("url")
+    s.set_defaults(fn=cmd_combined_link)
 
     s = sub.add_parser("page", parents=[common], help="print the page template path")
     s.set_defaults(fn=cmd_page)
@@ -1222,7 +1435,8 @@ def main(argv=None) -> int:
     logging.basicConfig(level=level, format="set-wave-board: %(levelname)s %(message)s",
                         stream=sys.stderr)
     try:
-        root = Path(args.repo) if args.cmd in ("page", "overview") else repo_root(args.repo)
+        root = (Path(args.repo) if args.cmd in ("page", "overview", "combined-page", "combined-link")
+                else repo_root(args.repo))
         return args.fn(args, root)
     except UsageError as e:
         logger.error("%s", e)

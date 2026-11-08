@@ -91,6 +91,29 @@ each machine, never in a repository, because it holds addresses:
 
 Never copy an address from it into a job file, a note, a commit or a log.
 
+## The combined board — the team's boards on one shared page
+
+The team reads Artifacts, not the fleet or the CLI, so every board in the team's scope also
+lands on ONE shared page: a second Artifact whose database holds collection `boards`, one
+document per board (`<project>--<job>`). The editor list on each machine carries it:
+
+```
+"combined_url": "<the combined board's URL>",
+"projects": ["<registry name or fnmatch pattern>", "..."]
+```
+
+- **Scope is mandatory.** Only repositories whose registry name matches `projects` go there —
+  the page is shared, and a machine holds more projects than the team's. Without `projects`
+  nothing is pushed to it.
+- With both set, `sync` also prints `PUSH-COMBINED <job> <url> boards/<doc> <payload>`, and the
+  Stop hook's block carries that push next to the board's own. Same procedure, with
+  `collection=boards`, `doc_id=<doc>`, and `set-wave-board pushed <job> --combined --version N`.
+- Publishing it once: `set-wave-board combined-page --bare -o <file>`, publish the file with the
+  Artifact tool (`capabilities: {"db": {}}`) from the owner account, then
+  `set-wave-board combined-link <url>` on **every** machine of the team, and share the page with
+  the editors (the printed SHARE line).
+- `set-wave-board overview` follows the same scope; `--all` lists every registered project.
+
 ## Dependencies between boards
 
 Boards stay one file per job, but an item may wait on another board's item — in this
@@ -153,7 +176,10 @@ set-wave-board set <job> <item> <todo|doing|done|blocked|skipped> [--note N] [--
 set-wave-board link <job> <artifact-url>   # prints the SHARE line
 set-wave-board share [<job>...]            # the SHARE line again, per board
 set-wave-board depend|undepend <job> <item> [project:]job/item ...
-set-wave-board overview                    # every registered project's boards and edges
+set-wave-board overview [--all]            # the team's boards and edges (--all: every project)
+set-wave-board combined-page [-o FILE] [--bare]
+set-wave-board combined-link <url>
+set-wave-board pushed <job> --combined --version N
 set-wave-board sync [<job>...]          # PUSH lines on stdout
 set-wave-board pushed <job> --version N [--hash H]
 set-wave-board pending                  # PENDING lines, if_version=N when known

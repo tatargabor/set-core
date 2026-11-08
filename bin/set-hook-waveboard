@@ -85,24 +85,27 @@ def _backoff() -> float:
 
 def procedure(root: Path, jobs: list, backoff: float) -> str:
     lines = [
-        f"Wave board: {len(jobs)} job(s) in this repository have state this machine has not "
-        "pushed to the board page. Push each one now with your ArtifactData tool, then carry on "
+        f"Wave board: {len(jobs)} push(es) from this repository have state this machine has not "
+        "pushed to the board pages. Push each one now with your ArtifactData tool, then carry on "
         "where you left off.",
     ]
     for r in jobs:
         version = r.get("pushed_version")
         pin = (f"if_version={version}" if version else
                "no if_version (no push is recorded on this machine, so this creates the document)")
+        combined = r.get("target") == "combined"
         lines += [
             "",
-            f"Job `{r['job']}`:",
-            f"1. ArtifactData action=set, url={r['artifact_url']}, collection=board, doc_id=state, "
+            (f"Job `{r['job']}` on the COMBINED board (every project's boards, one document each):"
+             if combined else f"Job `{r['job']}`:"),
+            f"1. ArtifactData action=set, url={r['url']}, collection={r['collection']}, doc_id={r['doc']}, "
             f"file_path={r['payload']}, {pin}.",
             "2. If the write is refused because the document changed or already exists: "
-            f"ArtifactData action=get, url={r['artifact_url']}, collection=board, doc_id=state; "
+            f"ArtifactData action=get, url={r['url']}, collection={r['collection']}, doc_id={r['doc']}; "
             "then redo step 1 with if_version set to the version that get returned.",
-            f"3. Then run: set-wave-board pushed {r['job']} --repo {root} --version <the version "
-            f"the set returned> --hash {r['content_hash']}",
+            f"3. Then run: set-wave-board pushed {r['job']} --repo {root}"
+            + (" --combined" if combined else "")
+            + f" --version <the version the set returned> --hash {r['hash']}",
         ]
     minutes = int(backoff // 60)
     owner = _owner_account()
@@ -159,7 +162,7 @@ def main() -> int:
     except (OSError, subprocess.TimeoutExpired, ValueError) as e:
         logger.debug("sync failed: %s", e)
         return 0
-    pending = [x for x in results if isinstance(x, dict) and x.get("push_needed")]
+    pending = push_entries(results)
     stale = _stale(tool, root, deadline - time.monotonic()) if mode_review_on() else []
 
     now = time.time()
@@ -208,11 +211,31 @@ def _stale(tool: str, root: Path, budget: float) -> list:
     return [x for x in results if isinstance(x, dict) and x.get("stale")]
 
 
+def push_entries(results: list) -> list:
+    """One entry per write the agent owes: the board's own page, and the combined board."""
+    entries = []
+    for x in results:
+        if not isinstance(x, dict):
+            continue
+        if x.get("push_needed"):
+            entries.append({"job": x["job"], "target": "board", "url": x["artifact_url"],
+                            "collection": "board", "doc": "state", "payload": x["payload"],
+                            "pushed_version": x.get("pushed_version"), "hash": x["content_hash"],
+                            "nag_key": x["job"]})
+        if x.get("combined_push_needed"):
+            entries.append({"job": x["job"], "target": "combined", "url": x["combined_url"],
+                            "collection": "boards", "doc": x["combined_doc"],
+                            "payload": x["combined_payload"],
+                            "pushed_version": x.get("combined_pushed_version"),
+                            "hash": x["combined_hash"], "nag_key": f"{x['job']}.combined"})
+    return entries
+
+
 def _due(state: Path, jobs: list, suffix: str, backoff: float, now: float) -> list:
     due = []
     for x in jobs:
         try:
-            last = float((state / f"{x['job']}.{suffix}").read_text().strip())
+            last = float((state / f"{x.get('nag_key', x['job'])}.{suffix}").read_text().strip())
         except (OSError, ValueError):
             last = 0.0
         if now - last >= backoff:
@@ -224,7 +247,7 @@ def _stamp(state: Path, jobs: list, suffix: str, now: float) -> None:
     for x in jobs:
         try:
             state.mkdir(parents=True, exist_ok=True)
-            (state / f"{x['job']}.{suffix}").write_text(f"{int(now)}\n")  # floor: a stamp rounded up lies in the future
+            (state / f"{x.get('nag_key', x['job'])}.{suffix}").write_text(f"{int(now)}\n")  # floor: a stamp rounded up lies in the future
         except OSError as e:
             logger.debug("cannot write %s stamp for %s: %s", suffix, x["job"], e)
 
