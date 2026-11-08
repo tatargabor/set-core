@@ -8,7 +8,8 @@ projects are seen together (asked for by the user, 2026-10-11).
 Three properties are the contract, and each one is a rule rather than a taste:
 
 - **Summaries only.** Counts, the job, the board's title and its page URL — never
-  an item's title or note. Item content stays on the board page itself.
+  an item's title or note. Item content stays on the board page itself. Dependency
+  edges between boards are given by item id only (`deps_out`, `deps_in`).
 - **Unreadable is an entry, not an omission.** A board this reader cannot parse is
   returned with a reason. Dropping it would make a broken board and an absent one
   look the same, and the header would report a calm it never measured.
@@ -159,8 +160,27 @@ def summarise_board(project: str, path: Path) -> Dict[str, Any]:
     reviewed = data.get("reviewed")
     reviewed_at = reviewed.get("at") if isinstance(reviewed, dict) else None
 
+    # Dependencies (change `wave-board-shared-linked`, D9): collected here by id only, resolved
+    # across every board of the same read in `read_waveboards`.
+    statuses: Dict[str, Any] = {}
+    raw_deps: List[Dict[str, Any]] = []
+    for wave in waves:
+        if not isinstance(wave, dict):
+            continue
+        for item in (wave.get("items") if isinstance(wave.get("items"), list) else []):
+            if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+                continue
+            statuses[item["id"]] = item.get("status")
+            for ref in (item.get("depends_on") if isinstance(item.get("depends_on"), list) else []):
+                if isinstance(ref, dict) and isinstance(ref.get("job"), str) and isinstance(ref.get("item"), str):
+                    target = ref.get("project") if isinstance(ref.get("project"), str) else project
+                    raw_deps.append({"item": item["id"], "open": item.get("status") not in FINISHED,
+                                     "on": {"project": target, "job": ref["job"], "item": ref["item"]}})
+
     url = data.get("artifact_url")
     return {
+        "_statuses": statuses,
+        "_deps": raw_deps,
         "project": project,
         "job": str(data.get("job") or job),
         "title": str(data.get("title") or job),
@@ -200,6 +220,46 @@ def read_waveboards(projects: Iterable[Any]) -> List[Dict[str, Any]]:
             continue
         for path in sorted(job_dir.glob("*.json")):
             boards.append(summarise_board(name, path))
+    link_dependencies(boards)
     logger.debug("waveboards: %d board(s), %d unreadable",
                  len(boards), sum(1 for b in boards if b.get("unreadable")))
     return boards
+
+
+def link_dependencies(boards: List[Dict[str, Any]]) -> None:
+    """Resolve every board's `depends_on` against the boards of this read, in place.
+
+    Met means the referenced item is `done`; a reference to a board or item this read does
+    not hold is unmet with a null status and counted in `deps_unresolved` — never met.
+    """
+    index = {(b["project"], b["job"]): b for b in boards if not b.get("unreadable")}
+    for b in index.values():
+        b["deps_in"] = []
+    for b in index.values():
+        out: List[Dict[str, Any]] = []
+        waiting_items = set()
+        unresolved = 0
+        for d in b.get("_deps", []):
+            on = d["on"]
+            target = index.get((on["project"], on["job"]))
+            status = (target.get("_statuses") or {}).get(on["item"]) if target else None
+            known = target is not None and on["item"] in (target.get("_statuses") or {})
+            met = status == "done"
+            if not known:
+                unresolved += 1
+            if d["open"] and not met:
+                waiting_items.add(d["item"])
+            out.append({"item": d["item"], "on": on, "status": status if known else None, "met": met})
+            if target is not None and known:
+                target["deps_in"].append({"item": on["item"], "met": met,
+                                          "by": {"project": b["project"], "job": b["job"], "item": d["item"]}})
+        b["deps_out"] = out
+        b["waiting"] = len(waiting_items)
+        b["deps_unresolved"] = unresolved
+    for b in boards:
+        b.pop("_statuses", None)
+        b.pop("_deps", None)
+    edges = sum(len(b.get("deps_out", [])) for b in index.values())
+    if edges:
+        logger.debug("waveboards: %d dependency edge(s), %d unresolved", edges,
+                     sum(b.get("deps_unresolved", 0) for b in index.values()))

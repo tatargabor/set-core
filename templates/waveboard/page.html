@@ -119,6 +119,15 @@ h1 {
 .item-title .id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-right: 8px; }
 .item.skipped .item-title .t { text-decoration: line-through; color: var(--muted); }
 .item-note { grid-column: 2 / -1; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+/* Dependencies: what an item waits on, and what waits on it (change wave-board-shared-linked). */
+.deps { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
+/* Wraps rather than truncates: the reason a dependency is unmet is the fact, not decoration. */
+.dep {
+  font-family: var(--font-mono); font-size: 11px; padding: 0 7px; border-radius: 3px;
+  border: 1px solid var(--line); color: var(--muted); max-width: 100%; min-width: 0; overflow-wrap: anywhere;
+}
+.dep.waits { border-color: var(--blocked); color: var(--blocked); }
+.card .deps { grid-column: auto; }
 .item-meta { font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .empty {
   border: 1px dashed var(--line); border-radius: 8px; padding: 22px; color: var(--muted); background: var(--surface);
@@ -155,7 +164,7 @@ h1 {
 .col-empty { font-size: 13px; color: var(--muted); margin: 0; padding: 8px 0; }
 .cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .card {
-  display: grid; gap: 4px; min-width: 0; padding: 9px 11px; background: var(--surface);
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; padding: 9px 11px; background: var(--surface);
   border: 1px solid var(--line); border-radius: 8px;
 }
 .card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -184,6 +193,7 @@ h1 {
   .item .item-meta { grid-row: 1; grid-column: 2; }
   .item-title { grid-column: 1 / -1; }
   .item-note { grid-column: 1 / -1; }
+  .deps { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .seg { transition: background-color .4s ease; }
@@ -256,9 +266,35 @@ h1 {
     return e;
   }
   function norm(s) { return STATUSES.indexOf(s) >= 0 ? s : "todo"; }
+  function waits(it) { return Array.isArray(it.waiting_on) && it.waiting_on.length > 0; }
+  function blocksOf(it) { return Array.isArray(it.blocks) ? it.blocks : []; }
+  // A to-do item that waits on an unfinished item elsewhere is blocked until that is done.
+  function eff(it) { var s = norm(it.status); return s === "todo" && waits(it) ? "blocked" : s; }
+  function effLabel(it) { return norm(it.status) === "todo" && waits(it) ? "waiting" : LABEL[eff(it)]; }
+  function refText(r) { return (r.project ? r.project + "/" : "") + (r.job || "?") + "/" + (r.item || "?"); }
+  function deps(it) {
+    var w = Array.isArray(it.waiting_on) ? it.waiting_on : [];
+    var b = blocksOf(it);
+    if (!w.length && !b.length) return null;
+    var box = el("div", "deps");
+    w.forEach(function (r) {
+      var why = r.status ? r.status : (r.reason || "unresolved");
+      var d = el("span", "dep waits", "waits on " + refText(r) + " · " + why);
+      d.title = "Waits on " + refText(r) + " (" + why + "). It is released when that item is done.";
+      box.appendChild(d);
+    });
+    if (b.length) {
+      var d = el("span", "dep blocks", "blocks " + b.length);
+      d.title = "Waiting on this item: " + b.map(function (r) {
+        return refText(r) + (r.status ? " (" + r.status + ")" : "");
+      }).join(", ") + ". Read from the boards on " + ((current && current.synced_by) || "the machine that synced") + ".";
+      box.appendChild(d);
+    }
+    return box;
+  }
   function tally(items) {
     var c = { done: 0, doing: 0, blocked: 0, todo: 0, skipped: 0, total: items.length };
-    items.forEach(function (it) { c[norm(it.status)] += 1; });
+    items.forEach(function (it) { c[eff(it)] += 1; });
     c.remaining = c.doing + c.blocked + c.todo;
     return c;
   }
@@ -281,8 +317,8 @@ h1 {
   function strip(target, items) {
     target.textContent = "";
     items.forEach(function (it) {
-      var s = el("span", "seg " + norm(it.status));
-      s.title = (it.id || "") + " — " + LABEL[norm(it.status)];
+      var s = el("span", "seg " + eff(it));
+      s.title = (it.id || "") + " — " + effLabel(it);
       target.appendChild(s);
     });
   }
@@ -377,15 +413,17 @@ h1 {
       body.appendChild(st);
       var ul = el("ul", "items");
       items.forEach(function (it) {
-        var s = norm(it.status);
+        var s = eff(it);
         var li = el("li", "item " + s);
-        li.appendChild(el("span", "chip " + s, LABEL[s]));
+        li.appendChild(el("span", "chip " + s, effLabel(it)));
         var t = el("div", "item-title");
         t.appendChild(el("span", "id", it.id || ""));
         t.appendChild(el("span", "t", it.title || ""));
         li.appendChild(t);
         var meta = it.updated ? stamp(it.updated).replace(" UTC", "") : "";
         li.appendChild(el("span", "item-meta", meta + (it.by ? " · " + it.by : "")));
+        var dl = deps(it);
+        if (dl) li.appendChild(dl);
         if (it.note) li.appendChild(el("div", "item-note", it.note));
         ul.appendChild(li);
       });
@@ -420,7 +458,7 @@ h1 {
     var hiddenBlocked = 0;
     if (filterIdx !== "") {
       rows.forEach(function (r) {
-        if (String(r.i) !== filterIdx && norm(r.it.status) === "blocked") hiddenBlocked += 1;
+        if (String(r.i) !== filterIdx && eff(r.it) === "blocked") hiddenBlocked += 1;
       });
       rows = rows.filter(function (r) { return String(r.i) === filterIdx; });
     }
@@ -429,7 +467,7 @@ h1 {
 
     var board = el("div", "kanban");
     COLUMNS.forEach(function (s) {
-      var mine = rows.filter(function (r) { return norm(r.it.status) === s; });
+      var mine = rows.filter(function (r) { return eff(r.it) === s; });
       var col = el("section", "col " + s);
       col.setAttribute("aria-label", LABEL[s]);
       var head = el("div", "col-head");
@@ -474,6 +512,8 @@ h1 {
     top.appendChild(el("span", "wtag w" + (r.i % WAVE_HUES), waveLabel(r.w, r.i)));
     li.appendChild(top);
     li.appendChild(el("div", "card-title", it.title || ""));
+    var dl = deps(it);
+    if (dl) li.appendChild(dl);
     var meta = it.updated ? stamp(it.updated).replace(" UTC", "") : "";
     if (meta || it.by) li.appendChild(el("span", "item-meta", meta + (it.by ? (meta ? " · " : "") + it.by : "")));
     if (it.note) {

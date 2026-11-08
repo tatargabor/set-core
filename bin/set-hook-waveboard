@@ -105,14 +105,29 @@ def procedure(root: Path, jobs: list, backoff: float) -> str:
             f"the set returned> --hash {r['content_hash']}",
         ]
     minutes = int(backoff // 60)
+    owner = _owner_account()
+    who = (f"the board's owner account, {owner} (from the wave-board editor list)" if owner
+           else "the account that published the board")
     lines += [
         "",
-        "Send the file as it is; do not retype or edit the payload. If you cannot write this "
-        "artifact (only its owner and invited editors can), say so in one line and continue — "
-        f"this reminder backs off for {minutes} minutes per job. SET_WAVEBOARD_PUSH=off "
-        "silences it.",
+        "Send the file as it is; do not retype or edit the payload. If the write is refused "
+        "because this account cannot write the artifact (only its owner and the editors it was "
+        f"shared with can), do not switch this reminder off: ask {who} to share the board with "
+        "this account with edit access (claude.ai: open the board, Share). Say so in one line and "
+        f"continue — this reminder backs off for {minutes} minutes per job.",
     ]
     return "\n".join(lines)
+
+
+def _owner_account() -> str | None:
+    """`owner_account` from the machine-local editor list (`set-wave-board` reads the same file)."""
+    env = os.environ.get("SET_WAVEBOARD_EDITORS", "").strip()
+    path = Path(env).expanduser() if env else Path.home() / ".config" / "set-core" / "waveboard-editors.json"
+    try:
+        owner = json.loads(path.read_text(encoding="utf-8")).get("owner_account")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return owner.strip() if isinstance(owner, str) and owner.strip() else None
 
 
 def main() -> int:

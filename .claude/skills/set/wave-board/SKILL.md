@@ -59,7 +59,10 @@ Then publish the page with the **Artifact** tool:
   state as its first frame; `set-wave-board page` prints the bare template's path)
 - `capabilities: {"db": {}}`, `icon: "board"`, a one-sentence `description`
 - it is **private by default — keep it that way**. Never share it publicly; a job's items name
-  the projects and work they cover.
+  the projects and work they cover. Share it only with the team's editors (below).
+- **publish it from the owner account.** `init --artifact-url`, `link` and `share` say which
+  account that is and whether this session is signed in as it. An artifact cannot change owner
+  later, so a board published from the wrong account is the one thing worth stopping for.
 
 Record the URL, push once, and commit the job file:
 
@@ -68,8 +71,47 @@ set-wave-board link <job> <artifact-url>
 set-wave-board sync            # prints: PUSH <job> <url> <payload-path>
 ```
 
+`link` also prints a `SHARE` line: the board URL and every editor who must get **edit access**.
+Sharing is a person's act on claude.ai (open the board → Share → invite with edit access) — no
+tool can do it — so pass the line on to the user. `set-wave-board share` prints it again for
+every board in the repository, published or not.
+
 Do the push (below), then `git add docs/waveboard/<job>.json` and commit it with an explicit
 pathspec. The `.set/waveboard/` files are machine-local and ignored on their own.
+
+## Who can write a board — the editor list
+
+Every editor on the team must be able to push every board. The list of who that is lives on
+each machine, never in a repository, because it holds addresses:
+
+```json
+// ~/.config/set-core/waveboard-editors.json   (or the path in SET_WAVEBOARD_EDITORS)
+{"owner_account": "<the account that publishes boards>", "editors": ["<email>", "..."]}
+```
+
+Never copy an address from it into a job file, a note, a commit or a log.
+
+## Dependencies between boards
+
+Boards stay one file per job, but an item may wait on another board's item — in this
+repository or in another registered project:
+
+```bash
+set-wave-board add <job> --wave w1 --item migrate --title "…" --depends-on tooling:build/cli
+set-wave-board depend <job> <item> [project:]job/item ...
+set-wave-board undepend <job> <item> [project:]job/item ...
+```
+
+- A dependency says when an item may **start**; evidence says when it is **done**. They are
+  different fields — do not express a prerequisite as evidence.
+- It is met only when the other item is `done`. `skipped`, a project not registered here, a
+  missing board or item: all unmet, with the reason shown.
+- While it is unmet, `set <job> <item> doing|done` is refused and names what it waits on.
+  `--force` exists for when the prerequisite is in place in fact; say why in `--note`.
+- `sync` puts `waiting_on` and `blocks` into the pushed payload, so **both** boards show the
+  link, and the waiting board is pushed again when the other item finishes.
+- `set-wave-board overview` lists every registered project's boards and every edge, met or not.
+  The fleet's wave list shows the same as "waits on N" / "blocks N".
 
 ## The push procedure
 
@@ -93,8 +135,9 @@ stop once, with the exact call filled in. It stays quiet for 30 minutes per job 
 - The job file travels through git; evidence is re-evaluated on each machine against that
   machine's clone and registry. Pull before trusting a board you did not just sync.
 - The **Artifact belongs to whoever published it**. Another person can push only if they were
-  given edit access; without it the write fails — say so in one line and carry on. The hook
-  backs off; `SET_WAVEBOARD_PUSH=off` silences it on that machine.
+  given edit access. If the write is refused for lack of access, **ask the owner account for
+  edit access** (claude.ai → Share), say so in one line and carry on; the hook backs off. Do not
+  answer it with `SET_WAVEBOARD_PUSH=off` — that silences the board on that machine for good.
 - What was pushed is recorded **per machine** (`.set/waveboard/<job>.pushed.json`), so a second
   machine sees the job as pending until it pushes once. With `if_version` pinned, two machines
   cannot silently overwrite each other: a stale write is refused and redone after a `get`.
@@ -106,8 +149,11 @@ stop once, with the exact call filled in. It stays quiet for 30 minutes per job 
 ```
 set-wave-board init <job> --title T [--artifact-url URL]
 set-wave-board add <job> --wave <id> [--wave-title T] --item <id> --title T [--evidence JSON]
-set-wave-board set <job> <item> <todo|doing|done|blocked|skipped> [--note N]
-set-wave-board link <job> <artifact-url>
+set-wave-board set <job> <item> <todo|doing|done|blocked|skipped> [--note N] [--force]
+set-wave-board link <job> <artifact-url>   # prints the SHARE line
+set-wave-board share [<job>...]            # the SHARE line again, per board
+set-wave-board depend|undepend <job> <item> [project:]job/item ...
+set-wave-board overview                    # every registered project's boards and edges
 set-wave-board sync [<job>...]          # PUSH lines on stdout
 set-wave-board pushed <job> --version N [--hash H]
 set-wave-board pending                  # PENDING lines, if_version=N when known

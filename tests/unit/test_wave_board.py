@@ -38,7 +38,10 @@ def make_repo(path: Path) -> Path:
 def env(tmp_path, monkeypatch):
     reg = tmp_path / "registry.json"
     reg.write_text(json.dumps({"projects": {}}))
-    e = {**os.environ, "SET_CORE_REGISTRY": str(reg), "SET_WAVEBOARD_BY": "test-host"}
+    e = {**os.environ, "SET_CORE_REGISTRY": str(reg), "SET_WAVEBOARD_BY": "test-host",
+         # Never this machine's editor list or claude.ai account.
+         "SET_WAVEBOARD_EDITORS": str(tmp_path / "no-editors.json"),
+         "CLAUDE_CONFIG_DIR": str(tmp_path / "claude-config")}
     for var in ("SET_WAVEBOARD_PUSH", "SET_WAVEBOARD_NAG_SECONDS", "SET_WAVEBOARD_REVIEW",
                 "SET_WAVEBOARD_REVIEW_SECONDS", "SET_WAVEBOARD_STALE_COMMITS"):
         e.pop(var, None)
@@ -521,7 +524,7 @@ def test_the_review_alone_can_be_switched_off(env, srepo):
 
 
 def test_the_review_is_skipped_in_a_linked_worktree(env, srepo, tmp_path):
-    """AC-12."""
+    # AC-12: the combined view over the registry
     stale_repo(env, srepo)
     git(srepo, "add", "docs")
     commit_at(srepo, 1)
@@ -581,3 +584,209 @@ def test_install_links_both_commands():
     assert " set-wave-board" in scripts_line and " set-hook-waveboard" in scripts_line
     for p in (TOOL, HOOK):
         assert os.access(p, os.X_OK)
+
+
+# ── sharing and dependencies (change `wave-board-shared-linked`) ─────────────
+
+OWNER, ED1, ED2, OTHER = "owner@example.com", "one@example.com", "two@example.com", "else@example.com"
+
+
+def editors(env, tmp_path, owner=OWNER, eds=(ED1, ED2), account=None):
+    p = tmp_path / "editors.json"
+    p.write_text(json.dumps({"owner_account": owner, "editors": list(eds)}))
+    env["SET_WAVEBOARD_EDITORS"] = str(p)
+    if account:
+        cfg = Path(env["CLAUDE_CONFIG_DIR"])
+        cfg.mkdir(parents=True, exist_ok=True)
+        (cfg / ".claude.json").write_text(json.dumps({"oauthAccount": {"emailAddress": account}}))
+    return env
+
+
+def test_link_prints_the_share_step_with_every_editor(env, repo, tmp_path):
+    """AC-1."""
+    editors(env, tmp_path, account=OWNER)
+    run(env, repo, "init", "j", "--title", "J")
+    out = run(env, repo, "link", "j", URL).stdout
+    share = next(line for line in out.splitlines() if line.startswith("SHARE j "))
+    assert URL in share and ED1 in share and ED2 in share and "edit access" in share
+    assert f"owner account: {OWNER}" in out and "(the owner account)" in out
+
+
+def test_init_with_a_url_and_share_print_it_too(env, repo, tmp_path):
+    editors(env, tmp_path)
+    assert "SHARE j " in run(env, repo, "init", "j", "--title", "J", "--artifact-url", URL).stdout
+    run(env, repo, "init", "k", "--title", "K")
+    out = run(env, repo, "share").stdout
+    assert "SHARE j " in out and "UNPUBLISHED k" in out and OWNER in out
+    data = json.loads(run(env, repo, "share", "j", "--json").stdout)
+    assert data[0]["share"]["editors"] == [ED1, ED2]
+
+
+def test_a_session_on_another_account_is_called_out(env, repo, tmp_path):
+    """AC-2."""
+    editors(env, tmp_path, account=OTHER)
+    run(env, repo, "init", "j", "--title", "J")
+    out = run(env, repo, "link", "j", URL).stdout
+    assert f"this session: {OTHER}" in out and f"NOT the owner account: publish and share the board from {OWNER}" in out
+
+
+def test_without_an_editor_list_link_still_succeeds(env, repo):
+    """AC-3."""
+    run(env, repo, "init", "j", "--title", "J")
+    r = run(env, repo, "link", "j", URL)
+    assert "no editor list at" in r.stdout and env["SET_WAVEBOARD_EDITORS"] in r.stdout
+    assert job_file(repo)["artifact_url"] == URL
+
+
+def test_no_address_is_persisted(env, repo, tmp_path):
+    """AC-4."""
+    editors(env, tmp_path, account=OTHER)
+    run(env, repo, "init", "j", "--title", "J", "--artifact-url", URL)
+    run(env, repo, "add", "j", "--wave", "w0", "--item", "a", "--title", "A")
+    run(env, repo, "link", "j", URL)
+    run(env, repo, "sync")
+    for p in [jpath(repo), *(repo / ".set" / "waveboard").glob("*")]:
+        text = p.read_text()
+        for addr in (OWNER, ED1, ED2, OTHER):
+            assert addr not in text, p
+
+
+def test_a_refused_push_asks_the_owner_for_edit_access(env, repo, tmp_path):
+    """AC-5."""
+    editors(env, tmp_path)
+    pending_repo(env, repo)
+    reason = json.loads(hook(env, repo).stdout)["reason"]
+    assert OWNER in reason and "edit access" in reason
+    assert "SET_WAVEBOARD_PUSH=off" not in reason
+
+
+def test_without_a_list_the_refusal_names_the_publishing_account(env, repo):
+    pending_repo(env, repo)
+    reason = json.loads(hook(env, repo).stdout)["reason"]
+    assert "the account that published the board" in reason and "SET_WAVEBOARD_PUSH=off" not in reason
+
+
+def jpath(repo, job="j"):
+    return repo / "docs" / "waveboard" / f"{job}.json"
+
+
+def deps_of(repo, item, job="j"):
+    data = job_file(repo, job)
+    return next(it for w in data["waves"] for it in w["items"] if it["id"] == item).get("depends_on")
+
+
+def payload_item(repo, item, job):
+    data = json.loads((repo / ".set" / "waveboard" / f"{job}.state.json").read_text())
+    return next(it for w in data["waves"] for it in w["items"] if it["id"] == item)
+
+
+def two_boards(env, repo, dep="k/b"):
+    run(env, repo, "init", "j", "--title", "J", "--artifact-url", URL)
+    run(env, repo, "add", "j", "--wave", "w0", "--item", "a", "--title", "A", "--depends-on", dep)
+    run(env, repo, "init", "k", "--title", "K")
+    run(env, repo, "add", "k", "--wave", "w0", "--item", "b", "--title", "B")
+
+
+def test_depend_stores_the_reference_and_refuses_a_malformed_one(env, repo):
+    """AC-6."""
+    new_job(env, repo, ("a", None))
+    run(env, repo, "depend", "j", "a", "other:k/b")
+    assert deps_of(repo, "a") == [{"project": "other", "job": "k", "item": "b"}]
+    run(env, repo, "depend", "j", "a", "other:k/b")           # already there: unchanged
+    assert len(deps_of(repo, "a")) == 1
+    before = jpath(repo).read_bytes()
+    for bad in ("not-a-ref", "a/b/c", "x:/b", "j/a"):          # the last one is itself
+        assert run(env, repo, "depend", "j", "a", bad, check=False).returncode == 2, bad
+    assert jpath(repo).read_bytes() == before
+    run(env, repo, "undepend", "j", "a", "other:k/b")
+    assert deps_of(repo, "a") is None
+
+
+@pytest.mark.parametrize("target_status, met", [("done", True), ("skipped", False), ("doing", False)])
+def test_only_done_meets_a_dependency(env, repo, target_status, met):
+    """AC-7, done and skipped."""
+    two_boards(env, repo)
+    run(env, repo, "set", "k", "b", target_status)
+    run(env, repo, "sync")
+    waiting = payload_item(repo, "a", "j").get("waiting_on")
+    if met:
+        assert waiting is None
+    else:
+        assert waiting == [{"job": "k", "item": "b", "status": target_status, "reason": None}]
+
+
+def test_an_unregistered_project_is_unmet_with_a_reason(env, repo):
+    """AC-7, unresolved."""
+    two_boards(env, repo, dep="ghost:k/b")
+    run(env, repo, "sync")
+    [w] = payload_item(repo, "a", "j")["waiting_on"]
+    assert w["status"] is None and "not registered" in w["reason"]
+    assert run(env, repo, "set", "j", "a", "doing", check=False).returncode == 2
+
+
+def test_both_boards_show_the_link(env, repo):
+    """AC-9."""
+    two_boards(env, repo)
+    run(env, repo, "sync")
+    assert payload_item(repo, "a", "j")["waiting_on"][0]["item"] == "b"
+    assert payload_item(repo, "b", "k")["blocks"] == [{"job": "j", "item": "a", "status": "todo"}]
+
+
+def test_a_registered_other_project_sees_who_waits_on_it(env, repo, tmp_path):
+    """The reverse scan crosses projects through the registry."""
+    other = make_repo(tmp_path / "other")
+    reg = Path(env["SET_CORE_REGISTRY"])
+    reg.write_text(json.dumps({"projects": {"cons": {"path": str(repo)}, "oth": {"path": str(other)}}}))
+    run(env, other, "init", "k", "--title", "K")
+    run(env, other, "add", "k", "--wave", "w0", "--item", "b", "--title", "B")
+    run(env, repo, "init", "j", "--title", "J")
+    run(env, repo, "add", "j", "--wave", "w0", "--item", "a", "--title", "A", "--depends-on", "oth:k/b")
+    run(env, other, "sync")
+    assert payload_item(other, "b", "k")["blocks"] == [{"project": "cons", "job": "j", "item": "a", "status": "todo"}]
+    ov = json.loads(run(env, repo, "overview", "--json").stdout)
+    # AC-12: the combined view over the registry
+    assert {(b["project"], b["job"]) for b in ov["boards"]} == {("cons", "j"), ("oth", "k")}
+    [edge] = ov["edges"]
+    assert edge["from"] == {"project": "cons", "job": "j", "item": "a"}
+    assert edge["to"] == {"project": "oth", "job": "k", "item": "b"} and edge["met"] is False
+
+
+def test_the_prerequisite_finishing_makes_the_dependent_pending(env, repo):
+    """AC-8."""
+    two_boards(env, repo)
+    run(env, repo, "sync")
+    before = json.loads((repo / ".set" / "waveboard" / "j.state.json").read_text())["content_hash"]
+    run(env, repo, "pushed", "j", "--version", "1")
+    assert run(env, repo, "pending").stdout.strip() == ""
+    run(env, repo, "set", "k", "b", "done")
+    run(env, repo, "sync")
+    after = json.loads((repo / ".set" / "waveboard" / "j.state.json").read_text())["content_hash"]
+    assert after != before and "PENDING j " in run(env, repo, "pending").stdout
+
+
+def test_a_board_without_dependencies_hashes_as_before(env, repo):
+    """No dependency anywhere = the payload content is the job file's waves, unchanged."""
+    new_job(env, repo, ("a", None))
+    run(env, repo, "sync")
+    state = json.loads((repo / ".set" / "waveboard" / "j.state.json").read_text())
+    assert state["waves"] == job_file(repo)["waves"]
+
+
+def test_set_refuses_to_start_a_waiting_item_unless_forced(env, repo):
+    """AC-10."""
+    two_boards(env, repo)
+    before = jpath(repo).read_bytes()
+    r = run(env, repo, "set", "j", "a", "done", check=False)
+    assert r.returncode == 2 and "k/b" in r.stderr
+    assert jpath(repo).read_bytes() == before
+    assert run(env, repo, "set", "j", "a", "blocked").returncode == 0
+    run(env, repo, "set", "j", "a", "done", "--force")
+    assert status(repo, "a") == "done"
+
+
+def test_render_carries_the_dependency_chips(env, repo, tmp_path):
+    two_boards(env, repo)
+    out = tmp_path / "board.html"
+    run(env, repo, "render", "j", "-o", str(out))
+    page = out.read_text()
+    assert "waits on " in page and '"waiting_on"' in page and "function eff(" in page

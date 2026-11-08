@@ -40,16 +40,16 @@ describe('orderBoards', () => {
 describe('totals', () => {
   it('adds up blocked items across boards (AC-5)', () => {
     expect(totals([board('a', 'x', { blocked: 3 }), board('b', 'y', { blocked: 11 })]))
-      .toEqual({ boards: 2, blocked: 14, unreadable: 0, stale: 0 })
+      .toEqual({ boards: 2, blocked: 14, unreadable: 0, stale: 0, dangling: 0 })
   })
 
   it('counts an unreadable board instead of folding it into zero', () => {
     expect(totals([board('a', 'x', { blocked: 1 }), broken('b', 'y')]))
-      .toEqual({ boards: 2, blocked: 1, unreadable: 1, stale: 0 })
+      .toEqual({ boards: 2, blocked: 1, unreadable: 1, stale: 0, dangling: 0 })
   })
 
   it('is all zeros for no boards (AC-6: the chip renders nothing)', () => {
-    expect(totals([])).toEqual({ boards: 0, blocked: 0, unreadable: 0, stale: 0 })
+    expect(totals([])).toEqual({ boards: 0, blocked: 0, unreadable: 0, stale: 0, dangling: 0 })
   })
 
   it('counts stale boards, and only those the server called stale (AC-16)', () => {

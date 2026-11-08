@@ -4,8 +4,13 @@
 Usage:
     set-wave-board init <job> --title T [--artifact-url URL]
     set-wave-board add <job> --wave <id> [--wave-title T] --item <id> --title T [--evidence JSON]
-    set-wave-board set <job> <item> <todo|doing|done|blocked|skipped> [--note N]
+                       [--depends-on [PROJECT:]JOB/ITEM ...]
+    set-wave-board set <job> <item> <todo|doing|done|blocked|skipped> [--note N] [--force]
     set-wave-board link <job> <artifact-url>
+    set-wave-board share [<job>...]
+    set-wave-board depend <job> <item> [PROJECT:]JOB/ITEM...
+    set-wave-board undepend <job> <item> [PROJECT:]JOB/ITEM...
+    set-wave-board overview
     set-wave-board sync [<job>...]
     set-wave-board pushed <job> --version N [--hash H]
     set-wave-board pending
@@ -41,6 +46,24 @@ STALENESS — WHEN THE THIRD LAYER WAS FORGOTTEN
     `stale` lists this; the Stop hook asks for a review of a stale board. When the items are
     checked and still right, `reviewed <job>` records it in the job file — it is not part of
     the pushed content, so it never causes a push.
+
+SHARING — EVERY EDITOR CAN WRITE THE BOARD
+    Only the account that published a page and the editors it was shared with can write its
+    database. `init --artifact-url`, `link` and `share` print the share step from a
+    machine-local editor list — SET_WAVEBOARD_EDITORS, default
+    ~/.config/set-core/waveboard-editors.json, shaped
+    {"owner_account": "...", "editors": ["...", ...]} — and say whether this session's
+    claude.ai account (`.claude.json`) is the owner account. The list is never copied into a
+    repository, a payload or a log. A push refused for lack of access is answered by asking
+    the owner for edit access, not by switching the reminder off.
+
+DEPENDENCIES — AN ITEM MAY WAIT ON ANOTHER BOARD'S ITEM
+    `depends_on: [{"project"?, "job", "item"}]`, written `[project:]job/item`; no project means
+    this repository, a project is resolved by registry name. A dependency is met only when
+    that item is `done` — `skipped` or unresolved is unmet. `sync` puts each open item's unmet
+    references (`waiting_on`) and the items elsewhere that wait on it (`blocks`) into the
+    payload, so both boards show the link. `set` refuses doing/done on a waiting item unless
+    --force. `overview` lists every registered project's boards and their edges.
 
 EVIDENCE (paths relative to the repository root; never absolute)
     {"type":"openspec-tasks","path":"openspec/changes/<x>/tasks.md"}
@@ -209,6 +232,266 @@ def validate_evidence(ev, nested: bool = False) -> dict:
     return ev
 
 
+# ── sharing (change `wave-board-shared-linked`, D1–D2) ───────────────────────
+#
+# A board's page can be written only by the account that published it and by the editors it
+# was shared with. The editor list is machine-local because it holds addresses: it is read
+# here and printed to the terminal, and never copied into the job file, the payload or a log.
+
+EDITORS_SHAPE = '{"owner_account": "<account email>", "editors": ["<email>", ...]}'
+
+
+def editors_path() -> Path:
+    env = os.environ.get("SET_WAVEBOARD_EDITORS", "").strip()
+    if env:
+        return Path(env).expanduser()
+    return Path.home() / ".config" / "set-core" / "waveboard-editors.json"
+
+
+def load_editors():
+    """(list or None, reason or None). A missing or malformed list is a reason, not an error."""
+    p = editors_path()
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, f"no editor list at {p}"
+    except (OSError, ValueError) as e:
+        logger.warning("editor list %s is unreadable: %s", p, type(e).__name__)
+        return None, f"the editor list at {p} is unreadable ({type(e).__name__})"
+    owner = data.get("owner_account") if isinstance(data, dict) else None
+    editors = data.get("editors") if isinstance(data, dict) else None
+    if not isinstance(owner, str) or not owner.strip() or not isinstance(editors, list) \
+            or not all(isinstance(e, str) and e.strip() for e in editors):
+        logger.warning("editor list %s does not have the expected shape", p)
+        return None, f"the editor list at {p} does not have the shape {EDITORS_SHAPE}"
+    logger.debug("editor list: %d editor(s)", len(editors))
+    return {"owner_account": owner.strip(), "editors": [e.strip() for e in editors]}, None
+
+
+def session_account():
+    """The claude.ai account this session publishes as, or None when it cannot be read."""
+    base = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
+    p = Path(base).expanduser() / ".claude.json" if base else Path.home() / ".claude.json"
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    acct = (data.get("oauthAccount") or {}).get("emailAddress") if isinstance(data, dict) else None
+    return acct.strip() if isinstance(acct, str) and acct.strip() else None
+
+
+def share_info(url) -> dict:
+    lst, reason = load_editors()
+    acct = session_account()
+    owner = lst["owner_account"] if lst else None
+    matches = None if (owner is None or acct is None) else acct.lower() == owner.lower()
+    return {"url": url, "editor_list": str(editors_path()), "editor_list_reason": reason,
+            "owner_account": owner, "editors": lst["editors"] if lst else [],
+            "session_account": acct, "session_is_owner": matches}
+
+
+def share_lines(job: str, info: dict) -> list:
+    owner, acct = info["owner_account"], info["session_account"] or "unknown"
+    if not info["url"]:
+        who = f"the owner account {owner}" if owner else "the account that will own it"
+        return [f"UNPUBLISHED {job}: publish the board page from {who}, then run "
+                f"`set-wave-board link {job} <url>`; this session: {acct}"]
+    if info["editor_list_reason"]:
+        return [f"SHARE {job} {info['url']}: {info['editor_list_reason']}; create it as "
+                f"{EDITORS_SHAPE} so this step can name who gets edit access",
+                f"  this session: {acct}"]
+    editors = ", ".join(info["editors"]) or "(the list names no editors)"
+    if info["session_is_owner"] is True:
+        verdict = "the owner account"
+    elif info["session_is_owner"] is False:
+        verdict = f"NOT the owner account: publish and share the board from {owner}"
+    else:
+        verdict = "not known whether it is the owner account"
+    return [f"SHARE {job} {info['url']}: on claude.ai open the board, Share, and invite with "
+            f"edit access: {editors}",
+            f"  owner account: {owner} · this session: {acct} ({verdict})"]
+
+
+# ── dependencies (change `wave-board-shared-linked`, D3–D6) ──────────────────
+#
+# An item may wait on another board's item. A dependency says when an item may START; evidence
+# says when it is DONE — so it is a field, not an evidence type. Met means `done` and nothing
+# else; a reference that cannot be resolved is unmet, because releasing work on a reference
+# nobody can read is the failure nobody would see.
+
+REF_RE = re.compile(r"^(?:([A-Za-z0-9][A-Za-z0-9._-]{0,127}):)?"
+                    r"([A-Za-z0-9][A-Za-z0-9._-]{0,63})/([A-Za-z0-9][A-Za-z0-9._-]{0,63})$")
+
+
+def parse_ref(text: str) -> dict:
+    m = REF_RE.match((text or "").strip())
+    if not m:
+        raise UsageError(f"invalid dependency {text!r}: expected [project:]job/item")
+    ref = {"job": m.group(2), "item": m.group(3)}
+    if m.group(1):
+        ref = {"project": m.group(1), **ref}
+    return ref
+
+
+def ref_key(ref: dict):
+    return (ref.get("project") or None, ref.get("job"), ref.get("item"))
+
+
+def ref_str(ref: dict) -> str:
+    p = ref.get("project")
+    return (f"{p}:" if p else "") + f"{ref.get('job')}/{ref.get('item')}"
+
+
+def valid_ref(ref) -> bool:
+    if not isinstance(ref, dict) or set(ref) - {"project", "job", "item"}:
+        return False
+    if not all(isinstance(ref.get(k), str) and ID_RE.match(ref[k]) for k in ("job", "item")):
+        return False
+    p = ref.get("project")
+    return p is None or (isinstance(p, str) and bool(re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$", p)))
+
+
+def registry_entries():
+    """[(name, realpath)] of every registered project whose path is a string."""
+    reg = read_json(registry_path())
+    projects = (reg.get("projects") or {}) if isinstance(reg, dict) else {}
+    res = []
+    for name, entry in projects.items():
+        if isinstance(entry, dict) and isinstance(entry.get("path"), str):
+            res.append((name, os.path.realpath(os.path.expanduser(entry["path"]))))
+    return res
+
+
+def names_of(root: Path) -> set:
+    """Every registry name that resolves to this repository."""
+    real = os.path.realpath(root)
+    return {name for name, path in registry_entries() if path == real}
+
+
+_BOARDS: dict = {}
+
+
+def board_data(root: Path, job: str):
+    """(job data or None, reason or None) for another board, cached for this process."""
+    key = (os.path.realpath(root), job)
+    if key not in _BOARDS:
+        p = job_path(root, job)
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            _BOARDS[key] = (None, f"no board {job!r} there")
+        except (OSError, ValueError) as e:
+            _BOARDS[key] = (None, f"board {job!r} is unreadable ({type(e).__name__})")
+        else:
+            if not isinstance(data, dict) or data.get("schema") != SCHEMA:
+                _BOARDS[key] = (None, f"board {job!r} is not a {SCHEMA} file")
+            else:
+                _BOARDS[key] = (data, None)
+    return _BOARDS[key]
+
+
+def forget_boards() -> None:
+    _BOARDS.clear()
+
+
+def resolve_ref(ref: dict, here: Path) -> dict:
+    """{status, met, reason} of one reference, seen from the repository `here`."""
+    if not valid_ref(ref):
+        return {"status": None, "met": False, "reason": "malformed reference"}
+    project = ref.get("project")
+    if project:
+        root = resolve_project(project)
+        if root is None:
+            return {"status": None, "met": False,
+                    "reason": f"project {project!r} is not registered on this machine"}
+        if not root.is_dir():
+            return {"status": None, "met": False,
+                    "reason": f"project {project!r} is registered but its directory is missing"}
+    else:
+        root = here
+    data, reason = board_data(root, ref["job"])
+    if data is None:
+        return {"status": None, "met": False, "reason": reason}
+    _, item = find_item({"waves": data.get("waves") or []}, ref["item"])
+    if item is None:
+        return {"status": None, "met": False, "reason": f"no item {ref['item']!r} on board {ref['job']!r}"}
+    status = item.get("status")
+    return {"status": status, "met": status == "done", "reason": None}
+
+
+def unmet(item: dict, here: Path) -> list:
+    res = []
+    for ref in item.get("depends_on") or []:
+        r = resolve_ref(ref, here)
+        if not r["met"]:
+            res.append({**(ref if isinstance(ref, dict) else {}), "status": r["status"],
+                        "reason": r["reason"]})
+    return res
+
+
+def _iter_items(data: dict):
+    for wave in data.get("waves") or []:
+        if isinstance(wave, dict):
+            for item in wave.get("items") or []:
+                if isinstance(item, dict):
+                    yield item
+
+
+def blocks_index(here: Path) -> dict:
+    """{(job, item): [{project?, job, item, status}]} — who waits on items of this repository.
+
+    Scans this repository and every registered project's `docs/waveboard/*.json`; no git.
+    """
+    real = os.path.realpath(here)
+    mine = names_of(here)
+    repos = [(None, Path(real))]
+    seen = {real}
+    for name, path in registry_entries():
+        if path not in seen and os.path.isdir(path):
+            seen.add(path)
+            repos.append((name, Path(path)))
+    index: dict = {}
+    for name, root in repos:
+        d = root / JOB_DIR
+        if not d.is_dir():
+            continue
+        for p in sorted(d.glob("*.json")):
+            data, _ = board_data(root, p.stem)
+            if data is None:
+                continue
+            for item in _iter_items(data):
+                for ref in item.get("depends_on") or []:
+                    if not valid_ref(ref):
+                        continue
+                    target = ref.get("project")
+                    points_here = (target in mine) if name else (target is None or target in mine)
+                    if not points_here:
+                        continue
+                    by = {"job": p.stem, "item": item.get("id"), "status": item.get("status")}
+                    if name:
+                        by = {"project": name, **by}
+                    index.setdefault((ref["job"], ref["item"]), []).append(by)
+    return index
+
+
+def dependency_view(root: Path, job: str, data: dict) -> dict:
+    """{item id: {"waiting_on": [...], "blocks": [...]}} — only non-empty lists."""
+    index = blocks_index(root)
+    view = {}
+    for item in _iter_items(data):
+        entry = {}
+        if item.get("status") not in ("done", "skipped"):
+            waiting = unmet(item, root)
+            if waiting:
+                entry["waiting_on"] = waiting
+        blocks = index.get((job, item.get("id")))
+        if blocks:
+            entry["blocks"] = blocks
+        if entry:
+            view[item.get("id")] = entry
+    return view
+
+
 # ── evidence ─────────────────────────────────────────────────────────────────
 
 def _tasks_status(path: Path):
@@ -285,7 +568,10 @@ def load_job(root: Path, job: str) -> dict:
 
 
 def save_job(root: Path, job: str, data: dict) -> bool:
-    return write_if_changed(job_path(root, job), dump(data))
+    written = write_if_changed(job_path(root, job), dump(data))
+    if written:
+        forget_boards()  # a dependency read later in this process must see the new status
+    return written
 
 
 def find_item(data: dict, item_id: str):
@@ -303,9 +589,15 @@ def all_jobs(root: Path):
     return sorted(p.stem for p in d.glob("*.json"))
 
 
-def content_of(data: dict) -> dict:
+def content_of(data: dict, deps=None) -> dict:
+    """The pushed content. `deps` adds the computed `waiting_on` / `blocks` per item; an item
+    without either is left exactly as it is, so a board without dependencies hashes as before."""
+    waves = data["waves"]
+    if deps:
+        waves = [dict(w, items=[dict(it, **deps.get(it.get("id"), {})) for it in w.get("items", [])])
+                 for w in waves]
     return {"schema": SCHEMA, "job": data["job"], "title": data.get("title", ""),
-            "waves": data["waves"]}
+            "waves": waves}
 
 
 def content_hash(content: dict) -> str:
@@ -339,7 +631,7 @@ def sync_job(root: Path, job: str) -> dict:
             item["status"], item["updated"], item["by"] = status, stamp, who
     file_changed = save_job(root, job, data)
 
-    content = content_of(data)
+    content = content_of(data, dependency_view(root, job, data))
     h = content_hash(content)
     sdir = state_dir(root)
     payload = sdir / f"{job}.state.json"
@@ -483,7 +775,8 @@ def cmd_init(args, root):
             "created": _dt.date.today().isoformat(), "waves": []}
     save_job(root, job, data)
     logger.info("created %s", p)
-    out(args, {"job": job, "file": str(p)}, [str(p)])
+    info = share_info(data["artifact_url"])
+    out(args, {"job": job, "file": str(p), "share": info}, [str(p)] + share_lines(job, info))
     return 0
 
 
@@ -497,6 +790,12 @@ def cmd_add(args, root):
         except ValueError as e:
             raise UsageError(f"--evidence is not valid JSON: {e}")
         validate_evidence(ev)
+    deps = []
+    for text in args.depends_on or []:
+        ref = parse_ref(text)
+        check_not_self(root, args.job, item_id, ref)
+        if ref not in deps:
+            deps.append(ref)
     if find_item(data, item_id)[1] is not None:
         raise UsageError(f"item {item_id!r} already exists in job {args.job!r}")
     wave = next((w for w in data["waves"] if w.get("id") == wave_id), None)
@@ -505,9 +804,11 @@ def cmd_add(args, root):
         data["waves"].append(wave)
     elif args.wave_title:
         wave["title"] = args.wave_title
-    wave.setdefault("items", []).append({
-        "id": item_id, "title": args.title, "status": "todo", "evidence": ev,
-        "note": "", "updated": now_iso(), "by": host_label()})
+    new_item = {"id": item_id, "title": args.title, "status": "todo", "evidence": ev,
+                "note": "", "updated": now_iso(), "by": host_label()}
+    if deps:
+        new_item["depends_on"] = deps
+    wave.setdefault("items", []).append(new_item)
     save_job(root, args.job, data)
     logger.info("added %s/%s to wave %s", args.job, item_id, wave_id)
     out(args, {"job": args.job, "wave": wave_id, "item": item_id}, [f"added {args.job}/{item_id}"])
@@ -522,6 +823,16 @@ def cmd_set(args, root):
     if item is None:
         raise UsageError(f"no item {args.item!r} in job {args.job!r}")
     old = item.get("status")
+    if args.status in ("doing", "done") and old != args.status:
+        waiting = unmet(item, root)
+        if waiting and not args.force:
+            raise UsageError(
+                f"{args.job}/{args.item} waits on " + "; ".join(
+                    f"{ref_str(w)} ({w['status'] or w['reason']})" for w in waiting)
+                + f" — it cannot be set {args.status} until those are done (--force overrides)")
+        if waiting:
+            logger.warning("%s/%s set %s with %d unmet dependenc(ies) (--force)", args.job,
+                           args.item, args.status, len(waiting))
     if old != args.status or (args.note is not None and args.note != item.get("note")):
         item["status"] = args.status
         if args.note is not None:
@@ -550,7 +861,125 @@ def cmd_link(args, root):
     data = load_job(root, args.job)
     data["artifact_url"] = check_url(args.url)
     save_job(root, args.job, data)
-    out(args, {"job": args.job, "artifact_url": args.url}, [f"{args.job} -> {args.url}"])
+    info = share_info(args.url)
+    out(args, {"job": args.job, "artifact_url": args.url, "share": info},
+        [f"{args.job} -> {args.url}"] + share_lines(args.job, info))
+    return 0
+
+
+def cmd_share(args, root):
+    jobs = args.jobs or all_jobs(root)
+    results, lines, rc = [], [], 0
+    for job in jobs:
+        try:
+            data = load_job(root, job)
+        except UsageError as e:
+            logger.error("%s: %s", job, e)
+            rc = 1
+            continue
+        info = share_info(data.get("artifact_url"))
+        results.append({"job": job, "share": info})
+        lines += share_lines(job, info)
+    out(args, results, lines)
+    return rc
+
+
+def check_not_self(root: Path, job: str, item: str, ref: dict) -> None:
+    if ref["job"] == job and ref["item"] == item and (
+            not ref.get("project") or ref["project"] in names_of(root)):
+        raise UsageError(f"{job}/{item} cannot depend on itself")
+
+
+def cmd_depend(args, root, remove=False):
+    data = load_job(root, args.job)
+    _, item = find_item(data, args.item)
+    if item is None:
+        raise UsageError(f"no item {args.item!r} in job {args.job!r}")
+    refs = [parse_ref(t) for t in args.refs]
+    deps = [d for d in (item.get("depends_on") or []) if isinstance(d, dict)]
+    before = list(deps)
+    for ref in refs:
+        if remove:
+            deps = [d for d in deps if ref_key(d) != ref_key(ref)]
+        else:
+            check_not_self(root, args.job, args.item, ref)
+            if all(ref_key(d) != ref_key(ref) for d in deps):
+                deps.append(ref)
+    if deps != before:
+        if deps:
+            item["depends_on"] = deps
+        else:
+            item.pop("depends_on", None)
+        item["updated"], item["by"] = now_iso(), host_label()
+        save_job(root, args.job, data)
+        logger.info("%s/%s: %d -> %d dependenc(ies)", args.job, args.item, len(before), len(deps))
+    shown = [dict(d, **resolve_ref(d, root)) for d in deps]
+    lines = [f"{args.job}/{args.item} depends on: " + (", ".join(
+        f"{ref_str(d)} ({'met' if d['met'] else (d['status'] or d['reason'])})" for d in shown) or "nothing")]
+    out(args, {"job": args.job, "item": args.item, "depends_on": shown}, lines)
+    return 0
+
+
+def cmd_undepend(args, root):
+    return cmd_depend(args, root, remove=True)
+
+
+def cmd_overview(args, root):
+    """Every registered project's boards and the edges between them (design D10)."""
+    repos, seen = [], set()
+    for name, path in registry_entries():
+        if path not in seen and os.path.isdir(path):
+            seen.add(path)
+            repos.append((name, Path(path)))
+    boards, edges = [], []
+    incoming: dict = {}
+    for name, proot in repos:
+        d = proot / JOB_DIR
+        if not d.is_dir():
+            continue
+        for p in sorted(d.glob("*.json")):
+            data, reason = board_data(proot, p.stem)
+            if data is None:
+                boards.append({"project": name, "job": p.stem, "unreadable": True, "reason": reason})
+                continue
+            counts = {st: 0 for st in STATUSES}
+            waiting = 0
+            for item in _iter_items(data):
+                if item.get("status") in counts:
+                    counts[item["status"]] += 1
+                open_item = item.get("status") not in ("done", "skipped")
+                item_waits = False
+                for ref in item.get("depends_on") or []:
+                    r = resolve_ref(ref, proot) if isinstance(ref, dict) else \
+                        {"status": None, "met": False, "reason": "malformed reference"}
+                    target = {"project": (ref.get("project") if isinstance(ref, dict) else None) or name,
+                              "job": ref.get("job") if isinstance(ref, dict) else None,
+                              "item": ref.get("item") if isinstance(ref, dict) else None}
+                    edges.append({"from": {"project": name, "job": p.stem, "item": item.get("id")},
+                                  "to": target, **r})
+                    incoming[(target["project"], target["job"], target["item"])] = \
+                        incoming.get((target["project"], target["job"], target["item"]), 0) + (0 if r["met"] else 1)
+                    item_waits = item_waits or (open_item and not r["met"])
+                waiting += item_waits
+            boards.append({"project": name, "job": p.stem, "title": data.get("title", ""),
+                           "counts": counts, "waiting": waiting, "unreadable": False})
+    for b in boards:
+        if not b["unreadable"]:
+            b["blocks"] = sum(n for (pr, jb, _), n in incoming.items() if pr == b["project"] and jb == b["job"])
+    lines = []
+    for b in boards:
+        if b["unreadable"]:
+            lines.append(f"UNREADABLE {b['project']}/{b['job']}: {b['reason']}")
+            continue
+        c = b["counts"]
+        total = sum(c.values())
+        lines.append(f"{b['project']}/{b['job']}: {c['done']}/{total - c['skipped']} done, "
+                     f"{c['blocked']} blocked, {b['waiting']} waiting, blocks {b['blocks']}")
+    for e in edges:
+        f, t = e["from"], e["to"]
+        lines.append(f"  {f['project']}/{f['job']}/{f['item']} -> {t['project']}/{t['job']}/{t['item']}: "
+                     + ("met" if e["met"] else f"unmet ({e['status'] or e['reason']})"))
+    out(args, {"boards": boards, "edges": edges}, lines)
     return 0
 
 
@@ -717,6 +1146,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--item", required=True)
     s.add_argument("--title", required=True)
     s.add_argument("--evidence", help="evidence object as JSON")
+    s.add_argument("--depends-on", action="append", metavar="[PROJECT:]JOB/ITEM",
+                   help="an item this one waits on (repeatable)")
     s.set_defaults(fn=cmd_add)
 
     s = sub.add_parser("set", parents=[common], help="report an item's status (fast lane)")
@@ -724,12 +1155,31 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("item")
     s.add_argument("status", choices=STATUSES)
     s.add_argument("--note")
+    s.add_argument("--force", action="store_true",
+                   help="set doing/done although a dependency is not done")
     s.set_defaults(fn=cmd_set)
 
     s = sub.add_parser("link", parents=[common], help="record the published board page URL")
     s.add_argument("job")
     s.add_argument("url")
     s.set_defaults(fn=cmd_link)
+
+    s = sub.add_parser("share", parents=[common],
+                       help="the share step: who gets edit access, and from which account")
+    s.add_argument("jobs", nargs="*")
+    s.set_defaults(fn=cmd_share)
+
+    for name, fn, text in (("depend", cmd_depend, "add items this item waits on"),
+                           ("undepend", cmd_undepend, "remove items this item waits on")):
+        s = sub.add_parser(name, parents=[common], help=text)
+        s.add_argument("job")
+        s.add_argument("item")
+        s.add_argument("refs", nargs="+", metavar="[PROJECT:]JOB/ITEM")
+        s.set_defaults(fn=fn)
+
+    s = sub.add_parser("overview", parents=[common],
+                       help="every registered project's boards and the dependencies between them")
+    s.set_defaults(fn=cmd_overview)
 
     s = sub.add_parser("sync", parents=[common], help="derive status from evidence, write payloads")
     s.add_argument("jobs", nargs="*")
@@ -772,7 +1222,7 @@ def main(argv=None) -> int:
     logging.basicConfig(level=level, format="set-wave-board: %(levelname)s %(message)s",
                         stream=sys.stderr)
     try:
-        root = Path(args.repo) if args.cmd == "page" else repo_root(args.repo)
+        root = Path(args.repo) if args.cmd in ("page", "overview") else repo_root(args.repo)
         return args.fn(args, root)
     except UsageError as e:
         logger.error("%s", e)

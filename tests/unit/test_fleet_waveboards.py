@@ -249,3 +249,49 @@ def test_without_any_stamp_the_created_date_counts(tmp_path):
     _commit(root, "2026-01-02T12:00", 3)
     [board] = read_waveboards([_project(root, "p")])
     assert board["commits_since_change"] == 3 and board["stale"] is True
+
+
+# ── dependencies (change `wave-board-shared-linked`) ─────────────────────────
+
+def _dep_item(i, status, *refs):
+    it = _item(i, status)
+    if refs:
+        it["depends_on"] = list(refs)
+    return it
+
+
+def test_an_edge_between_two_projects(tmp_path):
+    """AC-13: A's `a` waits on B's `b` (doing); B lists `a` under deps_in; ids only."""
+    a_root, b_root = tmp_path / "a", tmp_path / "b"
+    _write(a_root, "j", _job("j", [{"id": "w0", "items": [
+        _dep_item("a", "todo", {"project": "B", "job": "k", "item": "b"})]}]))
+    _write(b_root, "k", _job("k", [{"id": "w0", "items": [_item("b", "doing")]}]))
+    boards = {b["project"]: b for b in read_waveboards([_project(a_root, "A"), _project(b_root, "B")])}
+    a, b = boards["A"], boards["B"]
+    assert a["deps_out"] == [{"item": "a", "on": {"project": "B", "job": "k", "item": "b"},
+                              "status": "doing", "met": False}]
+    assert a["waiting"] == 1 and a["deps_unresolved"] == 0
+    assert b["deps_in"] == [{"item": "b", "met": False, "by": {"project": "A", "job": "j", "item": "a"}}]
+    assert "secret" not in json.dumps(boards)
+    assert all(not k.startswith("_") for board in boards.values() for k in board)
+
+
+def test_a_done_prerequisite_releases_and_a_same_project_ref_resolves(tmp_path):
+    _write(tmp_path, "j", _job("j", [{"id": "w0", "items": [
+        _dep_item("a", "todo", {"job": "k", "item": "b"})]}]))
+    _write(tmp_path, "k", _job("k", [{"id": "w0", "items": [_item("b", "done")]}]))
+    boards = {b["job"]: b for b in read_waveboards([_project(tmp_path, "P")])}
+    assert boards["j"]["deps_out"][0]["met"] is True and boards["j"]["waiting"] == 0
+    assert boards["k"]["deps_in"][0]["met"] is True
+
+
+def test_a_dangling_reference_is_unresolved_never_met(tmp_path):
+    """AC-13: a job no project has."""
+    _write(tmp_path, "j", _job("j", [{"id": "w0", "items": [
+        _dep_item("a", "todo", {"job": "nowhere", "item": "x"}),
+        _dep_item("c", "done", {"project": "Ghost", "job": "k", "item": "y"})]}]))
+    [board] = read_waveboards([_project(tmp_path, "P")])
+    assert board["deps_unresolved"] == 2
+    assert [d["status"] for d in board["deps_out"]] == [None, None]
+    assert [d["met"] for d in board["deps_out"]] == [False, False]
+    assert board["waiting"] == 1   # the done item does not wait, whatever it points at

@@ -10,6 +10,19 @@
 export const WAVE_STATUSES = ['done', 'doing', 'blocked', 'todo', 'skipped'] as const
 export type WaveStatus = typeof WAVE_STATUSES[number]
 
+/** One end of a dependency edge, by id only — the route never sends an item's title. */
+export interface ItemRef { project: string; job: string; item: string }
+
+export interface DepOut {
+  item: string
+  on: ItemRef
+  /** The referenced item's status, or null when this read could not find it. */
+  status: string | null
+  met: boolean
+}
+
+export interface DepIn { item: string; by: ItemRef; met: boolean }
+
 export interface ReadableBoard {
   project: string
   job: string
@@ -31,6 +44,13 @@ export interface ReadableBoard {
   commits_since_change?: number | null
   /** Manual items are open and the repository moved on by the threshold. */
   stale?: boolean
+  // Dependencies (change `wave-board-shared-linked`). Optional for the same reason.
+  deps_out?: DepOut[]
+  deps_in?: DepIn[]
+  /** Open items with at least one unmet dependency. */
+  waiting?: number
+  /** References whose board or item this read did not find. */
+  deps_unresolved?: number
   unreadable: false
 }
 
@@ -49,6 +69,8 @@ export interface WaveTotals {
   unreadable: number
   /** Boards whose statuses the repository has moved past — their blocked count included. */
   stale: number
+  /** Dependency references that resolve to nothing — a defect a closed list would hide. */
+  dangling: number
 }
 
 /** The selected project's boards first, then by project name, then by job. */
@@ -66,14 +88,28 @@ export function totals(boards: WaveBoard[]): WaveTotals {
   let blocked = 0
   let unreadable = 0
   let stale = 0
+  let dangling = 0
   for (const b of boards) {
     if (b.unreadable) unreadable += 1
     else {
       blocked += b.counts.blocked ?? 0
       if (b.stale === true) stale += 1
+      dangling += b.deps_unresolved ?? 0
     }
   }
-  return { boards: boards.length, blocked, unreadable, stale }
+  return { boards: boards.length, blocked, unreadable, stale, dangling }
+}
+
+export function refText(r: ItemRef): string {
+  return `${r.project}/${r.job}/${r.item}`
+}
+
+/** The unmet edges this board waits on, and the unmet ones elsewhere that wait on it. */
+export function dependencyMarks(board: ReadableBoard): { waitsOn: DepOut[]; blocks: DepIn[] } {
+  return {
+    waitsOn: (board.deps_out ?? []).filter(d => !d.met),
+    blocks: (board.deps_in ?? []).filter(d => !d.met),
+  }
 }
 
 export interface BarSegment {

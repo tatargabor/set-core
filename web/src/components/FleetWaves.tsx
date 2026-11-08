@@ -21,11 +21,11 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { ExternalLink, GitCommitHorizontal, Kanban, TriangleAlert, X } from 'lucide-react'
+import { ExternalLink, GitCommitHorizontal, Kanban, Link2, TriangleAlert, X } from 'lucide-react'
 
 import { age } from '../lib/fleetAge'
 import {
-  barSegments, itemTotal, orderBoards, parseBoards, secondsSince, totals,
+  barSegments, dependencyMarks, itemTotal, orderBoards, parseBoards, refText, secondsSince, totals,
   type BarSegment, type ReadableBoard, type WaveBoard,
 } from '../lib/fleetWaves'
 
@@ -72,6 +72,34 @@ function staleTitle(board: ReadableBoard): string {
   return `${board.commits_since_change} commits on HEAD since this board last changed, `
     + `and ${n} open item${n === 1 ? '' : 's'} only an agent can move (no evidence, or blocked). `
     + 'Its statuses — blocked count included — may be out of date. The project\'s Stop hook asks its agent to review them.'
+}
+
+/** "waits on N" / "blocks N"; nothing at all for a board without dependencies. */
+function DependencyMarks({ board }: { board: ReadableBoard }) {
+  const { waitsOn, blocks } = dependencyMarks(board)
+  const waiting = board.waiting ?? 0
+  return (
+    <>
+      {waiting > 0 && (
+        <span className={`inline-flex items-center gap-0.5 tabular-nums shrink-0 ${
+                (board.deps_unresolved ?? 0) > 0 ? 'text-amber-400' : 'text-sky-300'}`}
+              title={`${waiting} item${waiting === 1 ? '' : 's'} waiting on: `
+                + waitsOn.map(d => `${d.item} → ${refText(d.on)} (${d.status ?? 'not found'})`).join('; ')}
+              data-fleet-waves-waits={waiting}>
+          <Link2 size={12} strokeWidth={1.75} aria-hidden />
+          waits on {waiting}
+        </span>
+      )}
+      {blocks.length > 0 && (
+        <span className="inline-flex items-center gap-0.5 tabular-nums text-fg-muted shrink-0"
+              title={'Waiting on this board: '
+                + blocks.map(d => `${refText(d.by)} → ${d.item}`).join('; ')}
+              data-fleet-waves-blocks={blocks.length}>
+          blocks {blocks.length}
+        </span>
+      )}
+    </>
+  )
 }
 
 function BoardRow({ board, now, onProject }: {
@@ -147,6 +175,7 @@ function BoardRow({ board, now, onProject }: {
               title={ageTitle(board)}>
           {age(since)}
         </span>
+        <DependencyMarks board={board} />
         {board.stale === true && (
           <span className="inline-flex items-center gap-0.5 tabular-nums text-amber-400 shrink-0"
                 title={staleTitle(board)}
@@ -205,6 +234,7 @@ export default function FleetWaves({ selected, onSelectProject }: {
     + (t.blocked ? `, ${t.blocked} item${t.blocked === 1 ? '' : 's'} blocked` : '')
     + (t.unreadable ? `, ${t.unreadable} unreadable` : '')
     + (t.stale ? `, ${t.stale} stale` : '')
+    + (t.dangling ? `, ${t.dangling} dangling dependenc${t.dangling === 1 ? 'y' : 'ies'}` : '')
 
   return (
     <span ref={rootRef} className="inline-flex items-center shrink-0" data-fleet-waves={t.boards}>
@@ -222,6 +252,12 @@ export default function FleetWaves({ selected, onSelectProject }: {
           <span className="text-amber-400 inline-flex items-center gap-0.5" data-fleet-waves-stale-total={t.stale}
                 title={`${t.stale} board${t.stale === 1 ? '' : 's'} the repository has moved past`}>
             · <GitCommitHorizontal size={12} strokeWidth={1.75} aria-hidden />{t.stale}
+          </span>
+        )}
+        {t.dangling > 0 && (
+          <span className="text-amber-400 inline-flex items-center gap-0.5" data-fleet-waves-dangling={t.dangling}
+                title={`${t.dangling} dependenc${t.dangling === 1 ? 'y points' : 'ies point'} at a board or item no known project has`}>
+            · <Link2 size={12} strokeWidth={1.75} aria-hidden />{t.dangling}
           </span>
         )}
         {t.unreadable > 0 && (
