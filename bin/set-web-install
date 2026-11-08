@@ -172,6 +172,7 @@ service_install_and_start() {
 
         cp "$SERVICE_TEMPLATE" "$SERVICE_FILE"
         sed_i "s|__SET_TOOLS_ROOT__|$SET_TOOLS_ROOT|g" "$SERVICE_FILE"
+        sed_i "s|__SERVICE_PATH__|$(service_path)|g" "$SERVICE_FILE"
 
         if [[ "$PORT" != "$DEFAULT_PORT" ]]; then
             sed_i "s/--port $DEFAULT_PORT/--port $PORT/" "$SERVICE_FILE"

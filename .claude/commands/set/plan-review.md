@@ -12,7 +12,7 @@ Review a spec document against the orchestration planning guide and checklist.
 **Steps**
 
 1. **Read the planning guide and checklist**
-   - Read `docs/planning-guide.md` from the set-core project (find it via `which set-orchestrate` → resolve to set-core root, or check common locations: `~/code2/set-core/docs/`, `~/code/set-core/docs/`)
+   - Read `docs/planning-guide.md` from the set-core project (the set-core root is `$SET_TOOLS_ROOT` when set, otherwise `$(dirname "$(realpath "$(which set-orchestrate)")")/..` — never assume a fixed checkout location; it differs per machine)
    - Read `docs/plan-checklist.md` from the same location
    - If not found locally, check if the current project has copies in its own `docs/` directory
 

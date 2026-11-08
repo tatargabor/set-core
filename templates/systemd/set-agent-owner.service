@@ -32,7 +32,9 @@ RestartSec=5
 # own scopes; killing the control group would defeat the split.
 KillMode=process
 Environment=PYTHONPATH=__SET_TOOLS_ROOT__/lib:__SET_TOOLS_ROOT__/modules/web
-Environment=PATH=%h/.local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
+# Filled in by the installer from the installing shell (where claude, node, pnpm,
+# npx and uv live on THIS machine) — a fixed list only fits the machine it was written on.
+Environment=PATH=__SERVICE_PATH__
 
 [Install]
 WantedBy=default.target

@@ -1076,7 +1076,8 @@ install_systemd_service() {
     mkdir -p "$service_dir"
 
     # Resolve __SET_TOOLS_ROOT__ placeholder
-    sed "s|__SET_TOOLS_ROOT__|$SCRIPT_DIR|g" "$service_src" > "$service_dst"
+    sed -e "s|__SET_TOOLS_ROOT__|$SCRIPT_DIR|g" -e "s|__SERVICE_PATH__|$(service_path)|g" \
+        "$service_src" > "$service_dst"
     success "  Installed: $service_dst"
 
     # Reload systemd, enable and start
@@ -1104,7 +1105,8 @@ install_systemd_service() {
     local owner_src="$SCRIPT_DIR/templates/systemd/set-agent-owner.service"
     local owner_dst="$service_dir/set-agent-owner.service"
     if [[ -f "$owner_src" ]]; then
-        sed "s|__SET_TOOLS_ROOT__|$SCRIPT_DIR|g" "$owner_src" > "$owner_dst"
+        sed -e "s|__SET_TOOLS_ROOT__|$SCRIPT_DIR|g" -e "s|__SERVICE_PATH__|$(service_path)|g" \
+            "$owner_src" > "$owner_dst"
         success "  Installed: $owner_dst"
         systemctl --user daemon-reload
         systemctl --user enable set-agent-owner.service 2>/dev/null || true

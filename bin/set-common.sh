@@ -112,6 +112,23 @@ get_config_dir() {
 }
 
 CONFIG_DIR=$(get_config_dir)
+
+# PATH for a systemd user unit: the directories the installing shell finds the agent's
+# tools in, then the system ones. A unit replaces PATH outright, so a fixed list breaks
+# every machine whose node/claude live elsewhere (nvm, fnm, volta, npm-global, linuxbrew).
+service_path() {
+    local out="$HOME/.local/bin" tool dir
+    for tool in claude node pnpm npx uv; do
+        dir=$(command -v "$tool" 2>/dev/null) || continue
+        [[ "$dir" == /* ]] || continue
+        dir=$(dirname "$dir")
+        case ":$out:" in *":$dir:"*) ;; *) out="$out:$dir" ;; esac
+    done
+    for dir in /usr/local/bin /usr/bin /bin; do
+        case ":$out:" in *":$dir:"*) ;; *) out="$out:$dir" ;; esac
+    done
+    echo "$out"
+}
 CONFIG_FILE="$CONFIG_DIR/projects.json"
 
 # Ensure config directory and file exist

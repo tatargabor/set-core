@@ -597,12 +597,14 @@ def discover_agent(
 #: Where the messaging system keeps its registry. The env var is the one that
 #: system itself honours, so an isolated store is isolated for this reader too.
 MESSAGING_DIR_ENV = "SET_AGENT_COMM_DIR"
-MESSAGING_DEFAULT_DIR = "~/.local/share/set-agent-comm"
 
 
 def messaging_registry_path() -> str:
-    root = os.environ.get(MESSAGING_DIR_ENV) or MESSAGING_DEFAULT_DIR
-    return os.path.join(os.path.expanduser(root), "registry.json")
+    """The bus registry, resolved exactly as the bus resolves its store — env, then
+    XDG_DATA_HOME, then the default. A second machine with XDG_DATA_HOME set otherwise
+    reads an empty default and silently loses every bus-only project."""
+    from .channels import resolve_store_root
+    return os.path.join(str(resolve_store_root()), "registry.json")
 
 
 def read_messaging_projects(path: Optional[str] = None) -> List[Dict[str, Any]]:

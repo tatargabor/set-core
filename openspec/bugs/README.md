@@ -68,6 +68,34 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-168 — Python config readers hard-code `~/.config/set-core` while the shell and `local_config` honour `SET_CONFIG_DIR` / `XDG_CONFIG_HOME`
+- **state:** open
+- **reported:** 2026-11-08 by this session, in the second-developer audit the owner asked for (*"tudni kell a több fejlesztőt is kezelni … nem lehet csak erre a gépre személyre szabni"*).
+- **measured:** `bin/set-common.sh:102` (`${XDG_CONFIG_HOME:-$HOME/.config}/set-core`) and `lib/set_orch/local_config.py:config_dir()` honour both variables. `Path.home()/".config"/"set-core"` is hard-coded in `lib/set_orch/project_registry.py:22`, `api/helpers.py:26`, `harvest.py:29`, `compare.py:575`, `watcher.py:352`, `recovery_cli.py:13`, `config.py`, `providers/config.py`, `providers/legacy.py`, `registry_prune.py`, `lib/set_router/__init__.py:19` (SET_CONFIG_DIR only), `bin/set-leakscan:89`, `bin/set-wave-board`, `bin/set-usage`, `bin/set-glm` and `mcp-server/set_mcp_server.py`. In a sandbox with an empty HOME and no XDG variables, every tool ran; the split only shows on a machine that sets `XDG_CONFIG_HOME`.
+- **fail direction:** silent. `set-project init` writes the registry under `$XDG_CONFIG_HOME`, the dashboard, watcher, harvest and leakscan read `~/.config` and see an empty registry. Most of them fail open to empty, so a second developer sees no projects and no error.
+- **fixed when:** every reader resolves through `set_orch.local_config.config_dir()` (bash: `get_config_dir`), and a test with `XDG_CONFIG_HOME` set finds a project registered by `set-project init` in the dashboard API and in `set-leakscan --list-patterns`.
+
+### B-169 — the dashboard port 7400 is hard-coded where `set-web-install --port` cannot reach
+- **state:** open
+- **reported:** 2026-11-08 by this session, second-developer audit.
+- **measured:** `.claude/commands/set/start.md:36,73,89,92` and `sentinel.md:19` (deployed into consumers), `bin/set-restart-services:13,28,30`, `lib/set_orch/fleet/idle_close.py:42`. `bin/set-now:23` and `bin/set-project:1080` already read `${SET_MANAGER_URL:-…}`.
+- **fail direction:** a second developer who installs on another port gets agents and timers that talk to nothing, or to a different service on 7400.
+- **fixed when:** a grep for a literal `7400` outside the defaults of `SET_MANAGER_URL` / the installer returns only those defaults.
+
+### B-170 — the Chrome session scan reads only Google Chrome's profile directory
+- **state:** open
+- **reported:** 2026-11-08 by this session, second-developer audit.
+- **measured:** `lib/set_orch/usage/chrome_scan.py:51`, `Path.home() / ".config" / "google-chrome"`.
+- **fail direction:** silent. Chromium, Brave or a snap/flatpak Chrome yields zero claude.ai sessions and no error; the usage strip then reads as "nothing to measure".
+- **fixed when:** the scan probes the known Chromium-family profile roots plus a `local_config` override, and says which root it read when it finds none.
+
+### B-171 — `find_python` prefers its fixed probe list over the activated environment
+- **state:** open
+- **reported:** 2026-11-08 by this session, second-developer audit.
+- **measured:** `bin/set-common.sh:545` tries `/usr/bin/python3` and `$HOME/miniconda3/bin/python` before `PATH`. It is consistent with `install.sh`, which installs into the same python, so it does not break a fresh install.
+- **fail direction:** a developer whose set-core dependencies live in an activated venv gets the system python and an ImportError.
+- **fixed when:** a `SET_PYTHON` override exists and wins, documented in START.md.
+
 ### B-167 — `test_fleet_owner.py` hangs at 0 % CPU when run together with the other `tests/unit/test_fleet_*.py` files, and passes alone
 - **state:** open
 - **reported:** 2026-10-29 by a subagent of this session, while running the fleet suite as a regression check for `fleet-waiting-on-you` (commit `ee0f0a7f`).

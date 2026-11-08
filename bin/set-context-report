@@ -96,8 +96,21 @@ report_project() {
 
     # Find project directory
     local project_dir=""
-    local search_dirs=("$HOME/code2" "$HOME/.local/share/set-core/e2e-runs")
+    # The registry first: projects live wherever their developer keeps them, not under
+    # one machine's ~/code2. E2E run directories are not registered, so they come next.
+    local registry="${SET_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/set-core}/projects.json"
+    if [[ -f "$registry" ]]; then
+        project_dir=$(python3 -c 'import json,sys
+try:
+    e = json.load(open(sys.argv[1])).get("projects", {}).get(sys.argv[2]) or {}
+    print(e.get("path", "") if isinstance(e, dict) else "")
+except Exception:
+    print("")' "$registry" "$project_name")
+        [[ -n "$project_dir" && -d "$project_dir" ]] || project_dir=""
+    fi
+    local search_dirs=("${XDG_DATA_HOME:-$HOME/.local/share}/set-core/e2e-runs")
     for dir in "${search_dirs[@]}"; do
+        [[ -n "$project_dir" ]] && break
         if [[ -d "$dir/$project_name" ]]; then
             project_dir="$dir/$project_name"
             break
