@@ -20,6 +20,7 @@ the existing index and does not modify it.
 from __future__ import annotations
 
 import fcntl
+import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -170,6 +171,7 @@ class ProjectSearch:
     snapshot: bool
     no_reindex: bool
     notes: list
+    linked: list = field(default_factory=list)  # LinkedSearch, one per configured link
 
     @property
     def hits(self):
@@ -181,6 +183,50 @@ class ProjectSearch:
         out["refreshed"] = self.refreshed
         out["notes"] = list(self.notes)
         return out
+
+
+@dataclass
+class LinkedSearch:
+    """One linked project's own page, or why it has none. A link that could not
+    be searched carries `error` and is SHOWN — a silently skipped link would read
+    as "the linked corpus has nothing on this"."""
+
+    project: str
+    scope: Optional[str] = None
+    about: Optional[str] = None
+    search: Optional["ProjectSearch"] = None
+    error: Optional[str] = None
+
+
+def registry_path() -> str:
+    """The set-core project registry: SET_CORE_REGISTRY, else SET_CONFIG_DIR,
+    else the XDG config dir — the same resolution the shell tools use."""
+    env = os.environ.get("SET_CORE_REGISTRY", "").strip()
+    if env:
+        return os.path.expanduser(env)
+    cfg_dir = os.environ.get("SET_CONFIG_DIR", "").strip()
+    if not cfg_dir:
+        cfg_dir = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "set-core")
+    return os.path.join(cfg_dir, "projects.json")
+
+
+def registry_project_root(name: str) -> str:
+    """A registered project's path, or ProjectError naming what is missing."""
+    path = registry_path()
+    try:
+        with open(path, encoding="utf-8") as f:
+            reg = json.load(f)
+    except FileNotFoundError:
+        raise ProjectError(f"no project registry at {path}") from None
+    except (OSError, ValueError) as e:
+        raise ProjectError(f"project registry {path} is unreadable: {e}") from None
+    entry = (reg.get("projects") or {}).get(name) if isinstance(reg, dict) else None
+    if not isinstance(entry, dict) or not entry.get("path"):
+        raise ProjectError(f"project {name!r} is not in the registry ({path})")
+    root = os.path.expanduser(str(entry["path"]))
+    if not os.path.isdir(root):
+        raise ProjectError(f"project {name!r} is registered at {root}, which does not exist")
+    return root
 
 
 def search_project(
@@ -235,4 +281,38 @@ def search_project(
     )
 
 
-__all__ = ["Project", "ProjectSearch", "ProjectError", "RefreshLock", "RefreshResult", "load_project", "refresh", "search_project"]
+def linked_project(project: Project, name: str) -> Project:
+    """A project this one links to, loaded with ITS OWN configuration. Only a
+    name listed in `linked` resolves — the link is the permission."""
+    if name not in {ln.project for ln in project.config.linked}:
+        raise ProjectError(f"{name!r} is not a linked project of {project.root} (config.linked)")
+    root = registry_project_root(name)
+    if os.path.realpath(root) == os.path.realpath(project.root):
+        raise ProjectError(f"{name!r} is this project itself")
+    return load_project(root)
+
+
+def search_linked(project: Project, query: str, limit: int = 10, lane: bool = True, no_reindex: bool = False) -> list:
+    """Search every linked project's own index with its own configuration, the
+    link's scope applied. One level only: a linked project's own links are not
+    followed. Every failure becomes a `LinkedSearch.error`, never an exception —
+    the caller's own page must still come back."""
+    out: list = []
+    for ln in project.config.linked:
+        item = LinkedSearch(project=ln.project, scope=ln.scope, about=ln.about)
+        try:
+            lp = linked_project(project, ln.project)
+            item.search = search_project(lp, query, limit=limit, scope=ln.scope, lane=lane, no_reindex=no_reindex)
+            logger.info("kb linked: %s searched (%d hits)", ln.project, len(item.search.hits))
+        except Exception as e:  # noqa: BLE001 — a link's failure is reported on the page
+            item.error = f"{type(e).__name__}: {e}" if not isinstance(e, ProjectError) else str(e)
+            logger.warning("kb linked: %s not searched: %s", ln.project, item.error)
+        out.append(item)
+    return out
+
+
+__all__ = [
+    "LinkedSearch", "Project", "ProjectSearch", "ProjectError", "RefreshLock", "RefreshResult",
+    "linked_project", "load_project", "refresh", "registry_path", "registry_project_root",
+    "search_linked", "search_project",
+]

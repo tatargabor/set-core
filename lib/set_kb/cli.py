@@ -36,7 +36,7 @@ from set_kb.eval import DEFAULT_GOLDEN_REL, EvalError, golden_path_for, load_gol
 from set_kb.get_section import leaf_of, resolve_section
 from set_kb.indexer import IndexSource, scan_exclusions
 from set_kb.findability import run_findability
-from set_kb.lifecycle import ProjectError, load_project, refresh, search_project
+from set_kb.lifecycle import ProjectError, linked_project, load_project, refresh, search_linked, search_project
 from set_kb.project import ensure_ignored, index_paths, resolve_root
 from set_kb.runtime import KbRuntimeError, ensure_runtime
 from set_kb.store import SqliteFtsStore
@@ -145,7 +145,30 @@ def render_search_text(ps, query: str) -> str:
         lines.append(line)
     for n in ps.notes:
         lines.append(f"note: {n}")
+    for ls in ps.linked:
+        lines.extend(render_linked_text(ls, query))
     return "\n".join(lines)
+
+
+def render_linked_text(ls, query: str) -> list:
+    """One linked project's block: its own hits under its name, or why it could
+    not be searched. Never omitted — an unsearched link must read as one."""
+    head = f"── linked: {ls.project}" + (f" (scope {ls.scope})" if ls.scope else "") + (f" — {ls.about}" if ls.about else "")
+    lines = ["", head]
+    if ls.error:
+        lines.append(f"   NOT SEARCHED: {ls.error}")
+        return lines
+    ps = ls.search
+    if not ps.hits:
+        lines.append(f'   no hits for "{query}"')
+    for i, h in enumerate(ps.hits, 1):
+        lines.extend(render_hit_line(i, h))
+    beyond = max(0, ps.page.total - len(ps.hits))
+    lines.append(f"   showing {len(ps.hits)} of {ps.page.total} matching sources" if beyond else f"   {ps.page.total} matching source(s)")
+    lines.append(f"   paths relative to: {ps.root}  (open with: set-kb get <path> --project {ls.project})")
+    for n in ps.notes:
+        lines.append(f"   note: {n}")
+    return lines
 
 
 def search_payload(ps, query: str) -> dict:
@@ -166,7 +189,29 @@ def search_payload(ps, query: str) -> dict:
         hd["path"] = repo_rel(h.root, h.path)
         hd["heading"] = leaf_of(h.heading_path)
         hd["duplicateCount"] = len(h.aka_paths) if h.aka_paths else 0
+    d["linked"] = [linked_payload(ls) for ls in ps.linked]
     return d
+
+
+def linked_payload(ls) -> dict:
+    """A linked project's page in the same hit shape as the main one, each hit
+    carrying `project` so a caller can fetch it (`get --project`)."""
+    out: dict = {"project": ls.project, "scope": ls.scope, "about": ls.about, "searched": ls.error is None}
+    if ls.error:
+        out["error"] = ls.error
+        return out
+    ps = ls.search
+    d = ps.to_json_dict()
+    by_chunk = {(h.root, h.chunk_id): h for h in ps.hits}
+    for hd in d["hits"]:
+        h = by_chunk.get((hd.get("root"), hd.get("chunkId")))
+        if h is not None:
+            hd["path"] = repo_rel(h.root, h.path)
+            hd["heading"] = leaf_of(h.heading_path)
+            hd["duplicateCount"] = len(h.aka_paths) if h.aka_paths else 0
+        hd["project"] = ls.project
+    out.update(d)
+    return out
 
 
 def cmd_search(args) -> int:
@@ -183,6 +228,11 @@ def cmd_search(args) -> int:
         no_reindex=args.no_reindex,
         force=args.full,
     )
+    # The caller's filters (--root/--channel/--scope/--exclude-path) name THIS
+    # project's roots and scopes, so they do not travel to a linked project; the
+    # link's own scope does.
+    if not args.no_linked:
+        ps.linked = search_linked(project, args.query, limit=args.limit, lane=not args.no_lane, no_reindex=args.no_reindex)
     if args.json:
         emit_json(search_payload(ps, args.query))
     else:
@@ -209,6 +259,8 @@ def locate_in_index(store, cfg, rel: str) -> "tuple[str | None, list]":
 
 def cmd_get(args) -> int:
     project = load_project(os.getcwd())
+    if args.project:
+        project = linked_project(project, args.project)
     rel = normalize_path_input(project.root, args.path)
     store, exists = open_index(project)
     if not exists:
@@ -653,11 +705,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-lane", action="store_true", help="disable the reserved channel lane for this search")
     p.add_argument("--no-reindex", action="store_true", help="query the index as it stands")
     p.add_argument("--full", action="store_true", help="force a full re-chunk before searching")
+    p.add_argument("--no-linked", action="store_true", help="search only this project, not the ones config.linked names")
     p.set_defaults(func=cmd_search)
 
     p = sub.add_parser("get", parents=[common], help="print a file, or one section of it, verbatim")
     p.add_argument("path", help="repository-relative path (a hit's path, unchanged)")
     p.add_argument("--section", default=None, help="heading path, or an unambiguous leaf heading")
+    p.add_argument("--project", default=None, help="fetch from a linked project (a name config.linked lists)")
     p.set_defaults(func=cmd_get)
 
     p = sub.add_parser("sources", parents=[common], help="roots, channels and the lane, with the config's own descriptions")

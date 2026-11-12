@@ -13,7 +13,7 @@ same code.
 | Command | What it does |
 |---|---|
 | `set-kb search "<query>"` | Ranked sections. Refreshes the index incrementally first. |
-| `set-kb get <path> [--section <heading>]` | A file, or one section of it, verbatim. |
+| `set-kb get <path> [--section <heading>] [--project <name>]` | A file, or one section of it, verbatim. `--project` fetches from a linked project (a name `linked` lists). |
 | `set-kb index [--full]` | Build or refresh the index without searching. |
 | `set-kb sources` | Roots, channels and the lane, each with the project's own `about` line. |
 | `set-kb doctor` | Whether search works in this project: blocking vs informational checks, per-root, per-channel and per-exclusion-rule counts. |
@@ -25,7 +25,7 @@ stderr).
 
 Useful `search` flags: `--limit`, `--root <ref>`, `--channel <name>`,
 `--scope <name>=<value>`, `--exclude-path <fragment>` (repeatable), `--no-lane`,
-`--no-reindex` (measure the index as it stands), `--full`.
+`--no-reindex` (measure the index as it stands), `--full`, `--no-linked` (this project only).
 
 The JSON page's `root` field is the absolute root of the project the query ran in. It is
 the only absolute path on the page: hit paths are repository-relative, `/`-separated and
@@ -79,6 +79,34 @@ one-line warning naming the new path.
 | `ranking.sourceDedup` | `true` | Collapse identical content across roots. |
 | `ranking.proximityBoost`, `ranking.diversity`, `ranking.coverageRerank` | off | Optional re-ranking stages. |
 | `findability.globs` | `[]` | Extra "named notes" that `findability` must be able to find. |
+| `linked` | `[]` | Other registered projects searched beside this one: `{project, scope?, about?}`. See below. |
+
+### Linked projects
+
+A project can search another one's knowledge without copying it. Every entry in `linked`
+names a project in the set-core registry (`~/.config/set-core/projects.json`; a data
+repository with no deploy enters it through `set-project register`):
+
+```json
+"linked": [
+  {"project": "shared-wiki", "scope": "client=alfa", "about": "the agency's shared wiki"}
+]
+```
+
+- Each linked project is searched **in its own index, with its own configuration** (its
+  language, stemming, channels, lane). Only the link's `scope` is added. The caller's
+  `--root`, `--channel`, `--scope` and `--exclude-path` name this project's layout and do
+  not travel.
+- The page shows each linked project as its own block (JSON: `linked[]`); every hit carries
+  `project`, and its path is relative to **that** project. `set-kb get <path> --project
+  <name>` opens it; a name `linked` does not list is refused.
+- **One level only:** a linked project's own links are not followed.
+- **A link that cannot be searched is shown, never dropped:** `NOT SEARCHED: <reason>` on
+  the text page, `"searched": false` + `error` in JSON. An unregistered name, a missing
+  checkout or a broken config there costs that block only, never the page.
+- The search refreshes the linked project's index like any search there, so that project's
+  `.set/` must be gitignored as usual.
+- `linked` is query-side: changing it never re-indexes anything.
 
 ### Default exclusion groups
 

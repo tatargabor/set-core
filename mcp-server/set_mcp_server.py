@@ -641,13 +641,17 @@ def kb_search(
     channel: Optional[str] = None,
     scope: Optional[str] = None,
     exclude_path: Optional[str] = None,
+    linked: bool = True,
 ) -> str:
-    """Search this project's knowledge base (markdown, section-level BM25).
+    """Search this project's knowledge base (markdown, section-level BM25),
+    and the linked projects its kb.json names (`linked`), each in its own index.
 
     Returns the versioned JSON contract: hits (repository-relative path,
     headingPath, heading, snippet, score, channel, scope, suppressedSections,
     duplicateCount), plus what the page did NOT search (total, hasMore,
-    exclusions, refreshed, notes).
+    exclusions, refreshed, notes). `linked` holds one page per linked project
+    (its hits carry `project`; fetch one with kb_get(path, project=...)), or
+    that link's `error` when it could not be searched.
 
     Args:
         query: The search text.
@@ -656,8 +660,11 @@ def kb_search(
         channel: Restrict to one configured channel.
         scope: Restrict to one captured scope (name=value).
         exclude_path: A path fragment to exclude from the page.
+        linked: Also search the linked projects (default True).
     """
     args = ["search", query, "--limit", str(int(limit)), "--json"]
+    if not linked:
+        args.append("--no-linked")
     if root:
         args += ["--root", root]
     if channel:
@@ -671,7 +678,7 @@ def kb_search(
 
 
 @mcp.tool
-def kb_get(path: str, section: Optional[str] = None) -> str:
+def kb_get(path: str, section: Optional[str] = None, project: Optional[str] = None) -> str:
     """Print a file from this project's knowledge base, or one section of it,
     verbatim. `path` is a hit's repository-relative path, accepted unchanged.
 
@@ -682,10 +689,13 @@ def kb_get(path: str, section: Optional[str] = None) -> str:
     Args:
         path: Repository-relative path, exactly as a hit carried it.
         section: Optional heading path / unambiguous leaf heading.
+        project: A linked project's name, for a hit that carried `project`.
     """
     args = ["get", path, "--json"]
     if section:
         args += ["--section", section]
+    if project:
+        args += ["--project", project]
     code, out, err = _run_set_kb(args)
     return _kb_result(code, out, err, "get")
 

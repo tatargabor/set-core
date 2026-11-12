@@ -126,6 +126,9 @@ DEFAULTS: dict = {
         "coverageRerank": False,
     },
     "findability": {"globs": []},
+    # Other registered projects searched beside this one (change kb-linked-projects):
+    # [{"project": <registry name>, "scope"?: "<name>=<value>", "about"?: str}].
+    "linked": [],
 }
 
 
@@ -138,6 +141,16 @@ class SourceConfig:
 
     ref: str
     priority: int = 0
+    about: Optional[str] = None
+
+
+@dataclass
+class LinkedConfig:
+    """Another registered project whose own index is searched beside this one.
+    Query-side only, so it stays out of the corpus-config hash."""
+
+    project: str
+    scope: Optional[str] = None
     about: Optional[str] = None
 
 
@@ -158,6 +171,7 @@ class KbConfig:
     stemming: bool = False
     ranking: dict = field(default_factory=dict)
     findability_globs: list = field(default_factory=list)
+    linked: list = field(default_factory=list)  # LinkedConfig, searched beside this project
     legacy: bool = False  # loaded from the legacy location
 
     def effective_exclude(self) -> list:
@@ -445,6 +459,27 @@ def _validate(d: dict) -> KbConfig:
     if not isinstance(f, dict):
         raise ConfigError(f"config.findability: expected an object, got {type(f).__name__}")
     cfg.findability_globs = list(_req_str_list(f.get("globs", []), "config.findability.globs"))
+
+    # linked — every entry names a project; a scope is in the stored
+    # "<name>=<value>" form, because that is what the linked index filters on.
+    seen: set = set()
+    for i, ln in enumerate(_req_list(d["linked"], "config.linked")):
+        where = f"config.linked[{i}]"
+        if not isinstance(ln, dict):
+            raise ConfigError(f"{where}: expected an object with a 'project' key")
+        name = ln.get("project")
+        if not isinstance(name, str) or not name.strip():
+            raise ConfigError(f"{where}.project: expected a registry project name")
+        if name in seen:
+            raise ConfigError(f"{where}.project: {name!r} is linked twice")
+        seen.add(name)
+        scope = ln.get("scope")
+        if scope is not None and (not isinstance(scope, str) or "=" not in scope):
+            raise ConfigError(f"{where}.scope: expected \"<name>=<value>\", got {scope!r}")
+        about = ln.get("about")
+        if about is not None and not isinstance(about, str):
+            raise ConfigError(f"{where}.about: expected a string, got {type(about).__name__}")
+        cfg.linked.append(LinkedConfig(project=name.strip(), scope=scope, about=about))
 
     return cfg
 
