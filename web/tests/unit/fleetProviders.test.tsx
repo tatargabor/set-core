@@ -25,7 +25,9 @@ import {
   previewResolution,
   providerMark,
   shortModel,
+  upstreamNotice,
   type ProviderCatalogue,
+  type UpstreamModelReport,
 } from '../../src/lib/fleetProviders'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
@@ -133,6 +135,7 @@ const PROJECT = { name: 'proj', root: '/repo', agents: [], sources: ['registry']
 
 function stubFleet(opts: {
   catalogue?: ProviderCatalogue | 'unreadable'
+  upstream?: UpstreamModelReport | 'down'
   agents?: any[]
   onStart?: (body: any) => void
 } = {}) {
@@ -141,6 +144,10 @@ function stubFleet(opts: {
     const u = String(url)
     if (u === '/api/fleet/owner') {
       return { ok: true, json: async () => ({ available: true, held: 0 }) } as any
+    }
+    if (u.startsWith('/api/fleet/models/upstream')) {
+      if (opts.upstream === 'down' || !opts.upstream) return { ok: false, status: 500, json: async () => ({}) } as any
+      return { ok: true, json: async () => opts.upstream } as any
     }
     if (u.startsWith('/api/fleet/providers')) {
       if (opts.catalogue === 'unreadable') return { ok: false, status: 503, json: async () => ({}) } as any
@@ -470,5 +477,65 @@ describe('the model in the header', () => {
     expect(mark.getAttribute('data-fleet-provider')).toBe('mismatch')
     expect(mark.className).toContain('red')
     expect(mark.textContent).toMatch(/⚠/)
+  })
+})
+
+const UPSTREAM_BASE: UpstreamModelReport = {
+  verdict: 'current', source: 'https://example.invalid/overview.md', fetched_at: 1_790_000_000,
+  error: null, not_shipped: [], not_declared: [], machine_config: '/cfg/providers.json', machine_note: null,
+}
+const BEHIND: UpstreamModelReport = {
+  ...UPSTREAM_BASE, verdict: 'behind',
+  not_shipped: [{ id: 'claude-sonnet-5-5', family: 'sonnet', shorthand_resolves_to: 'claude-sonnet-4-6' }],
+}
+
+async function upstreamLine(): Promise<HTMLElement> {
+  return waitFor(() => {
+    const el = document.querySelector('[data-fleet-start="upstream-models"]')
+    if (!el) throw new Error('no upstream notice yet')
+    return el as HTMLElement
+  })
+}
+
+describe('the upstream model check (upstream-model-watch)', () => {
+  it('is silent when current, and speaks for behind, unknown, and a failed read', () => {
+    expect(upstreamNotice(UPSTREAM_BASE)).toBeNull()
+    expect(upstreamNotice(BEHIND)!.text).toMatch(/claude-sonnet-5-5 — update set-core/)
+    expect(upstreamNotice(BEHIND)!.title).toMatch(/`sonnet` still resolves to claude-sonnet-4-6/)
+    expect(upstreamNotice({ ...UPSTREAM_BASE, verdict: 'unknown', error: 'boom' })!.text).toMatch(/could not be checked/)
+    // A route that did not answer is NOT current — a gap is not a zero.
+    expect(upstreamNotice(null)!.text).toMatch(/could not be checked/)
+    expect(upstreamNotice({ ...UPSTREAM_BASE, verdict: 'behind', not_declared: ['opus-5-5'] })!.text)
+      .toMatch(/opus-5-5 not in this machine's catalogue/)
+  })
+
+  // AC-13
+  it('names the missing model in the start dialog', async () => {
+    stubFleet({ upstream: BEHIND })
+    await openStartForm()
+    const el = await upstreamLine()
+    expect(el.textContent).toMatch(/claude-sonnet-5-5/)
+    expect(el.dataset.verdict).toBe('behind')
+  })
+
+  it('adds nothing to the dialog when current', async () => {
+    stubFleet({ upstream: UPSTREAM_BASE })
+    await openStartForm()
+    await waitFor(() => { if (!document.querySelector('[data-fleet-start="model"]')) throw new Error('form not ready') })
+    await new Promise(r => setTimeout(r, 20))
+    expect(document.querySelector('[data-fleet-start="upstream-models"]')).toBeNull()
+  })
+
+  // AC-14
+  it('a failed check says so and still offers every model and the start', async () => {
+    stubFleet({ upstream: 'down' })
+    await openStartForm()
+    const el = await upstreamLine()
+    expect(el.textContent).toMatch(/could not be checked/)
+    expect(el.dataset.verdict).toBe('unread')
+    expect(document.querySelector('[data-fleet-start="provider"]')).not.toBeNull()
+    const start = [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'start')
+    expect(start).toBeTruthy()
+    expect((start as HTMLButtonElement).disabled).toBe(false)
   })
 })

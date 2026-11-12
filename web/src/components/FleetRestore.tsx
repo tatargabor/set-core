@@ -322,21 +322,25 @@ function ArmedRestore({ where, count, busy, onRun, label, title, mark }: {
   const [armed, setArmed] = useState(false)
   const n = count
 
+  // The confirm button takes the offer's exact place and box (same padding,
+  // same icon), and the question follows it: the click target must not move
+  // between the two clicks of one act.
   if (armed) {
     return (
-      <span className="inline-flex items-baseline gap-2" data-fleet-restore-confirm={n}>
-        <span className="text-xs text-amber-300">
-          Start {n} agent{n === 1 ? '' : 's'} in {where}?
-        </span>
+      <span className="inline-flex items-center gap-2" data-fleet-restore-confirm={n}>
         <button
           onClick={() => { setArmed(false); onRun() }}
           disabled={busy}
           data-fleet-restore-go={n}
-          className="px-1.5 py-0.5 rounded border border-amber-500/60 text-xs text-amber-200
-                     hover:bg-amber-500/10 disabled:opacity-50"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-amber-500/60
+                     text-xs text-amber-200 hover:bg-amber-500/10 disabled:opacity-50"
         >
+          <RotateCcw size={11} strokeWidth={1.75} />
           {busy ? 'Restoring…' : `yes, restore ${n}`}
         </button>
+        <span className="text-xs text-amber-300">
+          Start {n} agent{n === 1 ? '' : 's'} in {where}?
+        </span>
         <button onClick={() => setArmed(false)} className="text-xs text-fg-muted hover:text-fg-strong">
           cancel
         </button>

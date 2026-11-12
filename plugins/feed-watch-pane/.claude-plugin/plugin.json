@@ -1,0 +1,6 @@
+{
+  "name": "feed-watch-pane",
+  "version": "0.1.0",
+  "description": "set-core feed-watch: at the times you chose, a pane asks whether to run the feed-watch skill now, in an hour, tomorrow, or never again. Personal opt-in per account.",
+  "types": "./types/index.d.ts"
+}

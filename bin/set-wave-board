@@ -2,12 +2,19 @@
 """set-wave-board — the live execution status of a job that runs in waves.
 
 Usage:
-    set-wave-board init <job> --title T [--artifact-url URL]
-    set-wave-board add <job> --wave <id> [--wave-title T] --item <id> --title T [--evidence JSON]
+    set-wave-board init <job> --title T [--artifact-url URL] [--assignees A,B]
+    set-wave-board add <job> --wave <id> [--wave-title T] --item <id> --title T [--evidence JSON] [--assignee A]
                        [--depends-on [PROJECT:]JOB/ITEM ...]
     set-wave-board set <job> <item> <todo|doing|done|blocked|skipped> [--note N] [--force]
     set-wave-board link <job> <artifact-url>
     set-wave-board share [<job>...]
+    set-wave-board assignees <job> <name,name,...>
+    set-wave-board assign <job> <item> <name|->
+    set-wave-board wait <job> <item> (--decision|--blocker) TEXT [--who NAME] [--ref ID] [--options A,B]
+    set-wave-board unwait <job> <item> [--ref ID | --all]
+    set-wave-board answer <job> <item> [--ref ID] TEXT
+    set-wave-board import <job> --dir DIR
+    set-wave-board lang <job> <en|hu>
     set-wave-board depend <job> <item> [PROJECT:]JOB/ITEM...
     set-wave-board undepend <job> <item> [PROJECT:]JOB/ITEM...
     set-wave-board overview
@@ -40,6 +47,26 @@ WHY THE SCRIPT DOES NOT PUSH
     the exact document body to `.set/waveboard/<job>.state.json` and prints a PUSH line;
     the agent sends that file as collection `board`, document `state`, and records the
     push with `pushed`. `set-hook-waveboard` makes sure it is not forgotten.
+
+DECISIONS AND BLOCKERS — WHAT AN ITEM WAITS ON
+    An item can carry `waits`: what it is waiting for, kept apart from its status. A wait
+    is a DECISION (a person has to choose: "free hour or package price?") or a BLOCKER
+    (work or access someone else has to provide: "run migration 0019"). Each names WHO it
+    waits on and may carry a REF (e.g. G3) so a question list elsewhere can point at it.
+    The page lists every open wait at the top, grouped by person. Waits do not change the
+    status: set `blocked` yourself when the item cannot move at all; a decision often
+    waits on an item that is otherwise in progress.
+    `--options` gives the page answer buttons (e.g. "Igen,Nem" or "E,C,D"); every wait
+    also takes a free-text answer.
+
+WHAT THE PAGE WRITES — AND HOW IT COMES BACK
+    A viewer can change an item's status and answer a wait on the page. Those land in the
+    page's own documents, never in board/state: board/statuses ({item: {status, at}}) and
+    board/answers ({"<item>|<ref or #index>": {answer, at}}). Read them with ArtifactData
+    (get, out_dir DIR) and apply them with `import <job> --dir DIR`: a status picked after
+    the item last changed becomes a manual `set`, an answer newer than the recorded one is
+    stored on the wait (`answer`, `answered`). Evidence still wins over a page status, as
+    over any report. Then act on the answers, and `unwait` what is settled.
 
 STALENESS — WHEN THE THIRD LAYER WAS FORGOTTEN
     An item with no evidence, and a blocked item, move only by `set`. A board is STALE when
@@ -117,6 +144,8 @@ logger = logging.getLogger("set-wave-board")
 SCHEMA = "set-wave-board/1"
 STATUSES = ("todo", "doing", "done", "blocked", "skipped")
 STICKY = ("blocked", "skipped")
+WAIT_KINDS = ("decision", "blocker")
+LANGS = ("en", "hu")
 EVIDENCE_FIELDS = {
     "openspec-tasks": ("path",),
     "path-exists": ("path",),
@@ -627,11 +656,30 @@ def load_job(root: Path, job: str) -> dict:
     return data
 
 
+def _drop_by(data: dict) -> None:
+    # A machine name is not information for the board's readers, and in a tracked file it
+    # leaks a hostname; items used to carry one as `by`.
+    for wave in data.get("waves", []):
+        for item in wave.get("items", []):
+            item.pop("by", None)
+
+
 def save_job(root: Path, job: str, data: dict) -> bool:
+    _drop_by(data)
     written = write_if_changed(job_path(root, job), dump(data))
     if written:
         forget_boards()  # a dependency read later in this process must see the new status
     return written
+
+
+def parse_names(value: str) -> list:
+    names, seen = [], set()
+    for n in (value or "").split(","):
+        n = " ".join(n.split())
+        if n and n not in seen:
+            names.append(n)
+            seen.add(n)
+    return names
 
 
 def find_item(data: dict, item_id: str):
@@ -652,12 +700,16 @@ def all_jobs(root: Path):
 def content_of(data: dict, deps=None) -> dict:
     """The pushed content. `deps` adds the computed `waiting_on` / `blocks` per item; an item
     without either is left exactly as it is, so a board without dependencies hashes as before."""
+    _drop_by(data)
     waves = data["waves"]
     if deps:
         waves = [dict(w, items=[dict(it, **deps.get(it.get("id"), {})) for it in w.get("items", [])])
                  for w in waves]
-    return {"schema": SCHEMA, "job": data["job"], "title": data.get("title", ""),
-            "waves": waves}
+    c = {"schema": SCHEMA, "job": data["job"], "title": data.get("title", ""),
+         "assignees": data.get("assignees") or [], "waves": waves}
+    if data.get("lang"):
+        c["lang"] = data["lang"]  # only when set, so boards without one keep their hash
+    return c
 
 
 def content_hash(content: dict) -> str:
@@ -739,7 +791,7 @@ def sync_job(root: Path, job: str) -> dict:
                 continue
             logger.info("%s/%s: %s -> %s (evidence)", job, item.get("id"), item.get("status"), status)
             changed_items.append({"item": item.get("id"), "old": item.get("status"), "new": status})
-            item["status"], item["updated"], item["by"] = status, stamp, who
+            item["status"], item["updated"] = status, stamp
     file_changed = save_job(root, job, data)
 
     content = content_of(data, dependency_view(root, job, data))
@@ -923,6 +975,7 @@ def cmd_init(args, root):
         check_url(args.artifact_url)
     data = {"schema": SCHEMA, "job": job, "title": args.title,
             "artifact_url": args.artifact_url or None,
+            "assignees": parse_names(args.assignees),
             "created": _dt.date.today().isoformat(), "waves": []}
     save_job(root, job, data)
     logger.info("created %s", p)
@@ -956,7 +1009,8 @@ def cmd_add(args, root):
     elif args.wave_title:
         wave["title"] = args.wave_title
     new_item = {"id": item_id, "title": args.title, "status": "todo", "evidence": ev,
-                "note": "", "updated": now_iso(), "by": host_label()}
+                "note": "", "assignee": (" ".join(args.assignee.split()) if args.assignee else None),
+                "updated": now_iso()}
     if deps:
         new_item["depends_on"] = deps
     wave.setdefault("items", []).append(new_item)
@@ -988,7 +1042,7 @@ def cmd_set(args, root):
         item["status"] = args.status
         if args.note is not None:
             item["note"] = args.note
-        item["updated"], item["by"] = now_iso(), host_label()
+        item["updated"] = now_iso()
         save_job(root, args.job, data)
         logger.info("%s/%s: %s -> %s (manual)", args.job, args.item, old, args.status)
     # Evidence is evaluated straight away, so a report the evidence contradicts is
@@ -999,6 +1053,177 @@ def cmd_set(args, root):
         logger.warning("%s/%s: evidence says %s, not %s", args.job, args.item, final, args.status)
     lines = [f"{args.job}/{args.item}: {final}"] + push_lines(r)
     out(args, dict(r, item=args.item, status=final), lines)
+    return 0
+
+
+def _clean(text) -> str:
+    return " ".join((text or "").split())
+
+
+def cmd_wait(args, root):
+    kind = "decision" if args.decision else "blocker"
+    text = _clean(args.text)
+    if not text:
+        raise UsageError("a wait needs its text: the question to decide, or what blocks")
+    ref = check_id("ref", args.ref) if args.ref else None
+    data = load_job(root, args.job)
+    _, item = find_item(data, args.item)
+    if item is None:
+        raise UsageError(f"no item {args.item!r} in job {args.job!r}")
+    who = _clean(args.who) or None
+    if who and who not in (data.get("assignees") or []):
+        logger.warning("%s/%s: %r is not in the board's assignees list", args.job, args.item, who)
+    new = {"kind": kind, "who": who, "text": text, "ref": ref}
+    options = parse_names(args.options) if args.options else []
+    if options:
+        new["options"] = options
+    old = item.get("waits") or []
+    # The same ref replaces the earlier wait in its place, so a question keeps its position.
+    if ref and any(w.get("ref") == ref for w in old):
+        waits = [new if w.get("ref") == ref else w for w in old]
+    else:
+        waits = old + [new]
+    if waits != old:
+        item["waits"] = waits
+        item["updated"] = now_iso()
+        save_job(root, args.job, data)
+        logger.info("%s/%s waits: %d -> %d (%s on %s)", args.job, args.item, len(old), len(waits),
+                    kind, who or "nobody named")
+    r = sync_job(root, args.job)
+    label = f"{kind}{' ' + ref if ref else ''} on {who or '(nobody named)'}"
+    out(args, dict(r, item=args.item, waits=waits),
+        [f"{args.job}/{args.item}: waits for {label}"] + ([push_line(r)] if r["push_needed"] else []))
+    return 0
+
+
+def cmd_unwait(args, root):
+    data = load_job(root, args.job)
+    _, item = find_item(data, args.item)
+    if item is None:
+        raise UsageError(f"no item {args.item!r} in job {args.job!r}")
+    old = item.get("waits") or []
+    if args.all:
+        keep = []
+    elif args.ref:
+        keep = [w for w in old if w.get("ref") != args.ref]
+        if len(keep) == len(old):
+            raise UsageError(f"{args.job}/{args.item} has no wait with ref {args.ref!r}")
+    elif len(old) <= 1:
+        keep = []
+    else:
+        raise UsageError(f"{args.job}/{args.item} has {len(old)} waits: name one with --ref, or --all")
+    if keep != old:
+        if keep:
+            item["waits"] = keep
+        else:
+            item.pop("waits", None)
+        item["updated"] = now_iso()
+        save_job(root, args.job, data)
+        logger.info("%s/%s waits: %d -> %d", args.job, args.item, len(old), len(keep))
+    r = sync_job(root, args.job)
+    out(args, dict(r, item=args.item, waits=keep),
+        [f"{args.job}/{args.item}: {len(keep)} wait(s) left"] + ([push_line(r)] if r["push_needed"] else []))
+    return 0
+
+
+def _wait_key(item_id: str, w: dict, i: int) -> str:
+    return f"{item_id}|{w.get('ref') or '#' + str(i)}"
+
+
+def _record_answer(item: dict, idx: int, text: str, at: str) -> bool:
+    w = item["waits"][idx]
+    if w.get("answer") == text:
+        return False
+    w["answer"], w["answered"] = text, at
+    return True
+
+
+def cmd_answer(args, root):
+    data = load_job(root, args.job)
+    _, item = find_item(data, args.item)
+    if item is None:
+        raise UsageError(f"no item {args.item!r} in job {args.job!r}")
+    ws = item.get("waits") or []
+    if args.ref:
+        idx = next((i for i, w in enumerate(ws) if w.get("ref") == args.ref), None)
+        if idx is None:
+            raise UsageError(f"{args.job}/{args.item} has no wait with ref {args.ref!r}")
+    elif len(ws) == 1:
+        idx = 0
+    else:
+        raise UsageError(f"{args.job}/{args.item} has {len(ws)} waits: name one with --ref")
+    text = _clean(args.text)
+    if not text:
+        raise UsageError("an answer needs its text")
+    if _record_answer(item, idx, text, now_iso()):
+        item["updated"] = now_iso()
+        save_job(root, args.job, data)
+        logger.info("%s/%s answer %s: %s", args.job, args.item, ws[idx].get("ref") or idx, text)
+    r = sync_job(root, args.job)
+    out(args, dict(r, item=args.item, answer=text),
+        [f"{args.job}/{args.item}: answered {text!r}"] + ([push_line(r)] if r["push_needed"] else []))
+    return 0
+
+
+def _page_doc(d: Path, name: str) -> dict:
+    # ArtifactData get with out_dir writes <dir>/board/<name>.json; accept the bare file too,
+    # and the document either as its fields or wrapped in {"data": ...}.
+    for f in (d / "board" / f"{name}.json", d / f"{name}.json"):
+        doc = read_json(f)
+        if isinstance(doc, dict):
+            if isinstance(doc.get("data"), dict):
+                doc = doc["data"]
+            return {k: v for k, v in doc.items() if isinstance(v, dict)}
+    return {}
+
+
+def cmd_import(args, root):
+    d = Path(args.dir)
+    if not d.is_dir():
+        raise UsageError(f"no such directory: {d}")
+    data = load_job(root, args.job)
+    statuses, answers = _page_doc(d, "statuses"), _page_doc(d, "answers")
+    applied = []
+    for wave in data["waves"]:
+        for item in wave.get("items", []):
+            iid = item.get("id")
+            pick = statuses.get(iid) or {}
+            st, at = pick.get("status"), _parse_time(pick.get("at"))
+            last = _parse_time(item.get("updated"))
+            if st in STATUSES and at and (last is None or at > last) and st != item.get("status"):
+                logger.info("%s/%s: %s -> %s (page)", args.job, iid, item.get("status"), st)
+                applied.append({"item": iid, "status": st, "old": item.get("status")})
+                item["status"], item["updated"] = st, now_iso()
+            for i, w in enumerate(item.get("waits") or []):
+                a = answers.get(_wait_key(iid, w, i)) or {}
+                text, at = _clean(a.get("answer")), _parse_time(a.get("at"))
+                prev = _parse_time(w.get("answered"))
+                if text and at and (prev is None or at > prev) and _record_answer(item, i, text, a["at"]):
+                    logger.info("%s/%s answer %s: %s (page)", args.job, iid, w.get("ref") or i, text)
+                    applied.append({"item": iid, "ref": w.get("ref"), "answer": text})
+                    item["updated"] = now_iso()
+    if applied:
+        save_job(root, args.job, data)
+    r = sync_job(root, args.job)
+    lines = []
+    for a in applied:
+        if "status" in a:
+            lines.append(f"STATUS {a['item']} {a['old']} -> {a['status']}")
+        else:
+            lines.append(f"ANSWER {a['item']} {a['ref'] or '-'}: {a['answer']}")
+    lines = lines or ["nothing new from the page"]
+    out(args, dict(r, applied=applied), lines + ([push_line(r)] if r["push_needed"] else []))
+    return 0
+
+
+def cmd_lang(args, root):
+    if args.lang not in LANGS:
+        raise UsageError(f"lang must be one of {', '.join(LANGS)}")
+    data = load_job(root, args.job)
+    data["lang"] = args.lang
+    save_job(root, args.job, data)
+    r = sync_job(root, args.job)
+    out(args, dict(r, lang=args.lang), [f"{args.job} lang: {args.lang}"] + ([push_line(r)] if r["push_needed"] else []))
     return 0
 
 
@@ -1061,7 +1286,7 @@ def cmd_depend(args, root, remove=False):
             item["depends_on"] = deps
         else:
             item.pop("depends_on", None)
-        item["updated"], item["by"] = now_iso(), host_label()
+        item["updated"] = now_iso()
         save_job(root, args.job, data)
         logger.info("%s/%s: %d -> %d dependenc(ies)", args.job, args.item, len(before), len(deps))
     shown = [dict(d, **resolve_ref(d, root)) for d in deps]
@@ -1132,6 +1357,37 @@ def cmd_overview(args, root):
         lines.append(f"  {f['project']}/{f['job']}/{f['item']} -> {t['project']}/{t['job']}/{t['item']}: "
                      + ("met" if e["met"] else f"unmet ({e['status'] or e['reason']})"))
     out(args, {"boards": boards, "edges": edges}, lines)
+    return 0
+
+
+def cmd_assignees(args, root):
+    data = load_job(root, args.job)
+    names = parse_names(args.names)
+    old = data.get("assignees") or []
+    data["assignees"] = names
+    save_job(root, args.job, data)
+    logger.info("%s assignees: %s -> %s", args.job, old, names)
+    r = sync_job(root, args.job)
+    out(args, dict(r, assignees=names),
+        [f"{args.job} assignees: {', '.join(names) or '(none)'}"] + ([push_line(r)] if r["push_needed"] else []))
+    return 0
+
+
+def cmd_assign(args, root):
+    data = load_job(root, args.job)
+    _, item = find_item(data, args.item)
+    if item is None:
+        raise UsageError(f"no item {args.item!r} in job {args.job!r}")
+    who = None if args.name.strip() in ("", "-") else " ".join(args.name.split())
+    old = item.get("assignee")
+    item["assignee"] = who
+    if who and who not in (data.get("assignees") or []):
+        logger.warning("%s/%s: %r is not in the board's assignees list", args.job, args.item, who)
+    save_job(root, args.job, data)
+    logger.info("%s/%s assignee: %s -> %s", args.job, args.item, old, who)
+    r = sync_job(root, args.job)
+    out(args, dict(r, item=args.item, assignee=who),
+        [f"{args.job}/{args.item}: {who or '(unassigned)'}"] + ([push_line(r)] if r["push_needed"] else []))
     return 0
 
 
@@ -1401,6 +1657,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("job")
     s.add_argument("--title", required=True)
     s.add_argument("--artifact-url")
+    s.add_argument("--assignees", help="comma-separated names the page offers")
     s.set_defaults(fn=cmd_init)
 
     s = sub.add_parser("add", parents=[common], help="add an item (and its wave if new)")
@@ -1412,6 +1669,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--evidence", help="evidence object as JSON")
     s.add_argument("--depends-on", action="append", metavar="[PROJECT:]JOB/ITEM",
                    help="an item this one waits on (repeatable)")
+    s.add_argument("--assignee", help="the item's default owner")
     s.set_defaults(fn=cmd_add)
 
     s = sub.add_parser("set", parents=[common], help="report an item's status (fast lane)")
@@ -1445,6 +1703,55 @@ def build_parser() -> argparse.ArgumentParser:
                        help="the team's boards (or --all registered projects) and their dependencies")
     s.add_argument("--all", action="store_true", help="every registered project, not only the team scope")
     s.set_defaults(fn=cmd_overview)
+
+    s = sub.add_parser("assignees", parents=[common], help="set the names the page offers")
+    s.add_argument("job")
+    s.add_argument("names", help="comma-separated, e.g. 'András,Dana'")
+    s.set_defaults(fn=cmd_assignees)
+
+    s = sub.add_parser("assign", parents=[common], help="set an item's default owner ('-' clears)")
+    s.add_argument("job")
+    s.add_argument("item")
+    s.add_argument("name")
+    s.set_defaults(fn=cmd_assign)
+
+    s = sub.add_parser("wait", parents=[common], help="record a decision or a blocker an item waits on")
+    s.add_argument("job")
+    s.add_argument("item")
+    k = s.add_mutually_exclusive_group(required=True)
+    k.add_argument("--decision", action="store_true", help="a person has to choose")
+    k.add_argument("--blocker", action="store_true", help="work or access someone else has to provide")
+    s.add_argument("text", help="the question, or what blocks")
+    s.add_argument("--who", help="whom it waits on (a name from the board's assignees)")
+    s.add_argument("--ref", help="a stable id (e.g. G3); the same ref replaces the earlier wait")
+    s.add_argument("--options", help="comma-separated answer buttons for the page, e.g. 'Igen,Nem'")
+    s.set_defaults(fn=cmd_wait)
+
+    s = sub.add_parser("answer", parents=[common], help="record the answer to a wait")
+    s.add_argument("job")
+    s.add_argument("item")
+    s.add_argument("text")
+    s.add_argument("--ref")
+    s.set_defaults(fn=cmd_answer)
+
+    s = sub.add_parser("import", parents=[common],
+                       help="apply what viewers set on the page (statuses, answers) from ArtifactData output")
+    s.add_argument("job")
+    s.add_argument("--dir", required=True, help="the out_dir of ArtifactData get board/statuses and board/answers")
+    s.set_defaults(fn=cmd_import)
+
+    s = sub.add_parser("lang", parents=[common], help="the page's language (en, hu)")
+    s.add_argument("job")
+    s.add_argument("lang", choices=LANGS)
+    s.set_defaults(fn=cmd_lang)
+
+    s = sub.add_parser("unwait", parents=[common], help="clear what an item waits on")
+    s.add_argument("job")
+    s.add_argument("item")
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--ref", help="the wait to clear")
+    g.add_argument("--all", action="store_true", help="clear every wait on the item")
+    s.set_defaults(fn=cmd_unwait)
 
     s = sub.add_parser("sync", parents=[common], help="derive status from evidence, write payloads")
     s.add_argument("jobs", nargs="*")

@@ -1,0 +1,20 @@
+#!/bin/bash
+# set-feed-watch — the deterministic half of the feed-watch module (seen, check-new,
+# digest, gate, opt-in). It never touches the network; collection is the skill's job.
+#
+# Same launcher shape as set-work-cycle: the console script would land only inside a venv,
+# and the agent that calls this runs with PATH=~/.local/bin:… and no venv.
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+export SET_TOOLS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+source "$SCRIPT_DIR/set-common.sh" 2>/dev/null
+
+PYTHON="$(find_python 2>/dev/null)" || PYTHON="python3"
+
+exec "$PYTHON" -c "
+import sys
+sys.path.insert(0, '$SET_TOOLS_ROOT/lib')
+from set_feedwatch.cli import main
+sys.exit(main())
+" "$@"

@@ -291,3 +291,65 @@ export async function fetchProviderCatalogue(project?: string): Promise<Provider
     return null
   }
 }
+
+/** The upstream model check, as `/api/fleet/models/upstream` sends it. */
+export interface UpstreamModelReport {
+  verdict: 'current' | 'behind' | 'unknown'
+  source: string
+  fetched_at: number | null
+  error: string | null
+  not_shipped: Array<{ id: string; family: string | null; shorthand_resolves_to: string | null }>
+  not_declared: string[]
+  machine_config: string | null
+  machine_note: string | null
+}
+
+/** Read the upstream check. `null` means COULD NOT ASK — rendered as unknown, never as current. */
+export async function fetchUpstreamModels(): Promise<UpstreamModelReport | null> {
+  try {
+    const res = await fetch('/api/fleet/models/upstream')
+    if (!res.ok) return null
+    const body = await res.json()
+    if (!body || typeof body.verdict !== 'string') return null
+    return body as UpstreamModelReport
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The start dialog's one-line notice, or `null` when there is nothing to say.
+ *
+ * `current` is silent — the dialog stays compact. `null` (the route failed) is
+ * NOT silent: it reads as unknown, because a check that could not run and one
+ * that found nothing look identical unless the screen says which.
+ */
+export function upstreamNotice(
+  report: UpstreamModelReport | null,
+): { text: string; title: string } | null {
+  if (report === null) {
+    return { text: "Anthropic's model list could not be checked",
+             title: 'The upstream model check did not answer. This says nothing about whether set-core is current.' }
+  }
+  if (report.verdict === 'current') return null
+  if (report.verdict === 'unknown') {
+    return { text: "Anthropic's model list could not be checked",
+             title: report.error ?? 'The upstream model check could not measure.' }
+  }
+  const parts: string[] = []
+  const titles: string[] = []
+  if (report.not_shipped.length) {
+    const ids = report.not_shipped.map(x => x.id)
+    parts.push(`Anthropic lists ${ids.join(', ')} — update set-core`)
+    for (const x of report.not_shipped) {
+      titles.push(`${x.id} is not in set-core's model mapping` +
+        (x.shorthand_resolves_to ? `; \`${x.family}\` still resolves to ${x.shorthand_resolves_to}.` : '.'))
+    }
+  }
+  if (report.not_declared.length) {
+    parts.push(`${report.not_declared.join(', ')} not in this machine's catalogue`)
+    titles.push(`set-core ships ${report.not_declared.join(', ')}; add them to providers.anthropic.models in ${report.machine_config ?? 'providers.json'}.`)
+  }
+  titles.push('Run `set-providers upstream` for the full advice.')
+  return { text: parts.join(' · '), title: titles.join('\n') }
+}

@@ -231,6 +231,14 @@ _deploy_skills() {
         success "  Processed $openspec_skill_count openspec skill(s) in .claude/skills/"
     fi
 
+    # Opt-in feature module: feed-watch. The project's own declaration file IS the opt-in —
+    # a project without `.set/feed-watch.yaml` gets no feed-watch file, by construction.
+    local src_fw="$SET_TOOLS_ROOT/templates/feed-watch/skills/feed-watch"
+    if [[ -f "$project_path/.set/feed-watch.yaml" && -d "$src_fw" ]]; then
+        _pv_deploy_tree "$src_fw" "$claude_dir/skills/feed-watch" "$project_path"
+        success "  feed-watch: declaration found, skill processed in .claude/skills/feed-watch/"
+    fi
+
     # Core rules (from templates/core/rules/ — explicit deploy source)
     # Skip when deploying to set-core itself (rules already exist without prefix)
     local src_rules="$SET_TOOLS_ROOT/templates/core/rules"

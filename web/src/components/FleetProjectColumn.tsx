@@ -30,6 +30,7 @@ import { WaitThresholdsContext, useWaitThresholds } from '../lib/fleetWaitThresh
 import { orderAgents, type AgentOrderMap } from '../lib/fleetAgentOrder'
 import {
   type AttentionProject,
+  type InputWaitThresholds,
   type Tally,
   EMPTY_TALLY,
   UNKNOWN,
@@ -42,7 +43,7 @@ import {
   tallyOf,
   waitingReported,
 } from '../lib/fleetAttention'
-import { loadTabBadge, needsPerson, saveTabBadge, tabTitle } from '../lib/fleetTabBadge'
+import { askingYou, loadTabBadge, needsPerson, readyToRead, saveTabBadge, tabTitle } from '../lib/fleetTabBadge'
 import { escapeAttr, useReorder, type ReorderHandlers } from '../lib/useReorder'
 import { Chip, Dot } from './Chip'
 import SrOnly from './SrOnly'
@@ -148,6 +149,21 @@ function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?:
           on the group header as well as the project row, because a collapsed
           group is exactly where a four-minute wait can sit while the screen
           looks calm. */}
+      {/* A QUESTION is open — AskUserQuestion or ExitPlanMode, measured from the
+          session log. Marked from the first second and in sky, the colour the
+          tile already uses for "asking you": the wait counter beside it gives a
+          finished turn a 15-second grace, and a question was getting the same
+          grace, so for its first 15 seconds a row holding a question looked
+          exactly like a row whose agent had merely finished (B-168). */}
+      {t.askingNow > 0 && (
+        <span
+          data-fleet-asking={t.askingNow}
+          className="inline-flex items-center gap-1 text-sky-300 font-semibold"
+          title="an agent here is asking you a question — AskUserQuestion or ExitPlanMode is open"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-300 animate-pulse" />Q{t.askingNow}
+        </span>
+      )}
       {(t.input > 0 || t.prompt > 0) && (
         <span
           data-fleet-input-wait={t.input + t.prompt}
@@ -485,7 +501,28 @@ function toneRow(tone: string | null, active: boolean): string {
       ? 'border-amber-400/60 bg-amber-500/15 border-l-2 border-l-amber-400'
       : 'border-transparent bg-amber-500/10 hover:bg-amber-500/20 border-l-2 border-l-amber-400'
   }
+  if (tone === 'asking') {
+    return active
+      ? 'border-sky-400/60 bg-sky-500/15 border-l-2 border-l-sky-300'
+      : 'border-transparent bg-sky-500/10 hover:bg-sky-500/20 border-l-2 border-l-sky-300'
+  }
   return ''
+}
+
+/**
+ * The row's tint: the wait escalation, or — below it — an open question.
+ *
+ * Amber and red keep precedence: they say how long somebody has been left,
+ * which is the stronger fact once it holds. Under 15 seconds the escalation is
+ * deliberately unmarked, and that grace is right for a turn that merely ended
+ * and wrong for a question, which is a request addressed to the reader from
+ * its first second (B-168).
+ */
+function rowTone(t: Tally, thresholds: InputWaitThresholds | null): string | null {
+  const tone = escalationTone(t, thresholds)
+  if (tone === 'red' || tone === 'amber') return tone
+  if (t.askingNow > 0) return 'asking'
+  return tone
 }
 
 function ProjectRow(p: RowProps) {
@@ -494,7 +531,7 @@ function ProjectRow(p: RowProps) {
   const t = p.project
     ? tallyOf([p.name], new Map([[p.name, p.project as AttentionProject]]), thresholds)
     : EMPTY_TALLY
-  const tone = escalationTone(t, thresholds)
+  const tone = rowTone(t, thresholds)
   const toned = toneRow(tone, p.active)
   return (
     <div
@@ -787,7 +824,7 @@ function GroupBlock(p: GroupProps) {
   // which is a hook inside a branch: the hook count changes the moment somebody
   // collapses a group, and React throws on the render after the click. The
   // suite did not catch it, because none of its cases toggles one.
-  const groupTone = open ? null : escalationTone(t, groupThresholds)
+  const groupTone = open ? null : rowTone(t, groupThresholds)
   const list = useRef<HTMLDivElement | null>(null)
   const reorder = useReorder((from, to) => p.onMoveProject(p.group.id, from, to), list, p.group.order.length)
   const found = useMemo(() => new Set(p.group.projects), [p.group.projects])
@@ -801,10 +838,11 @@ function GroupBlock(p: GroupProps) {
       className={`rounded border border-surface-edge/60 bg-surface-panel/50 ${p.groupDropTarget ? 'outline outline-1 outline-sky-400' : ''} ${p.groupDragging ? 'opacity-50' : ''}`}
     >
       <div
-        data-fleet-group-tone={groupTone === 'red' || groupTone === 'amber' ? groupTone : undefined}
+        data-fleet-group-tone={groupTone === 'red' || groupTone === 'amber' || groupTone === 'asking' ? groupTone : undefined}
         className={`flex items-center gap-1 px-0.5 py-0.5 rounded ${
           groupTone === 'red' ? 'bg-rose-500/15 border-l-2 border-l-rose-400'
-            : groupTone === 'amber' ? 'bg-amber-500/10 border-l-2 border-l-amber-400' : ''
+            : groupTone === 'amber' ? 'bg-amber-500/10 border-l-2 border-l-amber-400'
+              : groupTone === 'asking' ? 'bg-sky-500/10 border-l-2 border-l-sky-300' : ''
         }`}
       >
         {p.groupHandle ? (
@@ -1134,7 +1172,9 @@ export default function FleetProjectColumn({
   */
   const [tabBadge, setTabBadge] = useState<boolean>(() => loadTabBadge())
   useEffect(() => {
-    document.title = tabTitle('SET', tabBadge ? needsPerson(totals) : 0, tabBadge ? totals.quiet : 0)
+    document.title = tabBadge
+      ? tabTitle('SET', needsPerson(totals), readyToRead(totals), askingYou(totals))
+      : 'SET'
     return () => {
       document.title = 'SET'
     }
@@ -1410,8 +1450,8 @@ export default function FleetProjectColumn({
             className="ml-auto shrink-0 text-fg-muted hover:text-fg"
             title={
               tabBadge
-                ? 'The browser tab shows “SET (N)” while an agent needs you — click to turn that off for this browser'
-                : 'The tab badge is off for this browser — click to show “SET (N)” in the tab while an agent needs you'
+                ? 'The browser tab shows “⚠️ SET (N)” while an agent asks you something, “🟢 SET (N)” while finished agents wait to be read — click to turn that off for this browser'
+                : 'The tab badge is off for this browser — click to show “⚠️ SET (N)” for questions and “🟢 SET (N)” for finished agents'
             }
             aria-pressed={tabBadge}
           >

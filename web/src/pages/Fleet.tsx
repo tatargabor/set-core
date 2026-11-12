@@ -53,7 +53,7 @@ import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Fold
 import { Chip, Dot } from '../components/Chip'
 
 import { age } from '../lib/fleetAge'
-import { COLUMN_CHOICES, fitColumns, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, writeView } from '../lib/fleetViewState'
+import { COLUMN_CHOICES, fitColumns, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, treeClickAct, writeView } from '../lib/fleetViewState'
 import type { ProjectView } from '../lib/fleetViewState'
 import {
   LATEST_VIEW_KEY, MAX_LATEST_COUNT, MIN_LATEST_COUNT, agentsInSlots, allAgents, clampCount, initial as latestInitial,
@@ -89,10 +89,10 @@ import {
 } from '../lib/fleetStartLocations'
 import type { StartLocation } from '../lib/fleetStartLocations'
 import {
-  fetchProviderCatalogue, levelLabel, modelsFor, offerableProviders,
+  fetchProviderCatalogue, fetchUpstreamModels, levelLabel, modelsFor, offerableProviders, upstreamNotice,
   previewResolution, providerMark,
 } from '../lib/fleetProviders'
-import type { ProviderCatalogue } from '../lib/fleetProviders'
+import type { ProviderCatalogue, UpstreamModelReport } from '../lib/fleetProviders'
 import { blockUnexpectedFrom, declaredStanding, instructability, phaseRepeatsBlock, purposeStanding } from '../lib/fleetDeclared'
 import { mark as cacheMark, UNMEASURED_TITLE } from '../lib/fleetCacheHeat'
 import type { DeclaredStanding } from '../lib/fleetDeclared'
@@ -1732,6 +1732,8 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
   const [catalogueFailed, setCatalogueFailed] = useState(false)
   const [provider, setProvider] = useState<string | null>(null)
   const [model, setModel] = useState<string | null>(null)
+  // `undefined` = not asked yet (render nothing); `null` = asked and could not read.
+  const [upstream, setUpstream] = useState<UpstreamModelReport | null | undefined>(undefined)
 
   useEffect(() => {
     let cancelled = false
@@ -1753,6 +1755,15 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
     })
     return () => { cancelled = true }
   }, [open, project.name])
+
+  // Does Anthropic list a model set-core does not ship? Advice only; asked when
+  // the form opens, never awaited by the start itself.
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    fetchUpstreamModels().then(r => { if (!cancelled) setUpstream(r) })
+    return () => { cancelled = true }
+  }, [open])
 
   // Asked when the form opens, not on every poll: a `git worktree list` per
   // project on the fleet's polling path would be paid by every reader for a
@@ -1979,6 +1990,15 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
               providers could not be read — the owner will resolve
             </span>
           )}
+          {upstream !== undefined && (() => {
+            const notice = upstreamNotice(upstream)
+            return notice && (
+              <span data-fleet-start="upstream-models" data-verdict={upstream?.verdict ?? 'unread'}
+                    className="text-xs text-amber-400" title={notice.title}>
+                {notice.text}
+              </span>
+            )
+          })()}
           {locationsFailed && (
             <span data-fleet-start="locations-unread" className="text-xs text-amber-400">
               worktrees could not be read — starting in the project root
@@ -2802,24 +2822,6 @@ export default function Fleet() {
   }, [])
 
   /**
-   * The TREE shortcut — clicking an agent's sub-row in the project column.
-   *
-   * Deliberately the SAME two acts as selecting a tile by hand: select the
-   * project, then enlarge that agent. Going through `setEnlarged` rather than
-   * poking the stored view directly is the whole point — one code path owns
-   * the exclusivity rules (a maximised file view stands down, the memory is
-   * refreshed), so a tree click cannot produce a state a tile click could not.
-   * And because the enlarged pid is remembered per project and resolved
-   * against the live answer on return, leaving and coming back restores the
-   * same agent without this handler doing anything extra.
-   */
-  const focusAgentFromTree = useCallback((project: string, pid: number) => {
-    setLatest({ on: false })
-    setSelected(project)
-    setEnlarged(project, pid)
-  }, [setEnlarged, setLatest])
-
-  /**
    * A DOCKED band's size before it was maximised, so it can be put back.
    *
    * Asked for 2026-08-22: *"a teljes képernyő kell akkor is ha ki van téve 4
@@ -3072,6 +3074,36 @@ export default function Fleet() {
     an agent: an entry means an edge, no entry means the grid.
   */
   const [filesOpen, setFilesOpen] = useState<ReadonlySet<string>>(new Set())
+
+  /**
+   * The TREE shortcut — clicking an agent's sub-row in the project column.
+   *
+   * Select the project, then change its layout ONLY if the agent is not
+   * already on screen in it — see `treeClickAct`. It used to enlarge the agent
+   * unconditionally, which stored over a side-by-side layout the reader had
+   * built (reported 2026-10-09). When it does change the layout it goes through
+   * `setEnlarged` / `setFocus`, so one code path owns the exclusivity rules and
+   * a tree click cannot produce a state a tile click could not.
+   */
+  const focusAgentFromTree = useCallback((project: string, pid: number) => {
+    setLatest({ on: false })
+    setSelected(project)
+    // Resolved against the TARGET project's own layout, not the one on screen:
+    // the click is usually a switch, and the layout that must survive it is
+    // the one the reader built in the project they are going to.
+    const target = projects.find(p => p.name === project)
+    const root = target?.root ?? null
+    const docked = docksFor(dockMap, project)
+    const gridPids = (target?.agents ?? [])
+      .filter(a => !docked.some(d => d.kind === PANEL_AGENT && d.id === a.terminal_label))
+      .map(a => a.pid)
+    const panelBig = root !== null && (
+      (filesMax === root && filesOpen.has(root) && !docked.some(d => d.kind === PANEL_FILES && d.id === root))
+      || (boardMax === root && boardOpen.has(root) && !docked.some(d => d.kind === PANEL_BOARD && d.id === root)))
+    const act = treeClickAct(readView(project), gridPids, pid, panelBig)
+    if (act === 'enlarge') setEnlarged(project, pid)
+    else if (act === 'focus') setFocus(project, pid)
+  }, [projects, dockMap, filesMax, filesOpen, boardMax, boardOpen, setEnlarged, setFocus, setLatest])
 
   /*
     Is the FILE view the big one right now — ONE derived answer, asked by every

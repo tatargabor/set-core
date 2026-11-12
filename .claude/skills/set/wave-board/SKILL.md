@@ -52,7 +52,7 @@ project not registered on this machine is reported as `UNRESOLVED` and left alon
 ## Creating a board
 
 ```bash
-set-wave-board init <job> --title "<what the job is>"
+set-wave-board init <job> --title "<what the job is>" --assignees "<name>,<name>"
 set-wave-board add <job> --wave w0 --wave-title "<wave title>" --item <id> --title "<item>" \
     --evidence '{"type":"openspec-tasks","path":"openspec/changes/<x>/tasks.md"}'
 # … one add per item; waves appear in the order first used
@@ -143,6 +143,76 @@ set-wave-board undepend <job> <item> [project:]job/item ...
 - `set-wave-board overview` lists every registered project's boards and every edge, met or not.
   The fleet's wave list shows the same as "waits on N" / "blocks N".
 
+## Assignees — the same structure on every board
+
+Every board carries **who owns an item**, never which machine touched it (a hostname told its
+readers nothing, so items no longer record one):
+
+- `assignees` on the board: the names the page offers, set with `init --assignees` or
+  `set-wave-board assignees <job> "András,Dana"`. Use the names the people use for each other.
+- `assignee` on an item: the default owner, set with `add --assignee` or
+  `set-wave-board assign <job> <item> <name>` (`-` clears).
+- **On the page, a viewer picks the assignee** from a select on each row. The choice goes to the
+  `board/assignees` document (one field per item id), which your `board/state` push never
+  touches, and it shows over the job file's default.
+
+Before you report on a board or plan who does what, read the page's choices:
+`ArtifactData action: "get"`, `collection: "board"`, `doc_id: "assignees"`. To make a choice part of
+the tracked file, `assign` it and push as usual.
+
+## Decisions and blockers — what an item waits on
+
+A status says how far an item got; it does not say **who it waits on**. Record that as a wait,
+so the page can list every open question at the top, grouped by person:
+
+```bash
+set-wave-board wait <job> <item> --decision "Free hour or package price?" --who Dana --ref G3
+set-wave-board wait <job> <item> --blocker "Run DB migration 0019" --who Dana --ref G9
+set-wave-board unwait <job> <item> --ref G3        # answered / done; --all clears every wait
+```
+
+- **Decision** = a person has to choose. **Blocker** = work or access someone else has to provide.
+  Keep them apart: the successor handles them differently (a decision is asked, a blocker is chased).
+- `--who` names whom it waits on, usually one of the board's assignees; an outside person
+  (a client) is allowed and simply gets a group of their own.
+- `--ref` is a stable id. Use the same id as the question list it comes from (a README table, a
+  mail), so both point at one thing; the same ref replaces the earlier wait in place.
+- A wait does **not** change the status. Set `blocked` yourself when the item cannot move at all;
+  a decision often hangs on an item that is otherwise in progress, or already done (the variants
+  are delivered, the choice between them is not). The page shows waits on every item except
+  skipped ones.
+- `--options "Igen,Nem"` (or `"E,C,D"`) puts answer buttons on the page; every wait also takes a
+  free-text answer ("Other" / „Egyéb"). A blocker usually gets one button, e.g. `--options "Kész"`.
+- `answer <job> <item> --ref G3 "…"` records an answer you heard elsewhere (chat, mail).
+- When you report on a board, read its waits first: they are the "what is needed from whom" list.
+
+## What viewers set on the page — read it back, then act
+
+A viewer can change an item's **status** (the pill is a select), its **assignee**, and **answer a
+wait**. Each goes to the page's own document, never to `board/state`:
+
+| document | holds |
+|---|---|
+| `board/statuses` | `{item: {status, at}}` |
+| `board/answers` | `{"<item>\|<ref or #index>": {answer, at}}` |
+| `board/assignees` | `{item: name}` |
+
+Before you report on a board or plan from it, fetch the first two and import them:
+
+```bash
+# ArtifactData get, url = the board, collection "board", doc_id "statuses" and "answers",
+# out_dir = .set/waveboard/<job>.page   (writes .set/waveboard/<job>.page/board/<doc>.json)
+set-wave-board import <job> --dir .set/waveboard/<job>.page
+```
+
+`import` applies a status picked after the item last changed (a manual `set`; evidence still
+wins) and stores newer answers on their waits, printing `STATUS` and `ANSWER` lines. Then **act on
+each answer**: do what it decides, write it where the decision belongs (the README table, the
+brief), and `unwait` the wait. Push as usual. An answer you cannot act on (unclear, contradicts
+another) goes back to the person as a question, not into a guess.
+
+`set-wave-board lang <job> hu` switches the page's own labels to Hungarian.
+
 ## The push procedure
 
 The page reads collection `board`, document `state`. Only you can write it — no script can.
@@ -188,15 +258,21 @@ other machine, commit the job file and stop there.
 - What was pushed is recorded **per machine** (`.set/waveboard/<job>.pushed.json`), so a second
   machine sees the job as pending until it pushes once. With `if_version` pinned, two machines
   cannot silently overwrite each other: a stale write is refused and redone after a `get`.
-- `by` on an item is the short hostname of the machine that changed it; set
-  `SET_WAVEBOARD_BY` for a different label.
+- Items carry no machine name. A legacy `by` field is dropped on the next write.
 
 ## Commands
 
 ```
-set-wave-board init <job> --title T [--artifact-url URL]
-set-wave-board add <job> --wave <id> [--wave-title T] --item <id> --title T [--evidence JSON]
+set-wave-board init <job> --title T [--artifact-url URL] [--assignees A,B]
+set-wave-board add <job> --wave <id> [--wave-title T] --item <id> --title T [--evidence JSON] [--assignee A]
 set-wave-board set <job> <item> <todo|doing|done|blocked|skipped> [--note N] [--force]
+set-wave-board assignees <job> A,B      # the names the page offers
+set-wave-board assign <job> <item> <name|->
+set-wave-board wait <job> <item> (--decision|--blocker) TEXT [--who NAME] [--ref ID] [--options A,B]
+set-wave-board unwait <job> <item> [--ref ID | --all]
+set-wave-board answer <job> <item> [--ref ID] TEXT
+set-wave-board import <job> --dir DIR   # what viewers set on the page
+set-wave-board lang <job> <en|hu>
 set-wave-board link <job> <artifact-url>   # prints the SHARE line
 set-wave-board share [<job>...]            # the SHARE line again, per board
 set-wave-board depend|undepend <job> <item> [project:]job/item ...

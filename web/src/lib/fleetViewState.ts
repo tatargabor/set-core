@@ -297,3 +297,41 @@ export function fitColumns(stored: number, tiles: number): number {
   if (!Number.isFinite(tiles) || tiles <= 0) return stored
   return Math.max(1, Math.min(stored, Math.floor(tiles)))
 }
+
+/**
+ * What a click on an agent's sub-row in the project tree does to the layout.
+ *
+ * The tree is how the reader moves between projects, so a click there is
+ * NAVIGATION first: it selects the project and reveals the agent. It used to
+ * always enlarge the agent as well, and that destroyed a layout the reader had
+ * built — reported 2026-10-09: two agents of one project placed side by side
+ * came back as one enlarged agent and a tab strip after switching to another
+ * project and back through the tree, and the enlarged pid was STORED, so the
+ * side-by-side arrangement was gone for good.
+ *
+ * So the layout changes only when the agent is not visible in it:
+ *
+ *  - `keep`    — the agent is already on screen: side by side in the grid (no
+ *                tile enlarged), the enlarged one, the focused one, or docked
+ *                to an edge (not in `gridPids` at all). Nothing is written.
+ *  - `focus`   — another agent is shown alone; switch WHICH one, keeping the
+ *                full-screen layout the reader chose.
+ *  - `enlarge` — another agent is enlarged, or a file view / board is
+ *                maximised over the agents: the agent is behind a tab, and
+ *                enlarging it is the same act as clicking that tab.
+ */
+export type TreeClickAct = 'keep' | 'focus' | 'enlarge'
+
+export function treeClickAct(
+  view: ProjectView,
+  gridPids: readonly number[],
+  pid: number,
+  panelBig: boolean,
+): TreeClickAct {
+  if (!gridPids.includes(pid)) return 'keep'
+  const focus = resolveFocus(view, gridPids)
+  if (focus !== null) return focus === pid ? 'keep' : 'focus'
+  if (panelBig) return 'enlarge'
+  const enlarged = resolveEnlarged(view, gridPids)
+  return enlarged === null || enlarged === pid ? 'keep' : 'enlarge'
+}

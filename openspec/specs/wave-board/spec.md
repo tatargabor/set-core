@@ -4,9 +4,7 @@
 The live execution status of a multi-step job that runs in waves: a tracked job file per job,
 status derived from evidence by a hook-run sync, the agent's own report as the fast lane, and a
 read-only Artifact page whose database only the agent writes.
-
 ## Requirements
-
 ### Requirement: A job is a tracked registration file
 
 Each job SHALL be one JSON file at `docs/waveboard/<job>.json` in the consumer repository,
@@ -210,15 +208,24 @@ as `progress`, never as `notes`.
 ### Requirement: The board page is read-only and works offline
 
 The page SHALL render waves, items and status chips, done and remaining counts per wave and
-overall, and the last sync time and machine. It SHALL subscribe to `board/state` through the
-`db` capability and SHALL fall back to the embedded `<script type="application/json"
-id="seed">` when the database is unavailable. It SHALL NOT write. `set-wave-board render`
-SHALL produce the page with the current payload as the seed.
+overall, and the last sync time. It SHALL NOT show a machine name. It SHALL subscribe to
+`board/state` through the `db` capability and SHALL fall back to the embedded `<script
+type="application/json" id="seed">` when the database is unavailable. Each item SHALL offer the
+board's `assignees` in a select, showing the `board/assignees` document's value for that item over
+the item's own `assignee`. The page's only write SHALL be the `board/assignees` document; it SHALL
+NOT write `board/state`. `set-wave-board render` SHALL produce the page with the current payload as
+the seed.
 
 #### Scenario: Offline render
 
 - **WHEN** `render <job> -o board.html` runs and the file is opened without the platform
 - **THEN** the page shows the job from the seed and says it is a snapshot
+
+#### Scenario: A viewer picks an assignee
+
+- **WHEN** a viewer chooses "Dana" on item H1 while the database is available
+- **THEN** `board/assignees` gets `H1: "Dana"`, every open view shows Dana on H1, and a later
+  push of `board/state` does not undo it
 
 ### Requirement: The hook reaches existing projects
 
@@ -399,3 +406,102 @@ it.
 
 - **WHEN** the Stop event comes from a linked worktree of a repository with a stale job
 - **THEN** the hook prints nothing
+
+### Requirement: Items carry an assignee chosen from the board's list
+
+A job file SHALL carry a board-level `assignees` list of names and MAY carry an item-level
+`assignee`. `init --assignees`, `assignees`, `add --assignee` and `assign` SHALL maintain them;
+`assign <job> <item> -` SHALL clear the item's assignee. Both fields SHALL be part of the payload.
+No command SHALL write a machine name into the job file or the payload; a legacy item `by` SHALL
+be dropped on the next write.
+
+#### Scenario: Assign and clear
+
+- **WHEN** `assign job H1 András` runs and then `assign job H1 -`
+- **THEN** the item first has `assignee: "András"` and then no assignee, and each change marks the
+  payload for a push
+
+#### Scenario: No hostname reaches the payload
+
+- **WHEN** `sync` runs on a job file whose items still carry `by`
+- **THEN** the written job file and payload contain no `by` on any item
+
+### Requirement: Items record what they wait on
+
+An item SHALL be able to carry `waits`, a list of objects `{kind, who, text, ref}` where `kind` is `decision` or
+`blocker`. `wait` SHALL append one, or replace in place the wait with the same `ref`; `unwait` SHALL
+remove the one named by `--ref`, all with `--all`, or the only one when the item has one. A wait SHALL
+NOT change the item's status. Empty text, an unknown item and an unknown ref SHALL be usage errors.
+Waits SHALL be part of the payload.
+
+#### Scenario: A decision and a blocker on one item
+
+- **WHEN** `wait job H2.3 --decision "Price on the site?" --who Dana --ref G2` and
+  `wait job H2.3 --blocker "Run migration 0019" --who Dana --ref G9` run
+- **THEN** the item carries both waits in that order, its status is unchanged, and the payload
+  carries them after `sync`
+
+#### Scenario: Same ref replaces
+
+- **WHEN** a second `wait` uses a ref that is already on the item
+- **THEN** the earlier wait is replaced in its position, not duplicated
+
+### Requirement: The page lists every open wait by person
+
+The board page SHALL show a "Waiting on people" panel above the waves, with one group per `who`
+(unnamed waits grouped together), decisions before blockers, each line naming the item id, the ref
+and the text. Waits on skipped items SHALL be left out; waits on done items SHALL be shown. The
+summary SHALL count decisions and blockers, and each row and Kanban card SHALL show its own waits.
+The panel SHALL be hidden when nothing waits.
+
+#### Scenario: Two people, two groups
+
+- **WHEN** the payload has waits on Dana and on András
+- **THEN** the panel shows two groups with their counts, and the summary shows the totals
+
+### Requirement: Status pills fit their column
+
+In the Waves view, the status column SHALL be as wide as the widest pill in the wave, so no pill label
+overflows its pill or its column, and the rows of a wave SHALL stay aligned. At 320px no part of the
+page SHALL scroll horizontally.
+
+#### Scenario: "in progress" fits
+
+- **WHEN** a wave holds an in-progress item
+- **THEN** its pill's text stays inside the pill, measured at 1280, 375 and 320px
+
+### Requirement: Viewers set statuses and answer waits on the page
+
+The board page SHALL offer every item's status as a select and SHALL write a pick to `board/statuses`
+as `{item: {status, at}}`. A pick SHALL be shown over the pushed status only while it is newer than the
+item's `updated`. Each wait in the "Waiting on people" panel SHALL offer one button per `options` entry
+and a free-text field, and SHALL write an answer to `board/answers` under `<item>|<ref>` (or
+`<item>|#<index>` without a ref). The page SHALL NOT write `board/state`.
+
+#### Scenario: Pick a status and answer a question
+
+- **WHEN** a viewer sets H1.2 to done, clicks "C" on wait P1 and sends "99 000 Ft" as the other answer to G2
+- **THEN** `board/statuses` holds `H1.2: done`, `board/answers` holds `H0.1|P1: C` and `H2.3|G2: 99 000 Ft`,
+  and the page shows the new status and both answers
+
+### Requirement: Page choices come back through import
+
+`import <job> --dir DIR` SHALL apply each status pick newer than its item's last change as a manual
+status, and each answer newer than the wait's recorded one as `answer` and `answered`; it SHALL print one
+`STATUS` or `ANSWER` line per change and change nothing on a second run with the same documents.
+
+#### Scenario: An old pick is ignored
+
+- **WHEN** the statuses document holds a pick older than the item's last change
+- **THEN** import leaves that item's status as it is
+
+### Requirement: The page speaks the board's language
+
+A job file SHALL accept `lang` (`en` or `hu`), set by `lang <job> <lang>`; it SHALL be in the payload only when
+set. With `hu`, the page SHALL show its own labels in Hungarian, including "Egyéb" for the free-text answer.
+
+#### Scenario: Hungarian board
+
+- **WHEN** `lang job hu` runs and the page renders the payload
+- **THEN** the panel is titled "Kire várunk" and the in-progress pill reads "folyamatban"
+

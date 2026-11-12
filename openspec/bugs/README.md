@@ -68,21 +68,24 @@ consumer's name, path, or content.
 
 ## Open
 
-### B-168 — Python config readers hard-code `~/.config/set-core` while the shell and `local_config` honour `SET_CONFIG_DIR` / `XDG_CONFIG_HOME`
+### B-175 — Python config readers hard-code `~/.config/set-core` while the shell and `local_config` honour `SET_CONFIG_DIR` / `XDG_CONFIG_HOME`
+- **renumbered:** B-168 → B-175 in the 2026-11-12 merge with github/main; upstream had already published B-168. Commits written before the merge cite B-168.
 - **state:** open
 - **reported:** 2026-11-08 by this session, in the second-developer audit the owner asked for (*"tudni kell a több fejlesztőt is kezelni … nem lehet csak erre a gépre személyre szabni"*).
 - **measured:** `bin/set-common.sh:102` (`${XDG_CONFIG_HOME:-$HOME/.config}/set-core`) and `lib/set_orch/local_config.py:config_dir()` honour both variables. `Path.home()/".config"/"set-core"` is hard-coded in `lib/set_orch/project_registry.py:22`, `api/helpers.py:26`, `harvest.py:29`, `compare.py:575`, `watcher.py:352`, `recovery_cli.py:13`, `config.py`, `providers/config.py`, `providers/legacy.py`, `registry_prune.py`, `lib/set_router/__init__.py:19` (SET_CONFIG_DIR only), `bin/set-leakscan:89`, `bin/set-wave-board`, `bin/set-usage`, `bin/set-glm` and `mcp-server/set_mcp_server.py`. In a sandbox with an empty HOME and no XDG variables, every tool ran; the split only shows on a machine that sets `XDG_CONFIG_HOME`.
 - **fail direction:** silent. `set-project init` writes the registry under `$XDG_CONFIG_HOME`, the dashboard, watcher, harvest and leakscan read `~/.config` and see an empty registry. Most of them fail open to empty, so a second developer sees no projects and no error.
 - **fixed when:** every reader resolves through `set_orch.local_config.config_dir()` (bash: `get_config_dir`), and a test with `XDG_CONFIG_HOME` set finds a project registered by `set-project init` in the dashboard API and in `set-leakscan --list-patterns`.
 
-### B-169 — the dashboard port 7400 is hard-coded where `set-web-install --port` cannot reach
+### B-176 — the dashboard port 7400 is hard-coded where `set-web-install --port` cannot reach
+- **renumbered:** B-169 → B-176 in the 2026-11-12 merge with github/main; upstream had already published B-169. Commits written before the merge cite B-169.
 - **state:** open
 - **reported:** 2026-11-08 by this session, second-developer audit.
 - **measured:** `.claude/commands/set/start.md:36,73,89,92` and `sentinel.md:19` (deployed into consumers), `bin/set-restart-services:13,28,30`, `lib/set_orch/fleet/idle_close.py:42`. `bin/set-now:23` and `bin/set-project:1080` already read `${SET_MANAGER_URL:-…}`.
 - **fail direction:** a second developer who installs on another port gets agents and timers that talk to nothing, or to a different service on 7400.
 - **fixed when:** a grep for a literal `7400` outside the defaults of `SET_MANAGER_URL` / the installer returns only those defaults.
 
-### B-170 — the Chrome session scan reads only Google Chrome's profile directory
+### B-177 — the Chrome session scan reads only Google Chrome's profile directory
+- **renumbered:** B-170 → B-177 in the 2026-11-12 merge with github/main; upstream had already published B-170. Commits written before the merge cite B-170.
 - **state:** open
 - **reported:** 2026-11-08 by this session, second-developer audit.
 - **measured:** `lib/set_orch/usage/chrome_scan.py:51`, `Path.home() / ".config" / "google-chrome"`.
@@ -96,19 +99,64 @@ consumer's name, path, or content.
 - **fail direction:** a developer whose set-core dependencies live in an activated venv gets the system python and an ImportError.
 - **fixed when:** a `SET_PYTHON` override exists and wins, documented in START.md.
 
-### B-167 — `test_fleet_owner.py` hangs at 0 % CPU when run together with the other `tests/unit/test_fleet_*.py` files, and passes alone
+### B-174 — `test_fleet_owner.py` hangs at 0 % CPU when run together with the other `tests/unit/test_fleet_*.py` files, and passes alone
+- **renumbered:** B-167 → B-174 in the 2026-11-12 merge with github/main; upstream had already published B-167. Commits written before the merge cite B-167.
 - **state:** open
 - **reported:** 2026-10-29 by a subagent of this session, while running the fleet suite as a regression check for `fleet-waiting-on-you` (commit `ee0f0a7f`).
 - **measured:** `pytest tests/unit/test_fleet_*.py` stalls inside `test_fleet_owner.py` at 0 % CPU until an outer 500 s timeout kills it; `pytest tests/unit/test_fleet_owner.py` alone passes. It hangs the same way with the new `test_fleet_waiting.py` excluded, so it predates that change. Same run without `test_fleet_owner.py`: 1027 passed, 2 failed (`test_fleet_api.py::test_a_rename_carries_the_record_and_the_layout`, `test_fleet_discovery.py::test_a_recorded_origin_outranks_ancestry_and_says_which_it_is`), both failing with the new files stashed too.
 - **fail direction:** a combined run never reaches the files after it, so a regression check over the fleet suite silently covers less than it claims — the files behind the hang are not run, not failed.
 - **fixed when:** the combined `pytest tests/unit/test_fleet_*.py` finishes under a per-test timeout, with `test_fleet_owner.py` reporting the same result it reports alone.
 
-### B-166 — a project registered through a symlink splits into two fleet entries, and the selected one says "no running agent" while its agents run in the other
+### B-173 — a project registered through a symlink splits into two fleet entries, and the selected one says "no running agent" while its agents run in the other
+- **renumbered:** B-166 → B-173 in the 2026-11-12 merge with github/main; upstream had already published B-166. Commits written before the merge cite B-166.
 - **state:** CLOSED 2026-10-28 — this commit (`discover_projects` keys the union by `os.path.realpath`, keeps the first source's spelling as the displayed root).
 - **reported:** 2026-10-28 by the user, a fleet screenshot: the sidebar group showed 3 sessions, the right-hand pane said *"Discovery found no running agent in this project."* The project's checkout had been moved to another disk and replaced by a symlink.
 - **measured:** `curl -s localhost:7400/api/fleet/agents | jq` returned TWO projects with one name: root = the registered symlink path, `sources: ["registry"]`, 0 agents; and root = the resolved path, `sources: ["process"]`, 3 agents. The sessions' `/proc/<pid>/cwd` and `~/.claude/sessions/<pid>.json` `cwd` both hold the resolved path, so their git root does too. `discover_projects` (`lib/set_orch/fleet/discovery.py`) keyed `by_root` by the literal string. The other path checks on this screen (`_known_roots`, `_start_location_verdict`, `_servable_checkouts`, `fleet/restore.py`) already resolve, so the union was the only one that did not. Of the registered projects, exactly one is a symlink today; 18 moved worktrees are symlinks too, but they resolve through git's common dir to an unmoved root.
 - **fail direction:** false absence — running agents shown as none, for exactly the projects that were moved.
 - **fixed when:** `tests/unit/test_fleet_discovery.py::test_a_project_registered_through_a_symlink_is_one_entry_with_its_agents` passes (measured: fails with the fix stashed, passes with it), and the live API returns one entry with `sources: ["registry", "process"]` and its 3 agents (measured after `systemctl --user restart set-web`).
+
+### B-170 — `set-project init --dry-run` writes the project into the registry
+- **renumbered:** B-163 → B-170 in the 2026-10-27 merge with github/main; upstream had already published B-163. Commits and code comments written before the merge cite B-163; the code comments were updated in the merge.
+- **state:** open
+- **reported:** 2026-10-23 by this session, while registering a consumer for the fleet
+- **measured:** `set-project init --dry-run` on an unregistered repo printed `Project '<name>' registered`, and `~/.config/set-core/projects.json` then held the entry with a fresh `addedAt`. The registry write in `cmd_init` (`bin/set-project`, the `jq … '.projects[$name] = …'` branch after "Add project to registry", plus the `.default` write after it) has no `DRY_RUN` check. Everything after it (deploy, manager POST) does check.
+- **fail direction:** the preview mutates. "Dry-run first and read the plan" is the documented safe procedure, and on a new project it already changes state: the project shows up on the dashboard, and the `.default` write can take over the default.
+- **fixed when:** a dry run on an unregistered repo leaves `projects.json` byte-identical and prints `Would register '<name>'`. A unit or shell test over a temp `CONFIG_FILE` should be red on the current source.
+
+### B-169 — `⚠ stage? (join-failed)` fires for every agent not working a change, because "the project has nothing in flight" is measured as "no un-archived change directory exists"
+- **renumbered:** B-162 → B-169 in the 2026-10-27 merge with github/main; upstream had already published B-162. Commits and code comments written before the merge cite B-162; the code comments were updated in the merge.
+- **state:** closed (`afcfab6f`, change `fleet-stage-idle-agent`) — after the fix and a service restart, `GET /api/fleet/agents` gave 3 × `nothing-started` and 1 × `no-position` (an agent naming a change with no artifacts, a different honest gap), 0 × `join-failed`; seen in the browser: the idle session's row shows the quiet `—`. The 3 positive `TestIdleAgent` tests fail on the unfixed source.
+- **reported:** 2026-10-15 by this session, while answering the user's question about what the `⚠ stage?` badge means on the fleet panel
+- **measured:** `GET /api/fleet/agents` on :7400 returned `state: gap, reason: join-failed` for **all four** live agents across two projects; none had a resolved stage. The derived path (`lib/set_orch/fleet/stage.py`, `resolve_stage`) picks `join-failed` over `nothing-started` when `has_active_changes()` is true, and that function is true if ANY non-archive directory sits under `openspec/changes/`. Counted the same day: 70 such directories in this repo and 41 in the other project. So `nothing-started` cannot be reached in either project, and an agent doing work outside any OpenSpec change (this session, answering a question, with no `/opsx:` invocation in its transcript) is shown with the amber "could not be matched to its own change" marker.
+- **fail direction:** an alarm about nothing. Every row is amber, so the marker no longer means anything, and a real join failure looks exactly like the rest.
+- **fixed when:** an agent with no running work-cycle record and no change invocation in its transcript renders the quiet `—` even in a project with un-archived changes, while one that IS working a change it cannot be joined to still renders `join-failed`. The check is a `resolve_stage` unit test over a tree with one stale change directory and a transcript without an invocation, red on the current source, plus a look at the fleet panel.
+
+### B-168 — an open AskUserQuestion is unmarked on the project column for its first 15 seconds, and looks like a finished turn after that
+- **renumbered:** B-161 → B-168 in the 2026-10-27 merge with github/main; upstream had already published B-161. Commits and code comments written before the merge cite B-161; the code comments were updated in the merge.
+- **state:** closed (`7011be1b`)
+- **reported:** 2026-10-10 by the user, with a screenshot: the tile header said `asking you · AskUserQuestion 7s`, the left panel showed nothing distinct
+- **measured:** `GET /api/fleet/agents` carried the agent correctly (`state: asking`, `attention: prompt`, `tool: AskUserQuestion`). The row's only marker was the input-wait counter, which is deliberately unmarked under 15 s (`escalationTone` → `plain`) and amber afterwards — the same rendering as an agent whose turn merely ended. Verified narrower than "no representation": a grey `1 7s` counter was there; nothing said *question*.
+- **fail direction:** calm — a request addressed to the reader rendered like a finished turn.
+- **fixed when:** a live question shows a sky `?n` chip and (below amber/red) a sky row/group tint from its first second; parked questions excluded. Tests in `web/tests/unit/fleetInputAttentionSurface.test.tsx` (`B-168` describe) — the three positive cases fail on the reverted source. Seen live 2026-10-10 on a 4-minute question (sky `?1` + red row); the sub-15 s sky tint was not on screen to look at.
+
+### B-167 — the tab title's green "ready" circle fires for a WORKING agent and almost never for a finished one
+- **renumbered:** B-160 → B-167 in the 2026-10-27 merge with github/main; upstream had already published B-160. Commits and code comments written before the merge cite B-160; the code comments were updated in the merge.
+- **renumbered:** B-157 → B-160 in the 2026-10-09 merge with origin; the other machine had already published B-157. Commit `9bb4594f` cites B-157.
+- **state:** closed (`8d2cd662`) — ⚠️ now counts `prompt` only, 🟢 counts `input` with its own number; seen live 2026-10-10 as `🟢 SET (3)` with three finished agents and no question
+- **reported:** 2026-10-07 by this session, from code reading while answering the user's question of how the fleet screen shows that an agent is ready
+- **measured (code reading only, not yet seen in a browser):** `FleetProjectColumn.tsx:1129` passes `totals.quiet` as `ready` to `tabTitle` (`fleetTabBadge.ts:57`), which renders `🟢` only when `needsPerson` (= `input + prompt`) is 0. `tally` (`fleetAttention.ts`) counts `quiet` on `state === 'quiet'` whatever the attention class is. So a finished agent (`quiet` + attention `input`) always raises `⚠️` instead, and `🟢` survives only for `quiet` agents whose attention is `working` (the loop is running and the log flushed between calls; see `Fleet.tsx` StateLine) or `unmeasured` (headless).
+- **fail direction:** a false value in the acting direction. The title says "something finished, come read it" about a session that is still running, and it never says it about one that actually finished.
+- **fixed when:** a unit test over `tally` + `tabTitle` asserts that one `quiet`/`working` agent gives the plain title, and that one fresh `quiet`/`input` agent gives whatever the agreed "ready" signal is, red on the unfixed source (stash-and-rerun), plus a browser look at the title.
+
+### B-166 — a machine's Anthropic model catalogue is frozen at migration, so a model the framework ships never reaches the start dialog
+- **renumbered:** B-159 → B-166 in the 2026-10-27 merge with github/main; upstream had already published B-159. Commits and code comments written before the merge cite B-159; the code comments were updated in the merge.
+- **renumbered:** B-156 → B-159 in the 2026-10-09 merge with origin; the other machine had already published B-156. Commits `0a5c3fb1` and `0db5ba41` cite B-156; the code comments were updated to B-159 in the merge.
+- **state:** OPEN, now DETECTED — worked around on one machine 2026-09-29 by extending its `providers.json` by hand. Change `upstream-model-watch` reports the gap (`set-providers upstream`, and the start dialog) but does not close it: the user chose advice over automatic update.
+- **reported:** 2026-09-29 by the user: "Start an agent here" offered no Opus 5.5, and asked whether the list could follow new models on its own.
+- **measured:** the dialog's model list is `/api/fleet/providers` → `resolver.catalogue()` → `providers.json`'s `providers.anthropic.models`, read per request. `migrate.build()` (`lib/set_orch/providers/migrate.py`) copies `ANTHROPIC_MODEL_NAMES` into that file ONCE. `108366ae` added `opus-5-5`/`opus-5-5-1m` to `ANTHROPIC_MODEL_NAMES` and `DEFAULT_MODEL_IDS`; this machine's file still listed 10 names and was missing `opus-4-8`, `opus-5`, `opus-5-1m`, `opus-5-5`, `opus-5-5-1m`. After appending them, the endpoint returned 15 and the dialog, checked in the browser, offered `opus-5-5` → `anthropic · opus-5-5 (this start)`.
+- **fail direction:** a false absence. Nothing warns, and the framework already accepts and translates the missing names.
+- **not available as a fix, measured:** a live list from Anthropic's models endpoint needs an API key. This machine has none (`ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` unset); it only has the agent CLI's own subscription login, and reading that credential would borrow another tool's token.
+- **fixed when:** a name added to `ANTHROPIC_MODEL_NAMES` appears in the start dialog of a machine whose `providers.json` predates it, with no hand edit. Held by a test that loads a file listing the old 10 names and asserts that the catalogue contains the shipped names. (Open design question: whether a machine can deliberately hide a shipped name, e.g. with an `exclude` list, since a plain union makes removal impossible.) This is a contract change to the provider catalogue, so it goes through OpenSpec.
 
 ### B-165 — wave boards go stale because nothing prompts the agent's own status report; the Stop hook only prompts the push
 - **state:** CLOSED 2026-10-20 — `3528bf10`, change `openspec/changes/wave-board-staleness` (the user chose options 1 and 2; option 3, more evidence types such as a release tag, is not done).
@@ -172,7 +220,6 @@ consumer's name, path, or content.
 - **measured:** the hook clears its record in a `finally:`, which does not run when the process is killed (the session interrupted or closed). The record carried no pid, so nothing could tell a live wait from a dead one.
 - **fail direction:** false value — the header counts a waiting question that no hook holds, and "answer here instead" on it does nothing.
 - **fixed when:** the record names the hook's pid, and a record whose pid is gone is not listed (and is removed) — tested by a record with a dead pid.
-
 ### B-156 — a `file://` URL an agent prints is dead text, and while the agent's TUI holds the mouse every terminal link dies at click time
 - **state:** CLOSED (2026-10-03, see the commit that carries this entry) — the entry stays; evidence below.
 - **reported:** 2026-10-03 by the user with a screenshot of the fleet dock: opening a built page's `file://…` address "nem működik", copy-paste included; the consumer session's own printed answer blamed a missing DISPLAY in its shell.
@@ -4019,6 +4066,7 @@ consumer's name, path, or content.
   2. **The tree.** `git status --porcelain` in that repo went from clean to `?? .claude/` + `?? openspec/`. `find .claude openspec -type f` = 26 files, of which exactly one (`.claude/settings.json`, dated 2026-08-19) predates the run: **25 files written** — `.claude/commands/opsx/*.md` (12), `.claude/skills/openspec-*/SKILL.md` (12) and `openspec/config.yaml`. The dry-run output itself prints the external tool's real completion banner (`OpenSpec structure created`, `Setup complete for Claude Code`, `Initialized OpenSpec`), so the writes are the **external `openspec init` call**, which never learns about the flag — the framework's own guarded write paths all held.
 - **fail direction:** the worst available for this particular command. `--dry-run` is the one step the deploy-safety rule tells every session to run FIRST against a consumer tree, and the guarantee it is trusted for ("proven not to write in preview", verified by a 2477-file sha256 snapshot) is true only of the paths the framework itself owns. The snapshot that established it was taken on a tree where OpenSpec was already initialised, so the one call that writes had nothing left to create and the measurement came back zero — a preview is destructive exactly and only on a tree that has never been initialised, which is every first look at a new project.
 - **earlier sighting, folded in on merge (2026-09-21):** first measured 2026-08-31 on a second machine, while registering a freshly cloned consumer repo: `set-project init --dry-run` printed `Project '<name>' registered` and `~/.config/set-core/projects.json` gained the entry in the same second — file mtime `Aug 31 12:45:24`, entry `addedAt: 2026-08-31T10:45:24Z`, both equal to the dry-run's run time; a read of the same file minutes earlier had no such entry (full key list, not a truncated read). Only the registry write was seen then — that tree already had OpenSpec initialised, so the 25-file write below had nothing to create, which is the blind spot this entry names. That sighting was registered as **B-143** in commit `81106898` before the two machines' registers met; the number here is the published one.
+- **third sighting (2026-10-07, at 1af3cbcf):** a dry run in a freshly `git init`-ed EMPTY directory again wrote the registry entry (`addedAt: 2026-10-07T12:44:10Z`, the dry run's own second) and printed `Project '<name>' registered`; the tree gained only an empty `.claude/` directory, with no `openspec/`, so the external-CLI write path did not fire on this tree — the registry write is the half that reproduces every time.
 - **also:** the guard reasoning generalises past this call — a preview that shells out to any tool inherits that tool's writes, and the flag stops at the process boundary unless something carries it.
 - **fixed when:** `set-project init --dry-run` performs **zero** writes on a never-initialised tree — the OpenSpec init step is skipped (and printed as `Would initialize OpenSpec`) and the registry entry is not made (printed as `Would register project '<name>'`) — proven by a test that runs the dry run against a fresh git repo fixture and asserts (a) `git status --porcelain` is empty and no new untracked paths exist, (b) the registry file's byte content is unchanged. Stash-and-rerun must show the test red on the unfixed source.
 
