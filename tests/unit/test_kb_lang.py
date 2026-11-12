@@ -19,8 +19,10 @@ def test_hungarian_pack_is_registered_and_bilingual():
     assert "the" in hungarian_pack.stopwords, "the Hungarian list sits BESIDE the English one"
 
 
-def test_hungarian_pack_has_no_stemmer():
-    assert hungarian_pack.stem is None, "no measured benefit — the seam stays unfilled"
+def test_hungarian_pack_has_a_query_side_stemmer():
+    """The 2026-11-12 measurement replaced the earlier "no measured benefit"
+    verdict; the stemmer is still opt-in per project (config `stemming`)."""
+    assert hungarian_pack.stem is not None
 
 
 def test_unknown_language_is_loud():

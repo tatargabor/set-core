@@ -188,6 +188,9 @@ class SearchOpts:
     prf: Optional[dict] = None  # {terms, topK, dfCeiling}
     filters: Optional[Sequence[Filter]] = None
     language: Optional[object] = None  # a LanguagePack; None = English pack
+    # Widen each query term to a prefix of its stem (config `stemming`). Off by
+    # default; only meaningful with a pack whose `stem` is filled.
+    stemming: bool = False
     # Cross-encoder rerank hook: no-op without an injected callable.
     rerank: bool = False
     reranker: Optional[Callable] = None

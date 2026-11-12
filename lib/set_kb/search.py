@@ -43,12 +43,15 @@ def raw_tokens(s: str) -> list:
 
 
 def tokenize(s: str, lang: Optional[LanguagePack] = None) -> list:
-    """Query tokens: raw tokens minus the language pack's function words, then
-    the pack's optional stem (absent in every shipped pack). Without a pack the
-    behaviour is upstream's: English function words only."""
+    """Query tokens: raw tokens minus the language pack's function words.
+    Without a pack the behaviour is upstream's: English function words only.
+
+    The pack's `stem` is deliberately NOT applied here: this function also
+    tokenizes BODIES (coverage rerank, PRF, MMR), and those compare raw forms
+    through the prefix-tolerant `has_stem`. Stemming is a match-expression
+    concern only — see `to_match`."""
     stop = lang.stopwords if lang is not None else ENGLISH_STOPWORDS
-    kept = [t for t in raw_tokens(s) if t not in stop]
-    return [lang.stem(t) for t in kept] if lang is not None and lang.stem else kept
+    return [t for t in raw_tokens(s) if t not in stop]
 
 
 def fold(t: str) -> str:
@@ -62,13 +65,25 @@ def fold(t: str) -> str:
     return "".join(ch for ch in unicodedata.normalize("NFD", t) if not unicodedata.combining(ch))
 
 
-def to_match(q: str, lang: Optional[LanguagePack] = None) -> str:
+def to_match(q: str, lang: Optional[LanguagePack] = None, stemming: bool = False) -> str:
     terms = tokenize(q, lang)
     # Fallback arm: fires when the query is nothing BUT function words. It has
     # to use the same Unicode class — with an ASCII regex this arm was the
     # second silent zero-hit path, and it fires exactly on the accented case.
     kept = terms if terms else raw_tokens(q)
-    return " OR ".join(f'"{t}"' for t in kept)
+    stem = lang.stem if (stemming and lang is not None) else None
+    parts: list = []
+    for t in kept:
+        # A widened term REPLACES the term as written — its prefix already
+        # covers it. Measured: keeping both counted the widened term twice in
+        # bm25, which tilted multi-term English queries toward that one word
+        # (8/25 English top-10s unchanged, against 19/25 with replacement).
+        # A prefix, never an exact stem: FTS5 holds porter stems, and it runs
+        # porter over a prefix token too (measured), so a stem prefix reaches
+        # every form the index holds.
+        s = stem(t) if stem else None
+        parts.append(f'"{s}"*' if s else f'"{t}"')
+    return " OR ".join(dict.fromkeys(parts))
 
 
 def expand_query(query: str, opts: SearchOpts) -> str:
@@ -279,7 +294,7 @@ def count_sources(store: SqliteFtsStore, query: str, opts: Optional[SearchOpts] 
     sources shown. Erring high is the right direction here: the failure this
     exists to prevent is a reader concluding "there is nothing else"."""
     opts = opts or SearchOpts()
-    match = to_match(expand_query(query, opts), opts.language)
+    match = to_match(expand_query(query, opts), opts.language, opts.stemming)
     if not match:
         return 0
     # Mirror the MAIN pass's doc-type lane: with a doc_type filter the page
@@ -329,7 +344,7 @@ def search(store: SqliteFtsStore, query: str, opts: Optional[SearchOpts] = None)
     # PRF is engine-side and is applied ONLY with coverage rerank on: expanding
     # an OR-query deepens the very dilution the rerank exists to cure.
     mode = opts.query_expansion or "off"
-    match = to_match(expand_query(query, opts), lang)
+    match = to_match(expand_query(query, opts), lang, opts.stemming)
     if not match:
         return []
     extra_terms: list = []
@@ -337,7 +352,7 @@ def search(store: SqliteFtsStore, query: str, opts: Optional[SearchOpts] = None)
         first_pass = do_pass(match, {"doc_type": opts.doc_type} if opts.doc_type else None)
         extra_terms = _prf_terms(store, query, qterms, first_pass, opts)
         if extra_terms:
-            match = to_match(f"{query} {' '.join(extra_terms)}", lang)
+            match = to_match(f"{query} {' '.join(extra_terms)}", lang, opts.stemming)
 
     # --- lanes ----------------------------------------------------------------
     # A small layer is buried by BM25 length normalisation, so it is ranked in

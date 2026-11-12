@@ -101,6 +101,9 @@ DEFAULT_EXCLUDE_FRONTMATTER = {"type": ["*-session-claude-code", "claude-session
 # Built-in defaults, in one place so the merge has an honest base.
 DEFAULTS: dict = {
     "language": "en",
+    # Query-side stem-prefix widening (design of kb-hungarian-stemming). Opt-in:
+    # it changes the ranking, and each corpus measures that on its own.
+    "stemming": False,
     "sources": [{"ref": ""}],  # the whole repository, one root
     "exclude": [],
     "excludeDefaults": True,
@@ -152,6 +155,7 @@ class KbConfig:
     exclude_frontmatter: dict = field(default_factory=lambda: {k: list(v) for k, v in DEFAULT_EXCLUDE_FRONTMATTER.items()})
     include_framework_files: bool = False
     language: str = "en"
+    stemming: bool = False
     ranking: dict = field(default_factory=dict)
     findability_globs: list = field(default_factory=list)
     legacy: bool = False  # loaded from the legacy location
@@ -287,6 +291,18 @@ def _validate(d: dict) -> KbConfig:
             f"config.language: unknown language {lang!r} (available packs: {', '.join(registered_languages())})"
         ) from None
     cfg.language = lang
+
+    # stemming — loud when it cannot apply: silently ignoring it would read as
+    # "stemming on, no measured gain".
+    stem_on = d["stemming"]
+    if not isinstance(stem_on, bool):
+        raise ConfigError(f"config.stemming: expected a boolean, got {type(stem_on).__name__}")
+    if stem_on and language_pack(lang).stem is None:
+        with_stem = [p for p in registered_languages() if language_pack(p).stem is not None]
+        raise ConfigError(
+            f"config.stemming: language {lang!r} has no stemmer (packs with one: {', '.join(with_stem) or 'none'})"
+        )
+    cfg.stemming = stem_on
 
     # sources
     for i, s in enumerate(_req_list(d["sources"], "config.sources")):
@@ -485,6 +501,7 @@ def search_options(cfg: KbConfig, **overrides) -> SearchOpts:
         lane_channels=r["laneChannels"],
         coverage_rerank=r["coverageRerank"],
         language=language_pack(cfg.language),
+        stemming=cfg.stemming,
         root_priority={s.ref: s.priority for s in cfg.sources},
         expand_parent=True,
     )
@@ -497,7 +514,8 @@ def corpus_config_hash(cfg: KbConfig) -> str:
     classified. A change here forces a full re-chunk on the next refresh —
     without it, unchanged files would keep stale channel/scope labels (and
     stale exclusion decisions) forever. Language and ranking are DELIBERATELY
-    out: they change how a query is ranked, never what a row says."""
+    out: they change how a query is ranked, never what a row says. So is
+    `stemming`: it rewrites the query, never a row."""
     payload = {
         "sources": [s.ref for s in cfg.sources],
         "exclude": cfg.effective_exclude(),

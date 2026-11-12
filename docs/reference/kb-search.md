@@ -64,6 +64,7 @@ one-line warning naming the new path.
 | Key | Default | Meaning |
 |---|---|---|
 | `language` | `"en"` | Language pack (stopwords, query tokenizer). `"hu"` ships. Accent folding is FTS5 `unicode61` either way. |
+| `stemming` | `false` | Query-side stem widening, for a pack that has a stemmer (`"hu"` does; `"en"` does not, and `true` with it is a config error). Each query term becomes an FTS5 prefix of its shortest suffix-stripped stem (5+ letters), so `vonalkódot`, `vonalkódok` and `szamlakat` (accents dropped) reach the sections that spell `vonalkód` or `számla`. A plain-ASCII word with nothing stripped stays as written. No re-index is needed to switch it. Opt-in because it moves rankings: compare with `set-kb eval` before and after. |
 | `sources` | `[{"ref": ""}]` (the whole repository) | Indexed roots: `{ref, priority?, about?}`. Priority decides which copy wins when identical content sits in two roots; the loser is reported as `akaPaths`. |
 | `extensions` | `[".md"]` | File types indexed. |
 | `exclude` | `[]` | The project's own glob patterns — **added** to the defaults below. |

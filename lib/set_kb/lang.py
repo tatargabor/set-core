@@ -5,10 +5,13 @@ A pack carries:
 
 - ``stopwords`` — function words dropped from the QUERY tokens, so they do not
   drive the ranking. Always present.
-- ``stem`` — OPTIONAL, and no shipped pack fills it: a stemmer whose output
-  disagreed with what FTS5 indexed would silently lose matches rather than
-  error, and the measurement found no benefit. The seam exists because the
-  PLACE is needed, not because we have content for it.
+- ``stem`` — OPTIONAL: token → the accent-folded stem to match as an FTS5
+  PREFIX term, or None to match the token as written. Used only on the query
+  side and only when the project config sets ``stemming: true``. A prefix,
+  not an exact stem, because FTS5 indexed porter stems: an exact stem that
+  disagreed with what was indexed would silently lose matches, while a stem
+  prefix reaches every form the index holds (porter only shortens a token, and
+  FTS5 runs it over a prefix token too — measured). The Hungarian pack fills it.
 
 Divergence from upstream: upstream has no language seam at all — a single
 module-level set of English words lives inside its store and every
@@ -30,7 +33,7 @@ class LanguagePack:
 
     id: str
     stopwords: frozenset
-    stem: Optional[Callable[[str], str]] = None
+    stem: Optional[Callable[[str], Optional[str]]] = None
 
 
 # Upstream's English function words — verbatim, so the port keeps its ranking
