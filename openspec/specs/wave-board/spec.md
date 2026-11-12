@@ -126,10 +126,12 @@ current payload hash differs from the recorded one.
 
 ### Requirement: A Stop hook makes the agent push
 
-`set-hook-waveboard` SHALL run on the Stop event. It SHALL exit 0 without output when
-`stop_hook_active` is true, outside a git repository, in a linked git worktree (unless
-`SET_WAVEBOARD_PUSH=worktree`), when `docs/waveboard/` does not exist, or when
-`SET_WAVEBOARD_PUSH=off`. Otherwise it SHALL run sync quietly and decide per job, from the push
+`set-hook-waveboard` SHALL run on the Stop event and SHALL be OFF unless the machine opts in:
+it SHALL exit 0 without output, without running sync, unless `SET_WAVEBOARD_PUSH` is `on`,
+`1`, `true`, `yes` or `worktree`. An unset, empty or unrecognised value is off. When on, it
+SHALL also exit 0 without output when `stop_hook_active` is true, outside a git repository, in
+a linked git worktree (unless `SET_WAVEBOARD_PUSH=worktree`), or when `docs/waveboard/` does
+not exist. Otherwise it SHALL run sync quietly and decide per job, from the push
 class sync reports, whether to ask for the push now:
 
 - `first` (no push recorded on this machine) or `milestone` (since the last push a wave has
@@ -154,6 +156,16 @@ SHALL finish well inside its timeout.
 — the finished waves, the blocked items and a hash of the visible substance — but only when the
 recorded hash is the current payload's own. A record without marks SHALL class the next change
 as `progress`, never as `notes`.
+
+#### Scenario: Off unless the machine opts in
+
+- **WHEN** a repository has a job with a pending push and `SET_WAVEBOARD_PUSH` is unset
+- **THEN** the hook prints nothing, exits 0, and does not run sync
+
+#### Scenario: Opted in, the reminder works as before
+
+- **WHEN** the same repository is stopped in with `SET_WAVEBOARD_PUSH=on`
+- **THEN** the hook blocks with the push procedure
 
 #### Scenario: The hook's own continuation does not loop
 
@@ -343,8 +355,8 @@ a job pending a push, and `sync` SHALL keep the field as it is.
 ### Requirement: The Stop hook asks for a review of a stale board
 
 Under the same silence rules as the push reminder, `set-hook-waveboard` SHALL also evaluate each
-job's staleness. The silence rules are: its own continuation, `SET_WAVEBOARD_PUSH=off`, no
-repository, a linked worktree, no `docs/waveboard/`, and any error.
+job's staleness. The silence rules are: `SET_WAVEBOARD_PUSH` not opted in (unset or off), its own
+continuation, no repository, a linked worktree, no `docs/waveboard/`, and any error.
 
 For each stale job not reminded within the review backoff, it SHALL include a review reminder.
 The backoff is `SET_WAVEBOARD_REVIEW_SECONDS`, default 14 400, with the timestamp in

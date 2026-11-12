@@ -1,14 +1,20 @@
 ---
 name: set:wave-board
-description: Live execution status of a multi-step job that runs in waves — a cleanup across ten projects, a migration done one group at a time, any job with more steps than one session holds. Use it to create the job's board (a tracked job file plus a private claude.ai Artifact page), to report a finished step, and to push the board when the Stop hook asks for it. Trigger words - wave board, hullámtábla, waves, process roadmap, "where is the job", multi-project cleanup, rollout status, `set-wave-board`, a Stop-hook reminder that names a wave board.
+description: Live execution status of a multi-step job that runs in waves — a cleanup across ten projects, a migration done one group at a time, any job with more steps than one session holds. Use it to create the job's board (a tracked job file plus a private claude.ai Artifact page), to report a finished step, and to push the board to its Artifact when the user asks for it (the Stop hook is off by default). Trigger words - wave board, hullámtábla, waves, process roadmap, "where is the job", multi-project cleanup, rollout status, `set-wave-board`, a Stop-hook reminder that names a wave board.
 ---
 
 # Wave board — `set-wave-board`
 
 A **process roadmap**, not a product roadmap: which wave a job is in, which item is done, in
 progress or blocked, and what is left. One job is one tracked file,
-`docs/waveboard/<job>.json`, in the repository that runs the job, and one private Artifact page
-that shows it live.
+`docs/waveboard/<job>.json`, in the repository that runs the job. That file is the board's
+default target: a team portal can build its pages from it. An optional private Artifact page shows
+it live, but it is pushed **on request only** (see below).
+
+> **Pushes go on request (owner, 2026-11-12).** `set-hook-waveboard` is OFF unless a machine sets
+> `SET_WAVEBOARD_PUSH=on`. Without it, no sync runs on Stop and no push or review is asked for,
+> because each one costs a whole continuation. Keep the job file current with `set`, commit it,
+> and push to the Artifact only when the user asks.
 
 ## When to use it
 
@@ -19,9 +25,9 @@ A three-step task done in one sitting does not need one; a todo list is enough t
 ## How the status stays true — three layers
 
 1. **The job file** — waves, items, and for each item the **evidence** that proves it.
-2. **`sync`**, run by the `set-hook-waveboard` Stop hook on every stop, whether or not you
-   remembered — it derives status from evidence. (Sync runs every stop; the *push* it asks for
-   is batched — see the push procedure.)
+2. **`sync`**: it derives status from evidence. Run it by hand (`set-wave-board sync`) when
+   you want the derived status. On a machine that opted in (`SET_WAVEBOARD_PUSH=on`), the
+   `set-hook-waveboard` Stop hook also runs it on every stop.
 3. **Your own report**, `set-wave-board set <job> <item> <status>` — the **fast lane**. Report
    every finished step with it, straight away. But evidence and the hook are the guarantee:
    where evidence speaks it overrides your report (a `done` with unchecked task boxes comes
@@ -149,7 +155,8 @@ The page reads collection `board`, document `state`. Only you can write it — n
    the same url / `board` / `state`, then redo step 1 with the version it returned.
 3. `set-wave-board pushed <job> --version <the version the set returned>`.
 
-The Stop hook asks for this by itself, but **in batches, not after every `set`** — every push
+**Do it when the user asks.** On a machine that opted in (`SET_WAVEBOARD_PUSH=on`) the Stop hook
+asks for it too, but **in batches, not after every `set`** — every push
 costs a continuation, and a push per step burned the team's token budget (owner, 2026-11-08).
 `sync` classes each pending push, and the hook decides per job:
 
@@ -163,11 +170,12 @@ costs a continuation, and a push per step burned the team's token budget (owner,
 A board and its combined-board document are asked for in **one** block — push both in that one
 go. After a block it stays quiet for 30 minutes per job (`SET_WAVEBOARD_NAG_SECONDS`), on its
 own continuation, in a linked worktree (`SET_WAVEBOARD_PUSH=worktree` lifts that), and entirely
-with `SET_WAVEBOARD_PUSH=off`.
+unless `SET_WAVEBOARD_PUSH` is `on` (the default is off).
 
-**Before a handoff and at the end of a session, run `set-wave-board pending` and push what it
-lists.** The hook cannot tell the last Stop of a session from any other, so batched progress and
-notes would otherwise wait for the next session on this machine.
+**On an opted-in machine only:** before a handoff and at the end of a session, run
+`set-wave-board pending` and push what it lists. The hook cannot tell the last Stop of a session
+from any other, so batched progress and notes would otherwise wait for the next session. On any
+other machine, commit the job file and stop there.
 
 ## Cross-machine notes
 
@@ -175,8 +183,8 @@ notes would otherwise wait for the next session on this machine.
   machine's clone and registry. Pull before trusting a board you did not just sync.
 - The **Artifact belongs to whoever published it**. Another person can push only if they were
   given edit access. If the write is refused for lack of access, **ask the owner account for
-  edit access** (claude.ai → Share), say so in one line and carry on; the hook backs off. Do not
-  answer it with `SET_WAVEBOARD_PUSH=off` — that silences the board on that machine for good.
+  edit access** (claude.ai → Share), say so in one line and carry on. If the artifact belongs to
+  an account this machine cannot get access to, the machine should not opt in at all.
 - What was pushed is recorded **per machine** (`.set/waveboard/<job>.pushed.json`), so a second
   machine sees the job as pending until it pushes once. With `if_version` pinned, two machines
   cannot silently overwrite each other: a stale write is refused and redone after a `get`.

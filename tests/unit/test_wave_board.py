@@ -277,8 +277,11 @@ def test_render_carries_the_kanban_view(env, repo, tmp_path):
 # ── the Stop hook ────────────────────────────────────────────────────────────
 
 def hook(env, cwd, event=None, **extra_env):
+    """The hook as an opted-in machine runs it (it is off by default since
+    wave-board-push-on-request); a test passes SET_WAVEBOARD_PUSH to override."""
     return subprocess.run([str(HOOK)], input=json.dumps({"cwd": str(cwd), **(event or {})}),
-                          env={**env, **extra_env}, capture_output=True, text=True, timeout=60)
+                          env={**env, "SET_WAVEBOARD_PUSH": "on", **extra_env}, capture_output=True,
+                          text=True, timeout=60)
 
 
 def pending_repo(env, repo):
@@ -318,6 +321,21 @@ def test_hook_is_silent_on_its_own_continuation_and_when_off(env, repo, event, e
     pending_repo(env, repo)
     r = hook(env, repo, event, **extra)
     assert r.returncode == 0 and r.stdout == ""
+
+
+@pytest.mark.parametrize("value", [None, "", "off", "garbage"])
+def test_hook_is_off_unless_the_machine_opts_in(env, repo, value):
+    """Owner 2026-11-12: pushes go on request. With a pending job and no opt-in the hook
+    prints nothing — and does not even run sync, so no state file is written."""
+    pending_repo(env, repo)
+    e = {k: v for k, v in env.items() if k != "SET_WAVEBOARD_PUSH"}
+    if value is not None:
+        e["SET_WAVEBOARD_PUSH"] = value
+    r = subprocess.run([str(HOOK)], input=json.dumps({"cwd": str(repo)}), env=e,
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0 and r.stdout == ""
+    assert not (repo / ".set/waveboard/j.state.json").exists(), "sync must not run when off"
+    assert json.loads(hook(env, repo).stdout)["decision"] == "block", "opted in, it still works"
 
 
 def test_hook_is_silent_without_a_board_or_a_repo(env, repo, tmp_path):

@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """set-hook-waveboard — Claude Code Stop hook: make the agent push a wave board.
 
+OFF BY DEFAULT (owner, 2026-11-12: pushes go on request, the hook "runs for nothing and eats
+tokens"). It does anything at all only when the machine sets SET_WAVEBOARD_PUSH to on / 1 /
+true / yes / worktree; unset, empty or anything else is off, and then not even sync runs.
+The boards' default target is the tracked docs/waveboard/<job>.json; `set-wave-board sync`
+and the push procedure still work by hand. Everything below describes the opted-in hook.
+
 A wave board's live data is a claude.ai Artifact database, and only the agent can write
 it. This hook runs `set-wave-board sync` on every Stop and, when a job's payload differs
 from what this machine last pushed, blocks the stop ONCE with the exact push procedure —
@@ -24,8 +30,8 @@ froze. The review has its own backoff (SET_WAVEBOARD_REVIEW_SECONDS, 14400) and 
 switch (SET_WAVEBOARD_REVIEW=off). When both are due, one block carries both, push first.
 
 Silent (exit 0, no output) when:
+  - SET_WAVEBOARD_PUSH is not opted in (the default),
   - the Stop event carries `stop_hook_active: true` (the continuation this hook caused),
-  - SET_WAVEBOARD_PUSH is off / 0 / false / no,
   - the working directory is not in a git repository, or it has no docs/waveboard/,
   - it is a linked git worktree (unless SET_WAVEBOARD_PUSH=worktree): the board follows
     the main checkout, and worktree agents are usually orchestrated ones,
@@ -54,6 +60,9 @@ SYNC_TIMEOUT = 10
 #: Sync and the staleness check share one budget, inside the 15 s the deployed settings give
 #: the hook: the check gets only what the sync left over.
 BUDGET = 12.0
+#: The only values that switch the hook on; anything else, unset included, is off.
+ON = ("on", "1", "true", "yes", "worktree")
+#: Values that switch the review reminder off inside an opted-in hook.
 OFF = ("off", "0", "false", "no")
 
 
@@ -160,10 +169,10 @@ def main() -> int:
         event = {}
     if not isinstance(event, dict):
         event = {}
-    if event.get("stop_hook_active"):
-        return 0
     mode = os.environ.get("SET_WAVEBOARD_PUSH", "").strip().lower()
-    if mode in OFF:
+    if mode not in ON:
+        return 0
+    if event.get("stop_hook_active"):
         return 0
     root = _root(event.get("cwd") or os.getcwd(), allow_worktree=(mode == "worktree"))
     if root is None or not (root / "docs" / "waveboard").is_dir():
