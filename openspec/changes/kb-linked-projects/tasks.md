@@ -20,4 +20,5 @@
 ## 5. Docs and rollout
 
 - [x] 5.1 `docs/reference/kb-search.md`: the `linked` key and its rules
+- [x] 5.1a Probe on the real registered data repository (2026-11-12): a throwaway repo linking it, `search "Instagram rate limit" --no-reindex`, returned the platform's rate-limit pages as the linked block's #1 and #2 in 2.3 s; nothing written into the data repository
 - [ ] 5.2 Live check: a consumer project links the shared data repository and finds a known page with one search. The consumer adds the link to its own `kb.json`; reported to the requester
