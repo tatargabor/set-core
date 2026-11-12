@@ -24,4 +24,5 @@
 
 - [x] 4.1 Measure on a real Hungarian business corpus: 19 Hungarian queries 7/19 → 17/19 in the top 10; 25 English queries 19/25 top-10 unchanged, 22/25 #1 unchanged; recorded in design D3
 - [x] 4.2 `docs/reference/kb-search.md`: the `stemming` key
+- [x] 4.4 Second measurement on office prose (14k-document archive, 15 clerk prompts, ground truth): recall@10 0.400 → 0.467, hit@1 4 → 5, hit@5 5 → 6, no prompt worse; recorded in design D3. Found B-172 (document numbers split into loose tokens) and registered it
 - [ ] 4.3 The corpus owner turns it on (`"language": "hu", "stemming": true`) and re-measures with `set-kb eval` on its own golden set — the owner's step, reported to them together with the `laneLeadMargin` finding

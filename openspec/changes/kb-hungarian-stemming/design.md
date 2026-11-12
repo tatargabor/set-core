@@ -82,6 +82,20 @@ the Hungarian word, so no stemmer reaches them. The three changed English #1s lo
 better (for example an invoice-XML question now leads with the tax authority's own API doc).
 None of them was judged against a labelled set.
 
+Second corpus, office prose (2026-11-12): a 14k-document Hungarian office archive converted to
+Markdown, with 15 whole-sentence clerk prompts and ground truth (`set-kb eval`, k=10, no lane):
+
+| arm | recall@10 | hit@1 | hit@3 | hit@5 | MRR |
+|---|---|---|---|---|---|
+| `en` (today) | 0.400 | 4/15 | 4/15 | 5/15 | 0.288 |
+| `hu`, stopwords only | 0.400 | 4/15 | 4/15 | 5/15 | 0.288 |
+| `hu` + `stemming` | **0.467** | **5/15** | **6/15** | **6/15** | **0.364** |
+
+No prompt got worse. Seven of the eight remaining misses do not ask for one findable document:
+they are aggregates over many files (overdue invoices, top customers, a month's sales), or
+create/edit requests. The eighth is a document number split into loose tokens, which is a
+separate defect and is registered as B-172.
+
 ### D4 — Opt-in key, loud when it cannot apply
 
 `stemming: true` turns it on, and the default is `false`. The previous `hu` verdict ("no
