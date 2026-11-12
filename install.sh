@@ -732,7 +732,9 @@ install_projects() {
     fi
 
     local project_paths
-    project_paths=$(jq -r '.projects // {} | to_entries[] | .value.path' "$projects_file" 2>/dev/null)
+    # An entry registered with `set-project register` ("deploy": false) is a data
+    # repository: listed so cross-project search can resolve it, never deployed into.
+    project_paths=$(jq -r '.projects // {} | to_entries[] | select(.value.deploy != false) | .value.path' "$projects_file" 2>/dev/null)
 
     if [[ -z "$project_paths" ]]; then
         info "  No registered projects, skipping"

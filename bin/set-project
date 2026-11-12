@@ -698,6 +698,9 @@ Usage: set-project <command> [options]
 
 Commands:
   init [--name <name>]    Register current git repo as a project
+  register [--name <name>] [--path <dir>]
+                          Register a git repo WITHOUT deploying set-core into it
+                          (a data repository, e.g. a shared knowledge corpus)
   init-knowledge          Scaffold project-knowledge.yaml from project scan
   migrate                 Migrate legacy files to set/ directory structure
   list                    List all registered projects
@@ -954,6 +957,18 @@ cmd_init() {
     local in_worktree=false
     if [[ "$current_dir" != "$git_root" ]]; then
         in_worktree=true
+    fi
+
+    # A repository registered with `set-project register` is a data repository: refuse to
+    # deploy into it, matched by PATH so a different --name cannot slip past.
+    local no_deploy_name
+    no_deploy_name=$(jq -r --arg p "$git_root" \
+        '[.projects // {} | to_entries[] | select(.value.path == $p and .value.deploy == false) | .key][0] // empty' \
+        "$CONFIG_FILE")
+    if [[ -n "$no_deploy_name" ]]; then
+        error "This repository is registered as '$no_deploy_name' with no deploy (set-project register): init would write set-core's files into it."
+        echo "If it should now get set-core, run: set-project remove $no_deploy_name && set-project init"
+        exit 1
     fi
 
     # Check if project name already exists
@@ -1237,6 +1252,73 @@ cmd_archive() {
         exit 1
     fi
     env "PYTHONPATH=$SET_TOOLS_ROOT/lib:${PYTHONPATH:-}" "$py" -m set_orch.registry_prune "$mode" "$@"
+}
+
+# Register a repository WITHOUT deploying anything into it: no rules, skills, hooks,
+# settings or MCP. For a data repository (a shared knowledge corpus) that cross-project
+# search must resolve by name, but that no agent develops in — `init` would write
+# set-core's files into it. Never becomes the default project. Idempotent.
+cmd_register() {
+    local name="" path="" dry_run=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --name) name="$2"; shift 2 ;;
+            --path) path="$2"; shift 2 ;;
+            --dry-run) dry_run=true; shift ;;
+            --no-deploy) shift ;;  # the only mode there is; accepted so the intent can be spelled out
+            -h|--help)
+                echo "Usage: set-project register [--name <name>] [--path <dir>] [--dry-run]"
+                echo "Register a git repository in the project registry without deploying set-core into it."
+                return 0 ;;
+            *) error "Unknown option for register: $1"; exit 1 ;;
+        esac
+    done
+
+    local root
+    root=$(git -C "${path:-.}" rev-parse --show-toplevel 2>/dev/null) || {
+        error "Not a git repository: ${path:-$(pwd)}"
+        exit 1
+    }
+    [[ -n "$name" ]] || name=$(basename "$root")
+
+    ensure_config
+    local existing
+    existing=$(get_project_path "$name")
+    if [[ -n "$existing" ]]; then
+        if [[ "$existing" == "$root" ]]; then
+            if [[ "$(jq -r --arg n "$name" '.projects[$n].deploy' "$CONFIG_FILE")" == "false" ]]; then
+                info "Project '$name' is already registered at $root (no deploy) — nothing to do"
+                return 0
+            fi
+            if $dry_run; then
+                info "Would mark '$name' as no-deploy (dry run — registry not changed)"
+                return 0
+            fi
+            # An entry added by hand or by an earlier init: mark it, so neither install.sh's
+            # per-project redeploy nor a stray `init` writes set-core's files into it.
+            local tmp_mark
+            tmp_mark=$(mktemp)
+            jq --arg n "$name" '.projects[$n].deploy = false' "$CONFIG_FILE" > "$tmp_mark" && mv "$tmp_mark" "$CONFIG_FILE"
+            success "Project '$name' is already registered at $root — marked no-deploy"
+            return 0
+        fi
+        error "Project name '$name' is already used for: $existing"
+        echo "Use --name to specify a different name."
+        exit 1
+    fi
+
+    if $dry_run; then
+        info "Would register '$name' -> $root (dry run — registry not changed, nothing deployed)"
+        return 0
+    fi
+    local timestamp tmp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    tmp=$(mktemp)
+    jq --arg name "$name" --arg path "$root" --arg ts "$timestamp" \
+        '.projects[$name] = {"path": $path, "addedAt": $ts, "deploy": false}' "$CONFIG_FILE" > "$tmp" \
+        && mv "$tmp" "$CONFIG_FILE"
+    success "Project '$name' registered (no deploy)"
+    echo "  Path: $root"
 }
 
 cmd_remove() {
@@ -1531,6 +1613,10 @@ case "$1" in
     list-types)
         echo "Available project types:"
         _list_project_types
+        ;;
+    register)
+        shift
+        cmd_register "$@"
         ;;
     remove|rm)
         shift
