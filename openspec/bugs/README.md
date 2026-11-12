@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-178 — `set-project init` run inside a worktree re-points the PROJECT's MCP registration at the worktree
+- **state:** open
+- **reported:** 2026-11-12 by this session, found by the new `set-doctor` on its first run.
+- **measured:** in the Claude config (`~/.claude.json`), 6 registered projects carry a set-core MCP entry whose `CLAUDE_PROJECT_DIR` is one of their worktrees, not the project. set-core's own entry is one of them (`…/set-core-wt-liveproof`). The worktree path has NO key of its own: Claude keeps local-scope MCP servers under the repository's main path, so `cd <worktree> && claude mcp add set-core …` (`lib/project/deploy.sh` `_register_mcp_server`, called with the worktree as an extra path from `bin/set-project` around line 1073) overwrites the project's entry.
+- **fail direction:** silent, and wrong data rather than an error. Every agent in the main checkout gets `kb_search`/`kb_get` against the worktree's tree, which is a stale branch, or a directory that no longer exists once the worktree is removed.
+- **fixed when:** `set-project init` run in a worktree leaves the main path's entry pointing at the main path (a test over a temp `CLAUDE_CONFIG_DIR` and a real worktree), and `set-doctor` reports `mcp ok` for those 6 projects after a re-init.
+
 ### B-175 — Python config readers hard-code `~/.config/set-core` while the shell and `local_config` honour `SET_CONFIG_DIR` / `XDG_CONFIG_HOME`
 - **renumbered:** B-168 → B-175 in the 2026-11-12 merge with github/main; upstream had already published B-168. Commits written before the merge cite B-168.
 - **state:** open

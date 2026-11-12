@@ -36,7 +36,7 @@ from set_kb.eval import DEFAULT_GOLDEN_REL, EvalError, golden_path_for, load_gol
 from set_kb.get_section import leaf_of, resolve_section
 from set_kb.indexer import IndexSource, scan_exclusions
 from set_kb.findability import run_findability
-from set_kb.lifecycle import ProjectError, linked_project, load_project, refresh, search_linked, search_project
+from set_kb.lifecycle import ProjectError, linked_project, load_project, refresh, registry_project_root, search_linked, search_project
 from set_kb.project import ensure_ignored, index_paths, resolve_root
 from set_kb.runtime import KbRuntimeError, ensure_runtime
 from set_kb.store import SqliteFtsStore
@@ -495,6 +495,25 @@ def cmd_doctor(args) -> int:
     except ConfigError as e:
         blocked = True
         check("config", "blocked", str(e))
+
+    if cfg is not None and cfg.linked:
+        # Each link must resolve through the registry and load with its own config — a
+        # link that cannot is shown as NOT SEARCHED at search time, and named here first.
+        # It does not block this project's own search, so it is a warning.
+        broken = []
+        for ln in cfg.linked:
+            try:
+                lroot = registry_project_root(ln.project)
+                if os.path.realpath(lroot) == os.path.realpath(root):
+                    raise ProjectError("this project itself")
+                load_config(lroot)
+            except (ProjectError, ConfigError) as e:
+                broken.append(f"{ln.project}: {e}")
+        names = ", ".join(ln.project for ln in cfg.linked)
+        if broken:
+            check("linked", "warn", "not searchable — " + "; ".join(broken))
+        else:
+            check("linked", "ok", f"{len(cfg.linked)} linked project(s) resolve and load: {names}")
 
     try:
         ensure_ignored(root, db_path)

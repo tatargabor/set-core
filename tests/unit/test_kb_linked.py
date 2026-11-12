@@ -180,3 +180,21 @@ def test_the_mcp_tools_carry_linked_and_project(world, monkeypatch):
     assert json.loads(mod.kb_search("ratelimitword", linked=False))["linked"] == []
     got = mod.kb_get("wiki/alfa/limits.md", project="corpus")
     assert "ratelimitword for alfa" in got
+
+
+def test_doctor_reports_linked_projects(world):
+    app, corpus, reg = world
+    link(app, {"project": "corpus"}, {"project": "gone"})
+    d = json.loads(run(["doctor", "--json"], app, reg).stdout)
+    [ln] = [c for c in d["checks"] if c["name"] == "linked"]
+    assert ln["status"] == "warn" and "gone" in ln["detail"] and "not in the registry" in ln["detail"]
+    assert "corpus:" not in ln["detail"], "only the broken link is named as broken"
+    link(app, {"project": "corpus"})
+    [ok] = [c for c in json.loads(run(["doctor", "--json"], app, reg).stdout)["checks"] if c["name"] == "linked"]
+    assert ok["status"] == "ok" and "corpus" in ok["detail"]
+
+
+def test_doctor_has_no_linked_check_without_links(world):
+    app, corpus, reg = world
+    d = json.loads(run(["doctor", "--json"], app, reg).stdout)
+    assert not [c for c in d["checks"] if c["name"] == "linked"]
