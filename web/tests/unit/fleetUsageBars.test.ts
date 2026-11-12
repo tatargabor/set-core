@@ -323,9 +323,9 @@ describe('a GLM account beside the Claude accounts', () => {
 
 describe('the compact label before the bars', () => {
   it('uses the domain label of an email, which is what distinguishes accounts', () => {
-    expect(shortLabel('tatar.gabor@gmail.com')).toBe('gmail')
-    expect(shortLabel('info@tgholsters.hu')).toBe('tgholsters')
-    expect(shortLabel('tatar.gabor@itline.hu')).toBe('itline')
+    expect(shortLabel('someone@gmail.com')).toBe('gmail')
+    expect(shortLabel('info@shopexample.hu')).toBe('shopexample')
+    expect(shortLabel('dev@agency.hu')).toBe('agency')
   })
 
   it('keeps a provider name as itself, capped', () => {
