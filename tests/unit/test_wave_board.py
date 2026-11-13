@@ -205,7 +205,7 @@ def test_sync_is_idempotent_and_the_push_cycle_closes(env, repo):
     assert first.stdout.startswith(f"PUSH j {URL} ")
     payload = repo / ".set/waveboard/j.state.json"
     state = json.loads(payload.read_text())
-    assert set(state) == {"schema", "job", "title", "assignees", "waves", "synced_at", "synced_by", "content_hash"}
+    assert set(state) == {"schema", "job", "title", "assignees", "waves", "synced_at", "content_hash"}
 
     job_mtime, payload_mtime = (repo / "docs/waveboard/j.json").stat().st_mtime_ns, payload.stat().st_mtime_ns
     time.sleep(0.02)
@@ -490,7 +490,23 @@ def test_a_review_resets_staleness(env, srepo):
     run(env, srepo, "reviewed", "j")
     r = stale(env, srepo)
     assert r["commits_since_change"] == 0 and r["stale"] is False
-    assert job_file(srepo)["reviewed"]["by"] == "test-host"
+    assert set(job_file(srepo)["reviewed"]) == {"at"}
+
+
+def test_a_review_drops_a_legacy_machine_name(env, srepo):
+    """A tracked job file never keeps a hostname: a legacy reviewed.by goes on the next write."""
+    stale_repo(env, srepo)
+    path = srepo / "docs" / "waveboard" / "j.json"
+    data = json.loads(path.read_text())
+    data["reviewed"] = {"at": "2026-01-01T00:00:00Z", "by": "old-host"}
+    path.write_text(json.dumps(data))
+    run(env, srepo, "reviewed", "j")
+    assert "by" not in job_file(srepo)["reviewed"]
+    data = job_file(srepo)
+    data["reviewed"]["by"] = "old-host"
+    path.write_text(json.dumps(data))
+    run(env, srepo, "sync")
+    assert "by" not in job_file(srepo)["reviewed"]
 
 
 def test_a_review_does_not_cause_a_push(env, srepo):

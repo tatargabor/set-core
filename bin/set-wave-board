@@ -662,6 +662,8 @@ def _drop_by(data: dict) -> None:
     for wave in data.get("waves", []):
         for item in wave.get("items", []):
             item.pop("by", None)
+    if isinstance(data.get("reviewed"), dict):
+        data["reviewed"].pop("by", None)
 
 
 def save_job(root: Path, job: str, data: dict) -> bool:
@@ -777,7 +779,7 @@ def sync_job(root: Path, job: str) -> dict:
                        data.get("job"))
         data["job"] = job
     unresolved, changed_items = [], []
-    stamp, who = now_iso(), host_label()
+    stamp = now_iso()
     for wave in data["waves"]:
         for item in wave.get("items", []):
             ev = item.get("evidence")
@@ -801,7 +803,7 @@ def sync_job(root: Path, job: str) -> dict:
     old = read_json(payload)
     state_changed = False
     if not isinstance(old, dict) or old.get("content_hash") != h:
-        state = dict(content, synced_at=stamp, synced_by=who, content_hash=h)
+        state = dict(content, synced_at=stamp, content_hash=h)
         state_changed = write_if_changed(payload, dump(state))
     pushed = read_json(sdir / f"{job}.pushed.json") or {}
     url = data.get("artifact_url")
@@ -823,7 +825,7 @@ def sync_job(root: Path, job: str) -> dict:
         cpath = sdir / f"{job}.combined.json"
         cold = read_json(cpath)
         if not isinstance(cold, dict) or cold.get("content_hash") != ch:
-            write_if_changed(cpath, dump(dict(body, synced_at=stamp, synced_by=who, content_hash=ch)))
+            write_if_changed(cpath, dump(dict(body, synced_at=stamp, content_hash=ch)))
         cpushed = read_json(sdir / f"{job}.combined-pushed.json") or {}
         same_target = cpushed.get("url") == curl
         cneeded = not same_target or cpushed.get("hash") != ch
@@ -1426,7 +1428,7 @@ def cmd_stale(args, root):
 def cmd_reviewed(args, root):
     data = load_job(root, args.job)
     old = data.get("reviewed")
-    data["reviewed"] = {"at": now_iso(), "by": host_label()}
+    data["reviewed"] = {"at": now_iso()}
     save_job(root, args.job, data)
     logger.info("%s: reviewed (was %s)", args.job, old)
     out(args, dict(data["reviewed"], job=args.job), [f"{args.job}: reviewed at {data['reviewed']['at']}"])
@@ -1573,7 +1575,7 @@ def combined_seed() -> dict:
                         artifact_url=data.get("artifact_url"))
             boards.append(body)
     logger.info("combined: %d board(s) in the seed", len(boards))
-    return {"boards": boards, "synced_at": now_iso(), "synced_by": host_label()}
+    return {"boards": boards, "synced_at": now_iso()}
 
 
 def combined_template_path() -> Path:

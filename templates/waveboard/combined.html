@@ -361,7 +361,7 @@ h2 { font-family: var(--font-display); font-stretch: 104%; font-weight: 650; fon
   try { seed = JSON.parse(document.getElementById("seed").textContent || "null"); } catch (e) { seed = null; }
   if (seed) {
     setSource("snapshot", "Snapshot");
-    renderSynced(seed.synced_at ? "rendered " + ago(seed.synced_at) + (seed.synced_by ? " · " + seed.synced_by : "") : "");
+    renderSynced(seed.synced_at ? "rendered " + ago(seed.synced_at) : "");
   }
   render(seed);
 
