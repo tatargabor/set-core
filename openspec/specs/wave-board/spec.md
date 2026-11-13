@@ -4,7 +4,9 @@
 The live execution status of a multi-step job that runs in waves: a tracked job file per job,
 status derived from evidence by a hook-run sync, the agent's own report as the fast lane, and a
 read-only Artifact page whose database only the agent writes.
+
 ## Requirements
+
 ### Requirement: A job is a tracked registration file
 
 Each job SHALL be one JSON file at `docs/waveboard/<job>.json` in the consumer repository,
@@ -96,10 +98,11 @@ refused.
 ### Requirement: Sync is idempotent and writes the database payload
 
 `sync` SHALL rewrite a job file only when its content changed, with stable formatting, and
-SHALL change an item's `updated` and `by` only when its status changed. It SHALL write the
+SHALL change an item's `updated` only when its status changed. It SHALL write the
 database payload to `.set/waveboard/<job>.state.json` — `{schema, job, title, waves,
-synced_at, synced_by, content_hash}` — only when the content hash differs from the payload
-already there. When the job has an `artifact_url` and the payload's hash differs from the last
+synced_at, content_hash}` — only when the content hash differs from the payload
+already there. Neither this payload, the combined payload, nor the combined seed SHALL carry a
+machine name. When the job has an `artifact_url` and the payload's hash differs from the last
 pushed hash, it SHALL print `PUSH <job> <artifact_url> <payload-path>` on standard output.
 The tool SHALL keep `.set/waveboard/` out of git on its own.
 
@@ -108,6 +111,11 @@ The tool SHALL keep `.set/waveboard/` out of git on its own.
 - **WHEN** sync runs twice with no change in evidence or in the job file
 - **THEN** the second run rewrites neither file and, once the first payload has been recorded
   as pushed, prints no `PUSH` line
+
+#### Scenario: The payload names no machine
+
+- **WHEN** sync writes the state payload
+- **THEN** the payload has no `synced_by` field and carries `synced_at`
 
 ### Requirement: The push is the agent's act, recorded per machine
 
@@ -344,15 +352,21 @@ one object per job: `job`, `last_change`, `commits_since_change`, `manual_open` 
 
 ### Requirement: An agent can record that a board was reviewed
 
-`set-wave-board reviewed <job>` SHALL set `reviewed` to `{"at": <now, ISO UTC>, "by": <host
-label>}` at the top level of the job file, and change nothing else in it. The `reviewed` field
-SHALL NOT be part of the content that is hashed and pushed. A review SHALL therefore never make
-a job pending a push, and `sync` SHALL keep the field as it is.
+`set-wave-board reviewed <job>` SHALL set `reviewed` to `{"at": <now, ISO UTC>}` at the top level
+of the job file, and change nothing else in it. A legacy `reviewed.by` SHALL be dropped on the
+next write of the job file. The `reviewed` field SHALL NOT be part of the content that is hashed
+and pushed. A review SHALL therefore never make a job pending a push, and `sync` SHALL keep the
+field as it is.
 
 #### Scenario: A review resets staleness
 
 - **WHEN** a job is stale and `reviewed` is run for it
 - **THEN** `stale` reports `commits_since_change` 0 and `stale` false
+
+#### Scenario: A review records no machine
+
+- **WHEN** `reviewed` is run for a job whose file carries a legacy `reviewed.by`
+- **THEN** the job file's `reviewed` holds `at` and no `by`
 
 #### Scenario: A review does not cause a push
 
@@ -504,4 +518,3 @@ set. With `hu`, the page SHALL show its own labels in Hungarian, including "Egy�
 
 - **WHEN** `lang job hu` runs and the page renders the payload
 - **THEN** the panel is titled "Kire várunk" and the in-progress pill reads "folyamatban"
-
