@@ -25,7 +25,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-THRESHOLD_DEFAULT = 500_000
+# 550k: owner decision 2026-11-12, the same default as set-claude-handoff's clear-gate (a7d14a9).
+THRESHOLD_DEFAULT = 550_000
 THRESHOLD_ENV = "SET_HANDOFF_ROTATE_THRESHOLD"
 MARKER_WAIT_TIMEOUT_S = 180.0
 MARKER_POLL_S = 1.0
@@ -33,7 +34,7 @@ MARKER_POLL_S = 1.0
 
 def rotate_threshold() -> int:
     """Rotation threshold in tokens; env override for pilots, default is the
-    consumer-decided soft limit (500 000)."""
+    owner-decided soft limit (550 000), shared with the clear-gate."""
     import os
 
     raw = os.environ.get(THRESHOLD_ENV, "")

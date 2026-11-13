@@ -68,3 +68,14 @@ def test_wait_for_marker_arrives_mid_wait(tmp_path):
         assert asyncio.run(wait_for_marker(p, timeout_s=2, poll_s=0.1)) is True
     finally:
         t.cancel()
+
+
+def test_rotate_threshold_default_is_550k_and_env_overrides(monkeypatch):
+    from set_orch.handoff_rotation import THRESHOLD_ENV, rotate_threshold
+
+    monkeypatch.delenv(THRESHOLD_ENV, raising=False)
+    assert rotate_threshold() == 550_000
+    monkeypatch.setenv(THRESHOLD_ENV, "400000")
+    assert rotate_threshold() == 400_000
+    monkeypatch.setenv(THRESHOLD_ENV, "not-a-number")
+    assert rotate_threshold() == 550_000
