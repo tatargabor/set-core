@@ -455,9 +455,17 @@ def sh(args, cwd=None):
     different and false statement, and the operator is then debugging a leak that
     does not exist. A missing optional tool must read as "this could not be
     determined" (the caller already defaults to "unknown"), never as a finding.
+
+    The decoding is the third half, measured 2026-11-13: a staged CSV in a legacy
+    single-byte encoding made `git diff` emit bytes that are not UTF-8, the strict
+    decode raised, and the whole scan died with a traceback — which the hook then
+    reported as a leak, the same false statement as above. git prints file content
+    as raw bytes; an undecodable byte becomes U+FFFD and the ASCII around it is
+    still scanned, so a name spelled in ASCII is still found.
     """
     try:
-        p = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+        p = subprocess.run(args, cwd=cwd, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
     except (FileNotFoundError, NotADirectoryError, PermissionError):
         return ""
     return p.stdout
@@ -515,7 +523,8 @@ NAME_VIS_RETRY = 86400        # an "unknown" verdict is asked again after a day
 
 def _sh_timeout(args, timeout=8):
     try:
-        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout,
+                           encoding="utf-8", errors="replace")
     except (FileNotFoundError, PermissionError, subprocess.TimeoutExpired):
         return ""
     return p.stdout

@@ -133,8 +133,36 @@ def extract_commit_message(cmd, cwd):
     return "\n\n".join(p for p in parts if p)
 
 
-def target_repo(payload, cmd):
-    """Which repository the command will actually run in.
+ASSIGN_RX = re.compile(r"""(?:^|[;&|\n])\s*([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^;&|\s]*)""")
+DIR_RX = re.compile(
+    r"""(?:^|[;&|\n])\s*(cd|pushd|popd)(?=\s|$|[;&|])(?:[ \t]+("[^"]+"|'[^']+'|[^;&|\s]+))?"""
+)
+GIT_C_RX = re.compile(r"""\bgit\s+(?:-c\s+\S+\s+)*-C\s+("[^"]+"|'[^']+'|[^;&|\s]+)""")
+VAR_RX = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
+
+
+def _expand(word, env):
+    """`~` and `$NAME` / `${NAME}`, from the command's own assignments, then the
+    environment. Returns None when a variable cannot be resolved — an unknown is
+    reported as unknown, never guessed."""
+    word = word.strip("\"'")
+    if word == "~" or word.startswith("~/"):
+        word = os.path.expanduser(word)
+    missing = []
+
+    def sub(m):
+        name = m.group(1) or m.group(2)
+        if name in env:
+            return env[name]
+        missing.append(name)
+        return ""
+    word = VAR_RX.sub(sub, word)
+    return None if missing else word
+
+
+def target_repo(payload, cmd, verb_at=None):
+    """Which directory the publishing command will actually run in, and whether
+    that is CERTAIN. Returns (directory, certain).
 
     The hook process inherits the SESSION's working directory, not the
     command's. A command beginning `cd <path> && git push` was therefore
@@ -143,16 +171,60 @@ def target_repo(payload, cmd):
     unrelated repository and refused a clean one. The fail direction runs both
     ways: it blocks a correct push, and it would PASS a leaking one whenever
     the session directory is clean and the target is not.
+
+    Every `cd` before the verb is applied IN ORDER, each relative to the one
+    before it. Measured 2026-11-13 on two commits in one consumer session:
+    `cd openspec/changes/<x> && … && cd ../../.. && git commit` — the first
+    version took only the LAST `cd` and resolved `../../..` against the
+    session's directory, three levels above the repository; the scanner said
+    "not inside a git repository" and the hook refused a correct commit.
+    `git -C <dir>` on the verb's own command applies last, as git applies it.
+
+    `certain` is False when a step could not be followed: an unresolved
+    variable, `cd -`, `popd`, or a directory that does not exist yet (made
+    earlier in the same command). The caller then keeps the old fallback and
+    never fails open on it.
     """
-    target = payload.get("cwd") or os.getcwd()
-    matches = CD_RX.findall(cmd)
-    if matches:
-        last = matches[-1].strip("\"'")
-        if last.startswith("~"):
-            last = os.path.expanduser(last)
-        if os.path.isdir(last):
-            target = last
-    return target
+    base = payload.get("cwd") or os.getcwd()
+    head = cmd if verb_at is None else cmd[:verb_at]
+    env = dict(os.environ)
+    for name, val in ASSIGN_RX.findall(head):
+        env[name] = val.strip("\"'")
+    target, certain = base, True
+    for m in DIR_RX.finditer(head):
+        word, arg = m.group(1), m.group(2)
+        if word == "popd" or (arg and arg.strip("\"'") == "-"):
+            certain = False
+            continue
+        path = os.path.expanduser("~") if not arg else _expand(arg, env)
+        if path is None:
+            certain = False
+            continue
+        nxt = os.path.normpath(os.path.join(target, path))
+        if os.path.isdir(nxt):
+            target = nxt
+        else:
+            certain = False
+    if verb_at is not None:
+        line_start = max(cmd.rfind(c, 0, verb_at) for c in ";&|\n") + 1
+        gm = GIT_C_RX.search(cmd[line_start:verb_at + 16])
+        if gm:
+            path = _expand(gm.group(1), env)
+            nxt = os.path.normpath(os.path.join(target, path)) if path is not None else None
+            if nxt and os.path.isdir(nxt):
+                target = nxt
+            else:
+                certain = False
+    return target, certain
+
+
+def inside_repo(path):
+    try:
+        p = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=path,
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return p.returncode == 0 and p.stdout.strip() == "true"
 
 
 def main():
@@ -165,7 +237,8 @@ def main():
     if not cmd:
         return 0
 
-    m = PUBLISH_RX.search(strip_heredocs(cmd))
+    stripped = strip_heredocs(cmd)
+    m = PUBLISH_RX.search(stripped)
     if not m:
         return 0
     verb = m.group(1)
@@ -178,7 +251,16 @@ def main():
         print("a gate that cannot run must not report clean.", file=sys.stderr)
         return 2
 
-    target = target_repo(payload, cmd)
+    target, certain = target_repo(payload, stripped, m.start(1))
+    if certain and inside_repo(target) is False:
+        # Followed every step and landed outside any repository: git refuses this
+        # command itself, so there is nothing to scan and nothing to refuse. Only
+        # a CERTAIN resolution fails open — an unfollowable step keeps scanning.
+        print(f"set-hook-leakscan: {target} is not inside a git repository; git will "
+              f"refuse this {verb} too, so it is not scanned", file=sys.stderr)
+        return 0
+    if not certain and inside_repo(target) is False:
+        target = payload.get("cwd") or os.getcwd()
 
     if verb == "push":
         proc = subprocess.run(["set-leakscan"], cwd=target,
@@ -211,6 +293,21 @@ def main():
 
     if (proc.returncode == 0) and (msg_proc is None or msg_proc.returncode == 0):
         return 0
+
+    crashed = [p for p in (proc, msg_proc)
+               if p is not None and "Traceback (most recent call last)" in (p.stderr or "")]
+    if crashed:
+        # Still refused — a scan that did not finish must not report clean — but
+        # said for what it is. Reported as a leak, a crash sends the agent hunting
+        # for content that is not there (measured 2026-11-13, twice).
+        print(f"BLOCKED by set-hook-leakscan — the scanner CRASHED on this {verb}; this is "
+              "a bug in set-leakscan, not a finding in your change.", file=sys.stderr)
+        print(f"repository: {target}\n", file=sys.stderr)
+        for p in crashed:
+            print("\n".join((p.stderr or "").strip().splitlines()[-6:]), file=sys.stderr)
+        print("\nReport it to set-core with the lines above. Do NOT bypass the gate; "
+              "the change can wait for the fix.", file=sys.stderr)
+        return 2
 
     if verb == "push":
         print("BLOCKED by set-hook-leakscan — this push would publish content that must",
