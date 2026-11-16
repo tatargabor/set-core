@@ -1,0 +1,459 @@
+<title>Projektpult</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Projektpult template (set-core templates/projektpult). Data comes from the artifact db: catalog/questions, answers/*, issues/*. See README.md.
+   Layout: sticky header with two tabs (Kérdések, Issues); questions as an answer form list, issues as a status board of columns. */
+:root {
+  --bg: #f4f4ee; --panel: #ffffff; --sunk: #ecebe2; --fg: #22251c; --muted: #66695a; --line: #d9d8cb;
+  --accent: #56692a; --accent-fg: #ffffff;
+  --todo: #6b6f60; --todo-bg: #e9e9e1;
+  --prog: #2f62a3; --prog-bg: #dde8f6;
+  --review: #7a4fa6; --review-bg: #ebe1f5;
+  --blocked: #b4472a; --blocked-bg: #f8e2d8;
+  --hold: #8a6a10; --hold-bg: #f5ecc9;
+  --done: #3d7a38; --done-bg: #dfeeda;
+  --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #16170f; --panel: #1f2118; --sunk: #191a12; --fg: #e8e8dc; --muted: #a2a591; --line: #35372b;
+  --accent: #b3c879; --accent-fg: #16170f;
+  --todo: #b9bba9; --todo-bg: #2a2c22; --prog: #8fb7ee; --prog-bg: #1b2a3e; --review: #c9a6ee; --review-bg: #2d2140;
+  --blocked: #f09a7a; --blocked-bg: #3d2117; --hold: #e3c264; --hold-bg: #383015; --done: #96cf8c; --done-bg: #1e321d;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #16170f; --panel: #1f2118; --sunk: #191a12; --fg: #e8e8dc; --muted: #a2a591; --line: #35372b;
+  --accent: #b3c879; --accent-fg: #16170f;
+  --todo: #b9bba9; --todo-bg: #2a2c22; --prog: #8fb7ee; --prog-bg: #1b2a3e; --review: #c9a6ee; --review-bg: #2d2140;
+  --blocked: #f09a7a; --blocked-bg: #3d2117; --hold: #e3c264; --hold-bg: #383015; --done: #96cf8c; --done-bg: #1e321d;
+  color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--fg); font: 16px/1.5 var(--f-body); margin: 0 }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--panel) }
+.gutter { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+.inner { max-width: 1680px; margin: 0 auto }
+#view-q { max-width: 1180px; margin: 0 auto; width: 100% }
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line) }
+header.top .inner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding-block: 12px }
+.brand { display: grid; gap: 0 }
+.brand small { font: 700 11px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted) }
+.brand b { font: 800 20px/1.2 var(--f-display) }
+nav.tabs { display: flex; gap: 4px; margin-left: auto }
+nav.tabs a { font: 700 15px var(--f-display); color: var(--muted); text-decoration: none; padding: 8px 14px; border-radius: 8px; display: flex; gap: 8px; align-items: center }
+nav.tabs a[aria-current="page"] { background: var(--fg); color: var(--bg) }
+nav.tabs a .n { font: 500 12px var(--f-mono); opacity: .8 }
+main { padding-block: 20px 56px }
+.view { display: grid; gap: 16px }
+.notice { padding: 12px 14px; border-radius: 8px; background: var(--sunk); color: var(--muted); border: 1px dashed var(--line) }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center }
+.chips { display: flex; flex-wrap: wrap; gap: 6px }
+.chip { font: 600 13px var(--f-body); border: 1px solid var(--line); background: var(--panel); color: var(--fg); padding: 5px 11px; border-radius: 999px; cursor: pointer }
+.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg) }
+input[type=search], input[type=text], input[type=date], select, textarea {
+  font: 15px var(--f-body); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-width: 0 }
+input[type=search] { flex: 1 1 220px }
+textarea { width: 100%; resize: vertical; min-height: 64px }
+button.btn { font: 700 14px var(--f-display); border-radius: 8px; padding: 8px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--fg) }
+button.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg) }
+button.btn:disabled { opacity: .5; cursor: default }
+:is(button, a, input, select, textarea, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.count { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums }
+.mono { font-family: var(--f-mono); font-size: 13px }
+.muted { color: var(--muted) }
+
+/* questions */
+.qstats { display: flex; flex-wrap: wrap; gap: 8px 20px; font-variant-numeric: tabular-nums }
+.qstats b { font: 800 24px var(--f-display); margin-right: 4px }
+.qlist { display: grid; gap: 10px }
+.q { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0 }
+.q.answered-here { border-color: var(--done) }
+.qhead { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline }
+.qid { font: 500 14px var(--f-mono); color: var(--accent) }
+.qtext { font-size: 17px; font-weight: 600; overflow-wrap: anywhere; max-width: 85ch }
+.pill { font: 700 11px var(--f-display); text-transform: uppercase; letter-spacing: .06em; padding: 3px 8px; border-radius: 5px; white-space: nowrap }
+.tag { font: 600 12px var(--f-body); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px }
+.st-open { color: var(--blocked); background: var(--blocked-bg) } .st-partial { color: var(--hold); background: var(--hold-bg) }
+.st-answered { color: var(--done); background: var(--done-bg) } .st-conflict { color: var(--review); background: var(--review-bg) }
+details.bg summary { cursor: pointer; color: var(--muted); font-size: 14px }
+details.bg p { margin: 6px 0 0; font-size: 14.5px; overflow-wrap: anywhere; max-width: 90ch }
+.opts { display: grid; gap: 6px }
+.opt { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px; align-items: start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; background: var(--sunk) }
+.opt input { position: absolute; opacity: 0; pointer-events: none }
+.opt .letter { font: 700 13px var(--f-mono); width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; border: 1px solid var(--line); background: var(--panel) }
+.opt:has(input:checked) { border-color: var(--accent); background: var(--panel) }
+.opt:has(input:checked) .letter { background: var(--accent); color: var(--accent-fg); border-color: var(--accent) }
+.opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px }
+.qfoot { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center }
+.saved { font-size: 14px; color: var(--done) }
+.err { font-size: 14px; color: var(--blocked) }
+
+/* issues board */
+.board-wrap { padding-bottom: 6px }
+.board { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px }
+@media (max-width: 1100px) { .board { grid-template-columns: repeat(3, minmax(0, 1fr)) } }
+@media (max-width: 640px) { .board { grid-template-columns: minmax(0, 1fr) } }
+.col { padding: 8px }
+.card { padding: 8px 10px }
+.card .t { font-size: 14.5px }
+.card .meta, .card .note { font-size: 12.5px }
+.col { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 8px; align-content: start; min-width: 0 }
+.col h3 { margin: 0; display: flex; align-items: center; gap: 8px; font: 800 13px var(--f-display); text-transform: uppercase; letter-spacing: .07em }
+.col h3 .dot { width: 10px; height: 10px; border-radius: 3px }
+.col h3 .n { font: 500 12px var(--f-mono); color: var(--muted); margin-left: auto }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 6px; min-width: 0; cursor: pointer; text-align: left; font: inherit; color: inherit; width: 100% }
+.card:hover { border-color: var(--muted) }
+.card .t { font-weight: 600; overflow-wrap: anywhere }
+.card .meta { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 13px; color: var(--muted); align-items: center }
+.card .note { font-size: 13.5px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden }
+.due { font: 500 12px var(--f-mono) }
+.due.late { color: var(--blocked) }
+.empty-col { font-size: 13px; color: var(--muted); padding: 4px 2px }
+
+/* editor */
+.editor-back { position: fixed; inset: 0; background: color-mix(in srgb, var(--fg) 35%, transparent); z-index: 20; display: grid; place-items: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)) }
+.editor { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: min(640px, 100%); max-height: 100%; overflow: auto; padding: 18px; display: grid; gap: 12px }
+.editor h2 { margin: 0; font: 800 20px var(--f-display) }
+.field { display: grid; gap: 4px }
+.field label { font: 700 12px var(--f-display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+.row2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px }
+.refs { display: flex; flex-wrap: wrap; gap: 6px }
+.refs a { font: 500 12px var(--f-mono); color: var(--accent); text-decoration: none; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end }
+@media (prefers-reduced-motion: no-preference) { .card, .chip, .opt { transition: border-color .15s, background .15s } }
+</style>
+
+<header class="top gutter">
+  <div class="inner">
+    <div class="brand"><small id="brand-sub"></small><b id="brand-name">Projektpult</b></div>
+    <nav class="tabs" data-ta="aria-label:nav">
+      <a href="#kerdesek" id="tab-q"><span data-t="tabQ">Kérdések</span> <span class="n" id="tabn-q"></span></a>
+      <a href="#issues" id="tab-i"><span data-t="tabI">Issues</span> <span class="n" id="tabn-i"></span></a>
+    </nav>
+  </div>
+</header>
+
+<main class="gutter">
+  <div class="inner">
+    <div id="status" class="notice" data-t="loading">Adatok betöltése…</div>
+
+    <section class="view" id="view-q" hidden>
+      <div class="qstats" id="qstats"></div>
+      <div class="toolbar">
+        <div class="chips" id="qf-state"></div>
+        <div class="chips" id="qf-group"></div>
+        <input type="search" id="qf-search" data-ta="placeholder:qSearch;aria-label:qSearchLabel">
+        <span class="count" id="qcount"></span>
+      </div>
+      <div class="qlist" id="qlist"></div>
+    </section>
+
+    <section class="view" id="view-i" hidden>
+      <div class="toolbar">
+        <div class="chips" id="if-area"></div>
+        <input type="search" id="if-search" data-ta="placeholder:iSearch;aria-label:iSearch">
+        <button class="btn primary" id="new-issue" data-t="newIssue">Új issue</button>
+      </div>
+      <div class="board-wrap"><div class="board" id="board"></div></div>
+    </section>
+  </div>
+</main>
+
+<div class="editor-back" id="editor-back" hidden>
+  <form class="editor" id="editor" novalidate>
+    <h2 id="ed-title">Issue</h2>
+    <div class="field"><label for="ed-t" data-t="fTitle">Cím</label><input type="text" id="ed-t" required></div>
+    <div class="row2">
+      <div class="field"><label for="ed-status" data-t="fStatus">Állapot</label><select id="ed-status"></select></div>
+      <div class="field"><label for="ed-area" data-t="fArea">Terület</label><input type="text" id="ed-area" list="areas"></div>
+      <div class="field"><label for="ed-owner" data-t="fOwner">Felelős</label><input type="text" id="ed-owner" list="owners"></div>
+      <div class="field"><label for="ed-due" data-t="fDue">Határidő</label><input type="date" id="ed-due"></div>
+    </div>
+    <div class="field"><label for="ed-note" data-t="fNote">Leírás, állapot</label><textarea id="ed-note" rows="4"></textarea></div>
+    <div class="field"><label for="ed-refs" data-t="fRefs">Kapcsolódó kérdések (szóközzel elválasztva)</label><input type="text" id="ed-refs" data-ta="placeholder:fRefsPh"></div>
+    <div class="refs" id="ed-reflinks"></div>
+    <div class="muted" id="ed-meta" style="font-size:13px"></div>
+    <div class="err" id="ed-err"></div>
+    <div class="actions">
+      <button type="button" class="btn" id="ed-cancel" data-t="cancel">Mégse</button>
+      <button type="submit" class="btn primary" id="ed-save" data-t="save">Mentés</button>
+    </div>
+  </form>
+</div>
+<datalist id="areas"></datalist><datalist id="owners"></datalist>
+
+<script>
+const STATUSES = [
+  ["todo", "TODO", "todo"], ["inprogress", "In Progress", "prog"], ["review", "In Review", "review"],
+  ["blocked", "Blocked", "blocked"], ["onhold", "On Hold", "hold"], ["done", "Done", "done"]];
+const SLABEL = Object.fromEntries(STATUSES.map(s => [s[0], s[1]]));
+const SCOLOR = Object.fromEntries(STATUSES.map(s => [s[0], s[2]]));
+const STR = {
+  hu: { nav: "Oldalak", tabQ: "Kérdések", tabI: "Issues", loading: "Adatok betöltése…", qSearch: "Keresés: azonosító vagy szöveg", qSearchLabel: "Kérdések keresése",
+    iSearch: "Keresés az issue-k között", newIssue: "Új issue", fTitle: "Cím", fStatus: "Állapot", fArea: "Terület", fOwner: "Felelős", fDue: "Határidő",
+    fNote: "Leírás, állapot", fRefs: "Kapcsolódó kérdések (szóközzel elválasztva)", fRefsPh: "Q1 Q2", cancel: "Mégse", save: "Mentés",
+    qOpen: "Nyitott", qPartial: "Részben", qConflict: "Ellentmondásos", qAnswered: "Megválaszolva",
+    fltTodo: "Válaszra vár", fltHere: "Itt megválaszolva", fltAll: "Mind", allGroups: "Minden címzett", allAreas: "Minden terület",
+    stTodo: "válaszra vár", stHere: "itt megválaszolva", stReg: "korábban lezárva", nQuestions: "kérdés", noMatch: "Nincs a szűrésnek megfelelő kérdés.",
+    bgSummary: "Háttér, eddigi válaszok, forrás", optsLabel: "Válaszlehetőségek", regAnswered: "A nyilvántartás szerint már megválaszolva; kiegészítés lent írható.",
+    ownLabel: "Saját válasz vagy kiegészítés", ownPh: "Írd ide, ha egyik sem pontos, vagy ha pontosítanád", saveAnswer: "Válasz mentése", clearAnswer: "Válasz törlése",
+    saved: "Mentve", private: "négyszemközt", needAnswer: "Válassz egy lehetőséget, vagy írd be a választ.",
+    noWrite: "Nincs írási jogod ehhez az oldalhoz; kérj Contributor vagy Editor hozzáférést.", quota: "Az adatbázis megtelt; szólj az oldal tulajdonosának.",
+    saveFail: "Nem sikerült menteni", retry: "Próbáld újra.", empty: "Üres", lastEdit: "Utoljára módosította", created: "Létrehozva", newTitle: "Új issue",
+    needTitle: "Adj címet az issue-nak.", slow: "Az adatok még nem érhetők el. Ha ez marad, a megjelenítés lehet elavult; frissíts később.",
+    noDb: "Ebben a nézetben az adatbázis nem érhető el (bejelentkezés kell). Nyisd meg az oldalt a claude.ai-on.", noQ: "Még nincsenek kérdések az adatbázisban.",
+    qFail: "A kérdések nem tölthetők be", iFail: "Az issue-k nem tölthetők be", someone: "valaki", you: "te", locale: "hu-HU" },
+  en: { nav: "Pages", tabQ: "Questions", tabI: "Issues", loading: "Loading…", qSearch: "Search: id or text", qSearchLabel: "Search questions",
+    iSearch: "Search issues", newIssue: "New issue", fTitle: "Title", fStatus: "Status", fArea: "Area", fOwner: "Owner", fDue: "Due",
+    fNote: "Description, state", fRefs: "Related questions (space-separated)", fRefsPh: "Q1 Q2", cancel: "Cancel", save: "Save",
+    qOpen: "Open", qPartial: "Partly answered", qConflict: "Conflicting", qAnswered: "Answered",
+    fltTodo: "Awaiting answer", fltHere: "Answered here", fltAll: "All", allGroups: "All addressees", allAreas: "All areas",
+    stTodo: "awaiting answer", stHere: "answered here", stReg: "closed earlier", nQuestions: "questions", noMatch: "No question matches the filter.",
+    bgSummary: "Background, earlier answers, source", optsLabel: "Answer options", regAnswered: "Already answered in the register; add to it below.",
+    ownLabel: "Your own answer or note", ownPh: "Type here if none of the options fits, or to add detail", saveAnswer: "Save answer", clearAnswer: "Clear answer",
+    saved: "Saved", private: "private", needAnswer: "Pick an option or type an answer.",
+    noWrite: "You cannot write to this page; ask for Contributor or Editor access.", quota: "The database is full; tell the page owner.",
+    saveFail: "Could not save", retry: "Try again.", empty: "Empty", lastEdit: "Last changed by", created: "Created", newTitle: "New issue",
+    needTitle: "Give the issue a title.", slow: "The data cannot be reached yet. If this stays, what you see may be out of date; refresh later.",
+    noDb: "The database is not available in this view (sign-in needed). Open the page on claude.ai.", noQ: "No questions in the database yet.",
+    qFail: "Questions could not be loaded", iFail: "Issues could not be loaded", someone: "someone", you: "you", locale: "en-GB" } };
+let T = STR.hu;
+const QST = () => ({ open: T.qOpen, partial: T.qPartial, conflict: T.qConflict, answered: T.qAnswered });
+let GR = {};
+function applyMeta(meta) {
+  T = STR[meta.lang] || STR.hu;
+  document.documentElement.lang = meta.lang || "hu";
+  GR = meta.groups || {};
+  if (meta.project) { $("brand-name").textContent = meta.project; document.title = meta.project }
+  $("brand-sub").textContent = meta.subtitle || "";
+  document.querySelectorAll("[data-t]").forEach(el => { el.textContent = T[el.dataset.t] ?? el.textContent });
+  document.querySelectorAll("[data-ta]").forEach(el => el.dataset.ta.split(";").forEach(p => { const [attr, k] = p.split(":"); el.setAttribute(attr, T[k] ?? "") }));
+}
+const $ = id => document.getElementById(id);
+const S = { catalog: [], answers: {}, issues: [], db: null, user: null, me: null, names: {}, canWrite: true,
+  q: { state: "todo", group: "all", search: "" }, i: { area: "all", search: "" }, gotCatalog: false, gotIssues: false };
+try { const s = JSON.parse(localStorage.getItem("pp-filters") || "null"); if (s) { Object.assign(S.q, s.q || {}, { search: "" }); Object.assign(S.i, s.i || {}, { search: "" }) } } catch (e) {}
+const saveFilters = () => { try { localStorage.setItem("pp-filters", JSON.stringify({ q: { state: S.q.state, group: S.q.group }, i: { area: S.i.area } })) } catch (e) {} };
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const md = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+const fmt = iso => { try { return new Date(iso).toLocaleString(T.locale, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) } catch (e) { return iso } };
+const who = id => (id && S.names[id]) || (id && S.me && id === S.me.id ? (S.me.name || T.you) : T.someone);
+
+/* ---------- routing ---------- */
+function route() {
+  const h = (location.hash || "").slice(1);
+  const v = h === "issues" ? "i" : "q";
+  $("view-q").hidden = v !== "q" || !S.ready; $("view-i").hidden = v !== "i" || !S.ready;
+  $("tab-q").setAttribute("aria-current", v === "q" ? "page" : "false");
+  $("tab-i").setAttribute("aria-current", v === "i" ? "page" : "false");
+}
+addEventListener("hashchange", route);
+
+/* ---------- questions ---------- */
+function qAnswered(item) { const a = S.answers[item.id]; return !!(a && (a.choice || (a.text || "").trim())) }
+function qDone(item) { return item.status === "answered" || qAnswered(item) }
+function renderQFilters() {
+  const st = [["todo", T.fltTodo], ["answered-here", T.fltHere], ["all", T.fltAll]];
+  $("qf-state").innerHTML = st.map(([k, l]) => `<button class="chip" data-k="${k}" aria-pressed="${S.q.state === k}">${l}</button>`).join("");
+  $("qf-group").innerHTML = [["all", T.allGroups], ...Object.entries(GR)].map(([k, l]) => `<button class="chip" data-k="${k}" aria-pressed="${S.q.group === k}">${l}</button>`).join("");
+}
+function renderQStats() {
+  const tot = S.catalog.length, here = S.catalog.filter(qAnswered).length, todo = S.catalog.filter(i => !qDone(i)).length;
+  const reg = S.catalog.filter(i => i.status === "answered" && !qAnswered(i)).length;
+  $("qstats").innerHTML = `<span><b>${todo}</b>${T.stTodo}</span><span><b>${here}</b>${T.stHere}</span><span><b>${reg}</b>${T.stReg}</span><span class="count" style="align-self:end">${tot} ${T.nQuestions}</span>`;
+  $("tabn-q").textContent = todo;
+}
+function renderQ() {
+  const s = S.q.search.toLowerCase();
+  const list = S.catalog.filter(i =>
+    (S.q.group === "all" || i.group === S.q.group) &&
+    (S.q.state === "all" || (S.q.state === "todo" ? !qDone(i) : qAnswered(i))) &&
+    (!s || (i.label + " " + i.id + " " + i.q + " " + i.bg).toLowerCase().includes(s)));
+  $("qcount").textContent = list.length + " / " + S.catalog.length;
+  // keep in-progress edits: re-render only cards whose stored answer changed
+  const host = $("qlist");
+  const keep = new Set(list.map(i => i.id));
+  [...host.children].forEach(el => { if (!keep.has(el.dataset.id)) el.remove() });
+  let prev = null;
+  for (const i of list) {
+    let el = host.querySelector(`[data-id="${CSS.escape(i.id)}"]`);
+    const sig = JSON.stringify(S.answers[i.id] || null);
+    if (!el || (el.dataset.sig !== sig && !el.dataset.dirty)) {
+      const fresh = qCard(i); fresh.dataset.sig = sig;
+      if (el) el.replaceWith(fresh); el = fresh;
+    }
+    if (prev ? prev.nextSibling !== el : host.firstChild !== el) host.insertBefore(el, prev ? prev.nextSibling : host.firstChild);
+    prev = el;
+  }
+  if (!list.length) host.innerHTML = `<div class="notice">${T.noMatch}</div>`;
+  else host.querySelector(".notice")?.remove();
+}
+function qCard(i) {
+  const a = S.answers[i.id];
+  const el = document.createElement("article");
+  el.className = "q" + (qAnswered(i) ? " answered-here" : ""); el.dataset.id = i.id;
+  const opts = (i.options || []).map((o, n) => {
+    const L = "ABC"[n];
+    return `<label class="opt"><input type="radio" name="o-${esc(i.id)}" value="${L}" ${a && a.choice === L ? "checked" : ""}><span class="letter">${L}</span><span>${esc(o)}</span></label>`;
+  }).join("");
+  el.innerHTML = `
+    <div class="qhead"><span class="qid">${esc(i.label)}</span><span class="pill st-${i.status}">${QST()[i.status]}</span>
+      <span class="tag">${esc(GR[i.group] || i.group)}</span>${i.private ? `<span class="tag">${T.private}</span>` : ""}</div>
+    <div class="qtext">${md(i.q)}</div>
+    ${i.bg || i.src ? `<details class="bg"><summary>${T.bgSummary}</summary>${i.bg ? `<p>${md(i.bg)}</p>` : ""}${i.src ? `<p class="muted">${esc(i.src)}</p>` : ""}</details>` : ""}
+    ${opts ? `<div class="opts" role="radiogroup" aria-label="${T.optsLabel}">${opts}</div>` : `<p class="muted" style="margin:0">${T.regAnswered}</p>`}
+    <div class="field"><label for="t-${esc(i.id)}" class="muted" style="font-size:13px">${T.ownLabel}</label>
+      <textarea id="t-${esc(i.id)}" rows="2" placeholder="${T.ownPh}">${esc(a?.text || "")}</textarea></div>
+    <div class="qfoot">
+      <button class="btn primary" data-act="save">${T.saveAnswer}</button>
+      ${a && (a.choice || a.text) ? `<button class="btn" data-act="clear">${T.clearAnswer}</button>` : ""}
+      <span class="saved">${a && (a.choice || a.text) ? `${T.saved}: ${a.choice ? a.choice + " · " : ""}${esc(who(a.by))}, ${esc(fmt(a.at))}` : ""}</span>
+      <span class="err" role="alert"></span>
+    </div>`;
+  el.addEventListener("input", () => { el.dataset.dirty = "1" });
+  el.addEventListener("change", () => { el.dataset.dirty = "1" });
+  el.addEventListener("click", e => {
+    const b = e.target.closest("button[data-act]"); if (!b) return;
+    if (b.dataset.act === "save") saveAnswer(i, el, b); else clearAnswer(i, el, b);
+  });
+  return el;
+}
+async function saveAnswer(i, el, b) {
+  const choice = el.querySelector("input[type=radio]:checked")?.value || "";
+  const text = el.querySelector("textarea").value.trim();
+  const err = el.querySelector(".err"); err.textContent = "";
+  if (!choice && !text) { err.textContent = T.needAnswer; return }
+  b.disabled = true;
+  try {
+    await S.db.doc("answers/" + i.id).set({ q: i.id, choice, text, by: S.me?.id || null, at: new Date().toISOString() });
+    delete el.dataset.dirty;
+  } catch (e) { err.textContent = writeErr(e) } finally { b.disabled = false }
+}
+async function clearAnswer(i, el, b) {
+  const err = el.querySelector(".err"); err.textContent = "";
+  b.disabled = true;
+  try { await S.db.doc("answers/" + i.id).delete(); delete el.dataset.dirty } catch (e) { err.textContent = writeErr(e) } finally { b.disabled = false }
+}
+function writeErr(e) {
+  if (e && e.code === "invalid_argument") { S.canWrite = false; return T.noWrite }
+  if (e && e.code === "quota_exceeded") return T.quota;
+  return T.saveFail + " (" + (e && e.code || "?") + "). " + T.retry;
+}
+$("qf-state").addEventListener("click", e => { const c = e.target.closest(".chip"); if (!c) return; S.q.state = c.dataset.k; saveFilters(); renderQFilters(); renderQ() });
+$("qf-group").addEventListener("click", e => { const c = e.target.closest(".chip"); if (!c) return; S.q.group = c.dataset.k; saveFilters(); renderQFilters(); renderQ() });
+$("qf-search").addEventListener("input", e => { S.q.search = e.target.value; renderQ() });
+
+/* ---------- issues ---------- */
+const areas = () => [...new Set(S.issues.map(x => x.area).filter(Boolean))].sort();
+function renderIFilters() {
+  $("if-area").innerHTML = [["all", T.allAreas], ...areas().map(a => [a, a])].map(([k, l]) => `<button class="chip" data-k="${esc(k)}" aria-pressed="${S.i.area === k}">${esc(l)}</button>`).join("");
+  $("areas").innerHTML = areas().map(a => `<option value="${esc(a)}">`).join("");
+  $("owners").innerHTML = [...new Set(S.issues.map(x => x.owner).filter(Boolean))].sort().map(a => `<option value="${esc(a)}">`).join("");
+}
+function renderBoard() {
+  const s = S.i.search.toLowerCase(), today = new Date().toISOString().slice(0, 10);
+  const list = S.issues.filter(x => (S.i.area === "all" || x.area === S.i.area) &&
+    (!s || (x.key + " " + x.title + " " + x.note + " " + x.owner + " " + (x.refs || []).join(" ")).toLowerCase().includes(s)));
+  $("tabn-i").textContent = S.issues.filter(x => x.status !== "done").length;
+  $("board").innerHTML = STATUSES.map(([k, l, c]) => {
+    const items = list.filter(x => (SLABEL[x.status] ? x.status : "todo") === k).sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+    return `<section class="col" aria-label="${l}"><h3><span class="dot" style="background:var(--${c})"></span>${l}<span class="n">${items.length}</span></h3>
+      ${items.map(x => `<button class="card" data-key="${esc(x._id)}">
+        <span class="meta"><span class="mono">${esc(x.key)}</span>${x.area ? `<span class="tag">${esc(x.area)}</span>` : ""}${x.due ? `<span class="due ${x.due < today && x.status !== "done" ? "late" : ""}">${esc(x.due)}</span>` : ""}</span>
+        <span class="t">${esc(x.title)}</span>
+        ${x.note ? `<span class="note">${esc(x.note)}</span>` : ""}
+        <span class="meta">${x.owner ? `<span>${esc(x.owner)}</span>` : ""}${(x.refs || []).length ? `<span class="mono">${esc(x.refs.join(" "))}</span>` : ""}</span>
+      </button>`).join("") || `<div class="empty-col">${T.empty}</div>`}
+    </section>`;
+  }).join("");
+}
+$("board").addEventListener("click", e => { const c = e.target.closest(".card"); if (c) openEditor(S.issues.find(x => x._id === c.dataset.key)) });
+$("if-area").addEventListener("click", e => { const c = e.target.closest(".chip"); if (!c) return; S.i.area = c.dataset.k; saveFilters(); renderIFilters(); renderBoard() });
+$("if-search").addEventListener("input", e => { S.i.search = e.target.value; renderBoard() });
+$("new-issue").addEventListener("click", () => openEditor(null));
+
+let editing = null;
+$("ed-status").innerHTML = STATUSES.map(([k, l]) => `<option value="${k}">${l}</option>`).join("");
+function refLinks() {
+  const ids = $("ed-refs").value.split(/[\s,]+/).filter(Boolean);
+  $("ed-reflinks").innerHTML = ids.map(r => `<a href="#kerdesek" data-ref="${esc(r)}">${esc(r)}</a>`).join("");
+}
+$("ed-refs").addEventListener("input", refLinks);
+$("ed-reflinks").addEventListener("click", e => {
+  const a = e.target.closest("a[data-ref]"); if (!a) return;
+  S.q.search = a.dataset.ref; S.q.state = "all"; S.q.group = "all"; $("qf-search").value = a.dataset.ref;
+  closeEditor(); renderQFilters(); renderQ();
+});
+function openEditor(x) {
+  editing = x;
+  $("ed-title").textContent = x ? x.key : T.newTitle;
+  $("ed-t").value = x?.title || ""; $("ed-status").value = x?.status || "todo"; $("ed-area").value = x?.area || (S.i.area !== "all" ? S.i.area : "");
+  $("ed-owner").value = x?.owner || ""; $("ed-due").value = x?.due || ""; $("ed-note").value = x?.note || "";
+  $("ed-refs").value = (x?.refs || []).join(" "); refLinks();
+  $("ed-meta").textContent = x?.updated ? `${T.lastEdit}: ${who(x.updatedBy)}, ${fmt(x.updated)}` : (x ? `${T.created}: ${x.created || ""}` : "");
+  $("ed-err").textContent = "";
+  $("editor-back").hidden = false; $("ed-t").focus();
+}
+function closeEditor() { $("editor-back").hidden = true; editing = null }
+$("ed-cancel").addEventListener("click", closeEditor);
+$("editor-back").addEventListener("click", e => { if (e.target === $("editor-back")) closeEditor() });
+addEventListener("keydown", e => { if (e.key === "Escape" && !$("editor-back").hidden) closeEditor() });
+$("editor").addEventListener("submit", async e => {
+  e.preventDefault();
+  const title = $("ed-t").value.trim();
+  if (!title) { $("ed-err").textContent = T.needTitle; return }
+  const body = { title, status: $("ed-status").value, area: $("ed-area").value.trim(), owner: $("ed-owner").value.trim(),
+    due: $("ed-due").value, note: $("ed-note").value.trim(), refs: $("ed-refs").value.split(/[\s,]+/).filter(Boolean),
+    updated: new Date().toISOString(), updatedBy: S.me?.id || null };
+  $("ed-save").disabled = true;
+  try {
+    if (editing) await S.db.doc("issues/" + editing._id).update(body);
+    else {
+      const max = S.issues.reduce((m, x) => Math.max(m, parseInt((x.key || "").replace(/\D/g, "")) || 0), 0);
+      const key = "ISS-" + String(max + 1).padStart(2, "0");
+      await S.db.doc("issues/" + key).set({ ...body, key, order: max + 1, created: new Date().toISOString().slice(0, 10) });
+    }
+    closeEditor();
+  } catch (err) { $("ed-err").textContent = writeErr(err) } finally { $("ed-save").disabled = false }
+});
+
+/* ---------- data ---------- */
+async function names(ids) {
+  const want = ids.filter(id => id && !(id in S.names));
+  if (!want.length || !S.user) return;
+  try { const ps = await S.user.profiles(want); for (const id of want) S.names[id] = ps?.[id]?.name || "" } catch (e) {}
+}
+function ready() {
+  if (!S.gotCatalog || !S.gotIssues) return;
+  if (!S.ready) { S.ready = true; $("status").hidden = true; clearTimeout(S.timer); renderQFilters(); renderIFilters() }
+  renderQStats(); renderQ(); renderIFilters(); renderBoard(); route();
+}
+async function start() {
+  route();
+  S.timer = setTimeout(() => { if (!S.ready) $("status").textContent = T.slow }, 10000);
+  let db = null; try { db = await claude.use("db") } catch (e) {}
+  if (!db) { clearTimeout(S.timer); $("status").textContent = T.noDb; return }
+  S.db = db;
+  try { S.user = await claude.use("user"); if (S.user) S.me = await S.user.me() } catch (e) {}
+  db.doc("catalog/questions").onSnapshot(snap => {
+    const cat = snap.exists ? snap.data() : {};
+    applyMeta(cat);
+    S.catalog = (cat.items || []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    S.gotCatalog = true;
+    if (!S.catalog.length && !snap.metadata.fromCache) { $("status").hidden = false; $("status").textContent = T.noQ }
+    ready();
+  }, e => { $("status").hidden = false; $("status").textContent = T.qFail + " (" + e.code + ")."; });
+  db.collection("answers").onSnapshot(async snap => {
+    const m = {}; snap.docs.forEach(d => { m[d.id] = d.data() }); S.answers = m;
+    await names(Object.values(m).map(a => a.by)); ready();
+  }, e => {});
+  db.collection("issues").onSnapshot(async snap => {
+    S.issues = snap.docs.map(d => ({ ...d.data(), _id: d.id })); S.gotIssues = true;
+    await names(S.issues.map(x => x.updatedBy)); ready();
+  }, e => { $("status").hidden = false; $("status").textContent = T.iFail + " (" + e.code + ")."; });
+}
+start();
+</script>
