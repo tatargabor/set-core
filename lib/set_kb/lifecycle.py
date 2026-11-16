@@ -198,15 +198,18 @@ class LinkedSearch:
     error: Optional[str] = None
 
 
-def registry_path() -> str:
+def registry_path(environ=None) -> str:
     """The set-core project registry: SET_CORE_REGISTRY, else SET_CONFIG_DIR,
-    else the XDG config dir — the same resolution the shell tools use."""
-    env = os.environ.get("SET_CORE_REGISTRY", "").strip()
-    if env:
-        return os.path.expanduser(env)
-    cfg_dir = os.environ.get("SET_CONFIG_DIR", "").strip()
+    else the XDG config dir — the same resolution the shell tools use.
+    `environ` defaults to the process environment."""
+    e = os.environ if environ is None else environ
+    reg = e.get("SET_CORE_REGISTRY", "").strip()
+    if reg:
+        return os.path.expanduser(reg)
+    cfg_dir = e.get("SET_CONFIG_DIR", "").strip()
     if not cfg_dir:
-        cfg_dir = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "set-core")
+        home = e.get("HOME") or os.path.expanduser("~")
+        cfg_dir = os.path.join(e.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"), "set-core")
     return os.path.join(cfg_dir, "projects.json")
 
 

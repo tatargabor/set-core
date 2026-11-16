@@ -537,7 +537,7 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       var d = el("span", "dep blocks", "blocks " + b.length);
       d.title = "Waiting on this item: " + b.map(function (r) {
         return refText(r) + (r.status ? " (" + r.status + ")" : "");
-      }).join(", ") + ". Read from the boards on " + ((current && current.synced_by) || "the machine that synced") + ".";
+      }).join(", ") + ". Read from the boards at the last sync.";
       box.appendChild(d);
     }
     return box;

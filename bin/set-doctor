@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+"""set-doctor — is the set-core side of this developer machine in order?
+
+Every check is one line, ok / warn / fail / skip, with the command that fixes
+it; exit 1 on any fail. `--json` is the versioned contract (set-doctor/1).
+See docs/reference/set-doctor.md.
+"""
+import os
+import sys
+
+_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+
+from set_doctor.cli import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

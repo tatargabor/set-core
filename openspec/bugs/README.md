@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-178 — `set-project init` run inside a worktree re-points the PROJECT's MCP registration at the worktree
+- **state:** open
+- **reported:** 2026-11-12 by this session, found by the new `set-doctor` on its first run.
+- **measured:** in the Claude config (`~/.claude.json`), 6 registered projects carry a set-core MCP entry whose `CLAUDE_PROJECT_DIR` is one of their worktrees, not the project. set-core's own entry is one of them (`…/set-core-wt-liveproof`). The worktree path has NO key of its own: Claude keeps local-scope MCP servers under the repository's main path, so `cd <worktree> && claude mcp add set-core …` (`lib/project/deploy.sh` `_register_mcp_server`, called with the worktree as an extra path from `bin/set-project` around line 1073) overwrites the project's entry.
+- **fail direction:** silent, and wrong data rather than an error. Every agent in the main checkout gets `kb_search`/`kb_get` against the worktree's tree, which is a stale branch, or a directory that no longer exists once the worktree is removed.
+- **fixed when:** `set-project init` run in a worktree leaves the main path's entry pointing at the main path (a test over a temp `CLAUDE_CONFIG_DIR` and a real worktree), and `set-doctor` reports `mcp ok` for those 6 projects after a re-init.
+
 ### B-175 — Python config readers hard-code `~/.config/set-core` while the shell and `local_config` honour `SET_CONFIG_DIR` / `XDG_CONFIG_HOME`
 - **renumbered:** B-168 → B-175 in the 2026-11-12 merge with github/main; upstream had already published B-168. Commits written before the merge cite B-168.
 - **state:** open
@@ -4153,3 +4160,10 @@ consumer's name, path, or content.
 - **fail direction:** a wrong document ranked first with a confident snippet, which is worse than a miss. Office prose is full of these numbers (invoice, order and delivery-note numbers), and they are what a clerk searches by.
 - **direction for the fix, not yet measured:** send a token run joined by `-` or `/` in the query as an FTS5 phrase (`"rv 2025 0683"`, adjacent tokens). A sibling plugin on the same upstream engine passes document numbers through whole and links them; adopt its shape after reading it.
 - **fixed when:** a test corpus holds `X-2025-0683` in one document and `Y-2025-0683` plus `X-2025-0673` in others, and the query `X-2025-0683` ranks the first document #1. The office eval's order-number prompt moves into the top 3.
+
+### B-179 — the agent-side leak gate never scans a commit message given as `-F -` with a heredoc
+- **state:** OPEN
+- **reported:** 2026-11-13 by this session, while fixing the gate's target resolution (change `leakscan-hook-target-resolution`).
+- **measured:** `strip_heredocs` removes heredoc bodies before the verb is matched, which is right for a file being WRITTEN. But `git commit -F - <<'MSG' … MSG` passes the message on stdin, and `extract_commit_message` reads `-F -` as a file named `-` relative to the target, which does not exist, so `OSError` is swallowed. The message is not scanned at all, and nothing says so. Agents in the downstream family commit this way routinely (both measured false refusals used it). Measured on a scratch repository with a test registry: the same consumer name gets exit 2 in `-m "…"` and exit 0 in `-F - <<'MSG' … MSG`.
+- **fail direction:** pass. A message carrying a consumer name or an env-marker goes through the PreToolUse gate unscanned. The git `commit-msg` hook still catches it where it is installed, and an agent is bound by that hook only while it does not bypass it, which is the case this gate exists for.
+- **fixed when:** a hook test commits with `-F - <<'MSG'` whose body carries the test consumer name and gets exit 2. The same command with a clean body gets exit 0, and a `-F -` with no readable heredoc says on stderr that the message was not scanned.

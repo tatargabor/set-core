@@ -1220,3 +1220,97 @@ class TestTagMessages:
         commit(repo, "b.md", "clean too\n", msg="next")
         r = _scan(repo, home, "--range", "HEAD~1..HEAD")
         assert r.returncode == 0, r.stderr
+
+
+class TestTheHookFollowsTheWholeCdChain:
+    """Measured 2026-11-13 in a consumer session, twice: `cd openspec/changes/<x> &&
+    … && cd ../../.. && git commit`. Only the LAST cd was taken and resolved against
+    the session directory — three levels above the repository — so the scanner said
+    "not inside a git repository" and a correct commit was refused. Fixed by applying
+    every cd in order; the leaking case below proves the fix did not open a hole."""
+
+    def _staged(self, repo, body):
+        sub = repo / "a" / "b" / "c"
+        sub.mkdir(parents=True, exist_ok=True)
+        (sub / "proposal.md").write_text(body)
+        git("add", "-A", cwd=repo)
+        return "cd a/b/c && cat proposal.md >/dev/null && cd ../../.. && git " + "commit -q -m wip"
+
+    def test_a_relative_cd_chain_back_to_the_root_is_scanned_there(self, two_repos):
+        _dirty, clean, home = two_repos
+        r = _hook(clean, self._staged(clean, "nothing to see\n"), home)
+        assert r.returncode == 0, f"a clean commit was refused: {r.stderr}"
+
+    def test_and_a_leaking_commit_through_the_same_chain_is_still_refused(self, two_repos):
+        _dirty, clean, home = two_repos
+        r = _hook(clean, self._staged(clean, f"the {CONSUMER} project\n"), home)
+        assert r.returncode == 2, f"the staged leak was not scanned: {r.stderr}"
+
+    def test_git_dash_C_decides_the_repository(self, two_repos):
+        # Session in the CLEAN repo: scanning the session directory would wave the
+        # leaking -C target through, so only a followed -C makes this refuse.
+        dirty, clean, home = two_repos
+        r = _hook(clean, f"git -C {dirty} " + "push origin main", home)
+        assert r.returncode == 2, f"the -C target was not scanned: {r.stderr}"
+
+    def test_a_certain_target_outside_any_repository_is_not_refused(self, two_repos, tmp_path):
+        _dirty, clean, home = two_repos
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        r = _hook(clean, f"cd {plain} && git " + "commit -m x", home)
+        assert r.returncode == 0, r.stderr
+        assert "not inside a git repository" in r.stderr
+
+    def test_an_unfollowable_cd_never_fails_open(self, two_repos, tmp_path):
+        """`cd $UNSET` cannot be followed, so the target is unknown — the real command
+        may well run in a repository. Fail-open is reserved for a CERTAIN resolution;
+        here the session directory is no repository either, and it is still refused."""
+        _dirty, _clean, home = two_repos
+        plain = tmp_path / "plain-session"
+        plain.mkdir()
+        r = _hook(plain, "cd $LEAKSCAN_TEST_UNSET_DIR && git " + "commit -m x", home)
+        assert r.returncode == 2, r.stderr
+
+
+class TestAScannerCrashIsNamedAsACrash:
+    """Measured 2026-11-13: a traceback inside set-leakscan reached the agent as
+    "this commit would carry content that must not enter the repository's history".
+    It stays refused (a scan that did not finish must not report clean), but the
+    message now says it is a scanner bug, not a finding."""
+
+    def test_a_crash_is_refused_and_says_so(self, two_repos, tmp_path):
+        _dirty, clean, home = two_repos
+        fake = tmp_path / "fakebin"
+        fake.mkdir()
+        tool = fake / "set-leakscan"
+        tool.write_text("#!/usr/bin/env python3\nraise RuntimeError('boom')\n")
+        tool.chmod(0o755)
+        r = subprocess.run(
+            [sys.executable, str(HOOK)],
+            input=json.dumps({"tool_name": "Bash", "cwd": str(clean),
+                              "tool_input": {"command": "git " + "commit -m x"}}),
+            capture_output=True, text=True, cwd=str(clean),
+            env=dict(os.environ, HOME=str(home), PATH=f"{fake}:{os.environ['PATH']}"),
+        )
+        assert r.returncode == 2, r.stderr
+        assert "CRASHED" in r.stderr and "not a finding" in r.stderr, r.stderr
+
+
+class TestANonUtf8StagedFileIsScannedNotCrashedOn:
+    """Measured 2026-11-13: a staged CSV in a single-byte legacy encoding made the
+    strict UTF-8 decode of `git diff` raise, and the scan died. The ASCII around an
+    undecodable byte must still be scanned."""
+
+    def test_a_name_inside_a_legacy_encoded_file_is_still_found(self, repo, registry):
+        (repo / "data.csv").write_bytes(f"{CONSUMER};k".encode() + b"\xf6rte\n")
+        git("add", "data.csv", cwd=repo)
+        r = run(repo, registry, "--staged")
+        assert "Traceback" not in r.stderr, r.stderr
+        assert r.returncode != 0, f"the name was missed: {r.stdout}{r.stderr}"
+
+    def test_a_clean_legacy_encoded_file_passes(self, repo, registry):
+        (repo / "data.csv").write_bytes(b"n\xe9v;k\xf6rte\n")
+        git("add", "data.csv", cwd=repo)
+        r = run(repo, registry, "--staged")
+        assert "Traceback" not in r.stderr, r.stderr
+        assert r.returncode == 0, r.stdout + r.stderr
