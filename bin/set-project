@@ -1319,6 +1319,13 @@ cmd_register() {
         && mv "$tmp" "$CONFIG_FILE"
     success "Project '$name' registered (no deploy)"
     echo "  Path: $root"
+    # The question relay's hooks go in machine-locally (.claude/settings.local.json, kept
+    # out of git) — no tracked file is written, which is what "no deploy" promises.
+    local relay_wire
+    relay_wire="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/set-relay-wire"
+    if [[ -x "$relay_wire" ]]; then
+        "$relay_wire" "$root" || warn "  question relay hooks not wired — the fleet header lists '$name' as unwired"
+    fi
 }
 
 cmd_remove() {

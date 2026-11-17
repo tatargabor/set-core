@@ -162,6 +162,80 @@ def unwired_projects(projects: Optional[List[Dict[str, Any]]] = None,
     return out
 
 
+_RELAY_ENTRY = {"matcher": TOOL, "hooks": [{"type": "command", "command": RELAY_HOOK, "timeout": 3600}]}
+_WAIT_ENTRY = {"matcher": "", "hooks": [{"type": "command", "command": WAIT_HOOK, "timeout": 60}]}
+
+
+def _exclude_from_git(root: Path, rel: str) -> None:
+    """Keep a machine-local file out of git without touching a tracked file.
+
+    `.git/info/exclude` is per-clone and never committed, so the repository's own
+    `.gitignore` — which belongs to its owner — stays as it was.
+    """
+    try:
+        probe = subprocess.run(["git", "-C", str(root), "check-ignore", "-q", rel],
+                               capture_output=True, timeout=10)
+        if probe.returncode == 0:
+            return
+        gitdir = subprocess.run(["git", "-C", str(root), "rev-parse", "--git-common-dir"],
+                                capture_output=True, text=True, timeout=10)
+        if gitdir.returncode != 0:
+            return  # not a repository: nothing can commit the file
+        info = Path(gitdir.stdout.strip())
+        if not info.is_absolute():
+            info = root / info
+        exclude = info / "info" / "exclude"
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        text = exclude.read_text() if exclude.exists() else ""
+        if rel not in text.splitlines():
+            exclude.write_text(text + ("" if text.endswith("\n") or not text else "\n") + rel + "\n")
+            logger.info("question relay: %s excluded from git in %s", rel, root)
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("question relay: could not exclude %s in %s: %s", rel, root, type(exc).__name__)
+
+
+def wire_project(root: Path, user_settings: Optional[Path] = None) -> List[str]:
+    """Wire whatever relay hook a project lacks into its MACHINE-LOCAL settings.
+
+    Returns the hooks added (empty when nothing was missing). Writes only
+    `.claude/settings.local.json`, merging into what is there: the project's own
+    `settings.json` is its owner's, a project registered without deploy must not get
+    tracked set-core files, and the relay switch itself is machine-local config. A hook
+    already wired at any level is never added twice — two relay hooks would post every
+    question twice.
+    """
+    root = Path(root)
+    found = _settings_hooks(user_settings or (Path.home() / ".claude" / "settings.json"))
+    found |= _settings_hooks(root / ".claude" / "settings.json")
+    local = root / ".claude" / "settings.local.json"
+    found |= _settings_hooks(local)
+    missing = [h for h in (RELAY_HOOK, WAIT_HOOK) if h not in found]
+    if not missing:
+        return []
+    data: Dict[str, Any] = {}
+    if local.exists():
+        try:
+            data = json.loads(local.read_text())
+        except (OSError, ValueError) as exc:
+            # Never overwrite a file we cannot read: that would destroy its owner's content.
+            logger.warning("question relay: %s unreadable (%s); not wired", local, type(exc).__name__)
+            raise
+        if not isinstance(data, dict):
+            raise ValueError(f"{local} is not a JSON object")
+    hooks = data.setdefault("hooks", {})
+    if RELAY_HOOK in missing:
+        hooks.setdefault("PreToolUse", []).append(json.loads(json.dumps(_RELAY_ENTRY)))
+    if WAIT_HOOK in missing:
+        hooks.setdefault("Stop", []).append(json.loads(json.dumps(_WAIT_ENTRY)))
+    local.parent.mkdir(parents=True, exist_ok=True)
+    tmp = local.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    os.replace(tmp, local)
+    _exclude_from_git(root, ".claude/settings.local.json")
+    logger.info("question relay: wired %s into %s", ", ".join(missing), local)
+    return missing
+
+
 def set_enabled(enabled: bool, get: Getter = local_config.get) -> Dict[str, Any]:
     """Turn the relay on or off. Turning it on is refused while the configuration is incomplete."""
     state = readiness(get)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from .helpers import (
     _resolve_project,
     _state_path,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -131,6 +134,16 @@ def add_project(body: dict):
         "project_type": body.get("project_type", body.get("mode", "")),
     })
     _save_projects(projects)
+    # A project taken into the fleet gets the question relay's hooks, machine-locally, so
+    # its questions reach the chat channel once the relay is on (B-182 follow-up). A failure
+    # here never blocks the registration: the relay header lists the project as unwired.
+    try:
+        from pathlib import Path as _P
+        from ..fleet import question_relay as _qr
+        if _P(path).is_dir():
+            _qr.wire_project(_P(path))
+    except Exception as exc:
+        logger.warning("add_project: relay hooks not wired for %s: %s", name, type(exc).__name__)
     # Register with lifecycle service (supervisor + issue manager)
     from .lifecycle import get_service
     svc = get_service()
