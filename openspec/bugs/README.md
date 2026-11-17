@@ -69,14 +69,14 @@ consumer's name, path, or content.
 ## Open
 
 ### B-181 — the dashboard API serves uncompressed JSON, and `/api/fleet/agents` (~200 KB) is polled every ~5 s per open tab
-- **state:** open
+- **state:** closed (`e89c6b98`) — after `systemctl --user restart set-web` (19:14:08), the same `curl` shows `content-encoding: gzip` and 17 825 bytes on the wire; in the browser one `fleet/agents` poll is 18 KB on the wire for 154 KB decoded. `tests/unit/test_server_gzip.py` fails without the middleware (stash-and-rerun: 1 failed, 3 passed).
 - **reported:** 2026-11-17 by this session, while attributing a periodic upload spike the user saw in the system monitor.
 - **measured:** `curl -H 'Accept-Encoding: gzip, br' -D - http://localhost:7400/api/fleet/agents` returns 199 048 bytes with no `content-encoding`; the same body through `gzip -c` is 18 889 bytes (10.5×). No `GZipMiddleware` in `lib/set_orch`. Per-socket `ss -tinp` deltas over 20 s: the dashboard server sent **39.3 KiB/s** to one remote tab over the tailnet — the single largest outbound flow on the host, matching one `fleet/agents` body per ~5 s.
 - **fail direction:** silent, cost-only — every open dashboard tab, local or remote, costs ~40 KiB/s of steady upload and the server re-serialises 200 KB per poll (the endpoint takes ~0.9 s).
 - **fixed when:** the same `curl` shows `content-encoding: gzip` (or br) and a transfer under 25 KB, and the 20 s `ss` measurement with one remote tab open shows the server's outbound flow under 10 KiB/s.
 
 ### B-180 — the fleet screen fetches each checkout's file listing ~20 times on load instead of once
-- **state:** open
+- **state:** closed (`f1d53123`, dist `39a5683f`) — the same 30 s measurement on a fresh load of the rebuilt bundle: **8 requests for 8 roots, at most 1 per root, 0.26 MB**. `web/tests/unit/useFileListings.test.tsx` goes red when the in-flight guard is removed.
 - **reported:** 2026-11-17 by this session, while investigating a Chrome memory spike the user attributed to the dashboard tab.
 - **measured:** fresh tab on the dashboard, `performance.setResourceTimingBufferSize(5000)`, then resource entries after 30 s: **93 requests to `/api/fleet/files?root=…` over 8 roots, ~26 MB transferred**; the two largest listings (~460 KB each) were fetched 22 times each, a third 23 times. The storm stops on its own at ~31 s (96 total at 77 s, 1 after 31 s). JS heap stayed 15–21 MB throughout, so it is a request/parse storm, not a heap leak. The endpoint itself answers in ~0.16 s.
 - **suspected mechanism (not yet proven):** the effect at `web/src/pages/Fleet.tsx:2944` depends on `knownFiles` and `listingRoots`, and its cleanup sets `dead = true` for EVERY in-flight fetch. Each arriving listing updates `knownFiles`, which re-runs the effect and discards the replies still in flight, which are then fetched again; `listingRoots` re-memoising on every fleet poll (`active` changes) would do the same.
