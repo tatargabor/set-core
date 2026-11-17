@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-181 — the dashboard API serves uncompressed JSON, and `/api/fleet/agents` (~200 KB) is polled every ~5 s per open tab
+- **state:** open
+- **reported:** 2026-11-17 by this session, while attributing a periodic upload spike the user saw in the system monitor.
+- **measured:** `curl -H 'Accept-Encoding: gzip, br' -D - http://localhost:7400/api/fleet/agents` returns 199 048 bytes with no `content-encoding`; the same body through `gzip -c` is 18 889 bytes (10.5×). No `GZipMiddleware` in `lib/set_orch`. Per-socket `ss -tinp` deltas over 20 s: the dashboard server sent **39.3 KiB/s** to one remote tab over the tailnet — the single largest outbound flow on the host, matching one `fleet/agents` body per ~5 s.
+- **fail direction:** silent, cost-only — every open dashboard tab, local or remote, costs ~40 KiB/s of steady upload and the server re-serialises 200 KB per poll (the endpoint takes ~0.9 s).
+- **fixed when:** the same `curl` shows `content-encoding: gzip` (or br) and a transfer under 25 KB, and the 20 s `ss` measurement with one remote tab open shows the server's outbound flow under 10 KiB/s.
+
 ### B-180 — the fleet screen fetches each checkout's file listing ~20 times on load instead of once
 - **state:** open
 - **reported:** 2026-11-17 by this session, while investigating a Chrome memory spike the user attributed to the dashboard tab.
