@@ -29,10 +29,18 @@ class ChatWorker(QThread):
         self.config = config
         self.last_check_ts = None
         self.current_project = None
+        self.current_remote_url = ""
 
-    def set_project(self, project_name: str):
-        """Set current project for chat"""
+    def set_project(self, project_name: str, remote_url: str = ""):
+        """Set current project for chat.
+
+        `remote_url` is the key the team settings are stored under (see
+        `TeamSettingsDialog`), while the project name is what the chat CLI
+        and projects.json are addressed by. They are different strings, so
+        both are needed.
+        """
         self.current_project = project_name
+        self.current_remote_url = remote_url
 
     def run(self):
         while self._running:
@@ -41,7 +49,12 @@ class ChatWorker(QThread):
                 self.msleep(5000)
                 continue
             projects = self.config.team.get("projects", {})
-            project_enabled = projects.get(self.current_project, {}).get("enabled", False)
+            # The team settings are keyed by the project's remote URL, not by
+            # its name -- TeamSettingsDialog writes team["projects"][remote_url]
+            # and TeamMixin reads them back the same way. Looking the flag up
+            # by name never finds it, and the poll loop below never starts.
+            team_key = self.current_remote_url or self.current_project
+            project_enabled = projects.get(team_key, {}).get("enabled", False)
             if not project_enabled:
                 self.msleep(5000)
                 continue
