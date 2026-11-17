@@ -69,7 +69,7 @@ consumer's name, path, or content.
 ## Open
 
 ### B-182 — the question relay reports `ready` while a registered project's sessions bypass it, and nothing marks that project
-- **state:** open
+- **state:** closed (`ad45b0d7`, OpenSpec `2026-11-17-relay-unwired-projects`) — after a rebuild and a set-web restart, `GET /api/fleet/question-relay` carries `unwired` with 3 registered projects, and the closed header shows an amber 3 beside the switch, looked at in the browser. The project from the report was wired the same evening (two additive hook entries in its own repo, committed there, not pushed). The per-agent marker in the fixed-when line was dropped: the header list names the project, at the place the reader looks while the relay is on.
 - **reported:** 2026-11-17 by the user (*„ez miért nem ment ki értesítésben?”*), with a screenshot of a session's AskUserQuestion picker shown only in its terminal while the relay was on.
 - **measured:** `GET /api/fleet/question-relay` → `{"enabled":true,…,"ready":true}`. `relay.log` has no `handed over` line for that session. Its project's `.claude/settings.json` carries neither `set-hook-question-relay` (PreToolUse, matcher `AskUserQuestion`) nor `set-hook-wait-detect` (Stop) — nor any other set-core base hook: the project keeps a hand-authored hook chain, and `set-deploy-hooks` has never merged into it. A scan of every registered project's `settings.json` found 47 with both relay hooks and exactly 1 with neither.
 - **fail direction:** silent, in the reassuring direction. The switch is on and says ready; the user is away and trusts the phone; the question waits in a terminal nobody is looking at. `readiness()` measures this machine's config only, never whether the hook reaches the session asking.
