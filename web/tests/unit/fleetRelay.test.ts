@@ -3,10 +3,10 @@
  * and the waiting order.
  */
 import { describe, expect, it } from 'vitest'
-import { canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, type RelayState } from '../../src/lib/fleetRelay'
+import { canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, showUnwired, type RelayState } from '../../src/lib/fleetRelay'
 
 const state = (over: Partial<RelayState> = {}): RelayState =>
-  ({ enabled: false, target: 'command', missing: [], ready: true, waiting: [], ...over })
+  ({ enabled: false, target: 'command', missing: [], ready: true, waiting: [], unwired: [], ...over })
 
 describe('relayMode', () => {
   it('names the four states, including on-but-not-configured', () => {
@@ -66,5 +66,27 @@ describe('parseRelayState', () => {
     const s = parseRelayState({ enabled: true, ready: true, target: 'command', missing: [],
       waiting: [{ session_id: 'a', project: 'p', questions: 1, target: 'command', seconds: 3, release_requested: false }, 'junk'] })
     expect(s?.waiting).toHaveLength(1)
+  })
+})
+
+describe('unwired projects (B-182)', () => {
+  const bare = { project: 'hand-authored', missing: ['set-hook-question-relay', 'set-hook-wait-detect'] }
+
+  it('marks the closed header only while the relay is on', () => {
+    expect(showUnwired(state({ enabled: true, unwired: [bare] }))).toBe(true)
+    expect(showUnwired(state({ enabled: false, unwired: [bare] }))).toBe(false)
+    expect(showUnwired(state({ enabled: true }))).toBe(false)
+  })
+
+  it('does not call an on relay calm while a project bypasses it', () => {
+    const title = relayTitle(state({ enabled: true, unwired: [bare] }))
+    expect(title).toMatch(/not wired/)
+    expect(title).not.toMatch(/blocking questions go to/)
+  })
+
+  it('parses the list, and an older server without it as empty — never a crash', () => {
+    const base = { enabled: true, ready: true, target: 'command', missing: [], waiting: [] }
+    expect(parseRelayState({ ...base, unwired: [bare, { nope: 1 }] })?.unwired).toEqual([bare])
+    expect(parseRelayState(base)?.unwired).toEqual([])
   })
 })

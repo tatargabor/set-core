@@ -16,12 +16,20 @@ export interface WaitingQuestion {
   release_requested: boolean
 }
 
+/** A registered project whose settings do not wire one or both relay hooks (B-182). */
+export interface UnwiredProject {
+  project: string
+  missing: string[]
+}
+
 export interface RelayState {
   enabled: boolean
   target: string | null
   missing: string[]
   ready: boolean
   waiting: WaitingQuestion[]
+  /** Projects whose sessions bypass the relay — their questions stay in the terminal. */
+  unwired: UnwiredProject[]
 }
 
 export type RelayMode = 'on' | 'off' | 'not-ready' | 'on-not-ready'
@@ -49,7 +57,9 @@ export function relayTitle(state: RelayState): string {
       : 'no outbound'
   switch (relayMode(state)) {
     case 'on':
-      return `Question relay ON — agents' blocking questions go to ${where}. Click to turn off.`
+      return state.unwired.length > 0
+        ? `Question relay ON — but ${state.unwired.length} project(s) are not wired, and their questions stay in the terminal. Click to turn off.`
+        : `Question relay ON — agents' blocking questions go to ${where}. Click to turn off.`
     case 'off':
       return `Question relay off — questions are answered at the terminal. Click to send them to ${where}.`
     case 'not-ready':
@@ -96,5 +106,19 @@ export function parseRelayState(d: unknown): RelayState | null {
     target: typeof o.target === 'string' ? o.target : null,
     missing: (o.missing as unknown[]).filter((m): m is string => typeof m === 'string'),
     waiting,
+    // Absent on an older server: an empty list, never a crash (see above).
+    unwired: Array.isArray(o.unwired)
+      ? (o.unwired as unknown[]).filter((u): u is UnwiredProject =>
+          !!u && typeof u === 'object' && typeof (u as UnwiredProject).project === 'string'
+          && Array.isArray((u as UnwiredProject).missing))
+      : [],
   }
+}
+
+/**
+ * Whether the closed header must carry the unwired marker: only while the relay is ON.
+ * Off, nothing is relayed anywhere, so an unwired project changes nothing.
+ */
+export function showUnwired(state: RelayState): boolean {
+  return state.enabled && state.unwired.length > 0
 }

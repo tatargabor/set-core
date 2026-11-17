@@ -2551,7 +2551,12 @@ def _relay_payload() -> Dict[str, Any]:
             "seconds": (now - started) if isinstance(started, (int, float)) else None,
             "release_requested": bool(rec.get("release_requested")),
         })
-    return {**state, "waiting": waiting}
+    try:
+        unwired = qr.unwired_projects()
+    except Exception as exc:  # the header must still render the switch and the waiting list
+        logger.warning("fleet api: unwired-project scan failed: %s", type(exc).__name__)
+        unwired = []
+    return {**state, "waiting": waiting, "unwired": unwired}
 
 
 @router.get("/api/fleet/question-relay")

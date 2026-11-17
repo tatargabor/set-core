@@ -96,6 +96,72 @@ def readiness(get: Getter = local_config.get) -> Dict[str, Any]:
     }
 
 
+RELAY_HOOK = "set-hook-question-relay"
+WAIT_HOOK = "set-hook-wait-detect"
+#: A PreToolUse matcher that covers AskUserQuestion: the tool's own name, or a match-all.
+_ASK_MATCHERS = (TOOL, "", "*", None)
+
+
+def _hooks_in(settings: Any) -> set:
+    """Which of the two relay hooks one settings document wires (B-182)."""
+    found: set = set()
+    hooks = settings.get("hooks") if isinstance(settings, dict) else None
+    if not isinstance(hooks, dict):
+        return found
+    for entry in hooks.get("PreToolUse") or []:
+        if not isinstance(entry, dict) or entry.get("matcher") not in _ASK_MATCHERS:
+            continue
+        if any(isinstance(h, dict) and h.get("command") == RELAY_HOOK for h in entry.get("hooks") or []):
+            found.add(RELAY_HOOK)
+    for entry in hooks.get("Stop") or []:
+        if not isinstance(entry, dict):
+            continue
+        if any(isinstance(h, dict) and h.get("command") == WAIT_HOOK for h in entry.get("hooks") or []):
+            found.add(WAIT_HOOK)
+    return found
+
+
+def _settings_hooks(path: Path) -> set:
+    try:
+        return _hooks_in(json.loads(path.read_text()))
+    except FileNotFoundError:
+        return set()
+    except (OSError, ValueError) as exc:
+        # Unreadable counts as unwired: a hook the runtime cannot parse does not run either.
+        logger.warning("question relay: settings %s unreadable: %s", path, type(exc).__name__)
+        return set()
+
+
+def unwired_projects(projects: Optional[List[Dict[str, Any]]] = None,
+                     user_settings: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Registered projects whose sessions would bypass the relay — B-182.
+
+    `readiness()` measures this machine's config; it cannot see that a project's own
+    settings never wired the hook, so a question asked there stays in its terminal while
+    the switch says ready. Measured 2026-11-17: 47 of 48 registered projects wired both
+    hooks, the one that did not keeps a hand-authored hook chain, and its question was
+    shown only in the terminal. A hook in the user-level settings covers every project.
+    """
+    if projects is None:
+        from ..project_registry import load_projects
+        projects = load_projects()
+    user = _settings_hooks(user_settings or (Path.home() / ".claude" / "settings.json"))
+    out: List[Dict[str, Any]] = []
+    for proj in projects:
+        if not isinstance(proj, dict) or proj.get("archived"):
+            continue
+        root = Path(str(proj.get("path") or ""))
+        if not str(proj.get("path") or "") or not root.is_dir():
+            continue
+        found = set(user)
+        found |= _settings_hooks(root / ".claude" / "settings.json")
+        found |= _settings_hooks(root / ".claude" / "settings.local.json")
+        missing = [h for h in (RELAY_HOOK, WAIT_HOOK) if h not in found]
+        if missing:
+            out.append({"project": proj.get("name") or root.name, "missing": missing})
+    return out
+
+
 def set_enabled(enabled: bool, get: Getter = local_config.get) -> Dict[str, Any]:
     """Turn the relay on or off. Turning it on is refused while the configuration is incomplete."""
     state = readiness(get)

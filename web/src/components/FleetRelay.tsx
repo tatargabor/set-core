@@ -21,7 +21,7 @@ import { Hourglass, Send, TriangleAlert, X } from 'lucide-react'
 
 import { age } from '../lib/fleetAge'
 import {
-  canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, type RelayState,
+  canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, showUnwired, type RelayState,
 } from '../lib/fleetRelay'
 
 /** Waiting questions come and go on the scale of seconds; the hook polls every 3 s. */
@@ -116,6 +116,19 @@ export default function FleetRelay() {
         {mode === 'on-not-ready' && <TriangleAlert size={12} strokeWidth={1.75} aria-hidden />}
       </button>
 
+      {/* B-182: a project whose settings never wired the hook keeps its questions in the
+          terminal while the switch says on. That is a fact, so it is marked where the reader
+          stands — the closed header — not only inside the detail. */}
+      {showUnwired(state) && (
+        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+                className="inline-flex items-center gap-0.5 text-xs tabular-nums text-amber-400 hover:underline underline-offset-2"
+                title={`${state.unwired.length} project(s) not wired to the relay — their questions stay in the terminal. Click for the list.`}
+                aria-label={`${state.unwired.length} project(s) not wired to the question relay`}
+                data-fleet-relay-unwired={state.unwired.length}>
+          <TriangleAlert size={12} strokeWidth={1.75} aria-hidden />{state.unwired.length}
+        </button>
+      )}
+
       {/* The waiting count rides on the CLOSED header: a relayed question is invisible
           everywhere else on this screen while the hook holds it. */}
       {(waiting.length > 0 || mode === 'not-ready' || mode === 'on-not-ready' || error) && (
@@ -155,6 +168,22 @@ export default function FleetRelay() {
               <pre className="mt-1 whitespace-pre-wrap break-all text-fg-strong bg-surface-panel rounded px-2 py-1">
                 {setupCommands(state).join('\n')}
               </pre>
+            </div>
+          )}
+
+          {state.unwired.length > 0 && (
+            <div className="mt-1.5" data-fleet-relay-unwired-list>
+              <p className={state.enabled ? 'text-amber-400' : 'text-fg-muted'}>
+                Not wired — questions from {state.unwired.length === 1 ? 'this project' : 'these projects'} stay in the terminal:
+              </p>
+              <ul className="mt-0.5">
+                {state.unwired.map(u => (
+                  <li key={u.project} className="flex items-center gap-2 py-0.5" data-fleet-relay-unwired-row={u.project}>
+                    <span className="text-fg-strong truncate">{u.project}</span>
+                    <span className="text-fg-muted truncate">missing {u.missing.join(', ')}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
