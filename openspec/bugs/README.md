@@ -68,6 +68,14 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-180 — the fleet screen fetches each checkout's file listing ~20 times on load instead of once
+- **state:** open
+- **reported:** 2026-11-17 by this session, while investigating a Chrome memory spike the user attributed to the dashboard tab.
+- **measured:** fresh tab on the dashboard, `performance.setResourceTimingBufferSize(5000)`, then resource entries after 30 s: **93 requests to `/api/fleet/files?root=…` over 8 roots, ~26 MB transferred**; the two largest listings (~460 KB each) were fetched 22 times each, a third 23 times. The storm stops on its own at ~31 s (96 total at 77 s, 1 after 31 s). JS heap stayed 15–21 MB throughout, so it is a request/parse storm, not a heap leak. The endpoint itself answers in ~0.16 s.
+- **suspected mechanism (not yet proven):** the effect at `web/src/pages/Fleet.tsx:2944` depends on `knownFiles` and `listingRoots`, and its cleanup sets `dead = true` for EVERY in-flight fetch. Each arriving listing updates `knownFiles`, which re-runs the effect and discards the replies still in flight, which are then fetched again; `listingRoots` re-memoising on every fleet poll (`active` changes) would do the same.
+- **fail direction:** silent, cost-only. Nothing breaks on screen; the load is CPU, network and GC churn in the browser and on the server, and it recurs whenever the root set changes (a terminal opened, a project switched).
+- **fixed when:** the same 30 s measurement on a fresh load shows exactly one `/api/fleet/files` request per root, and a unit test holds that a second listing arriving does not cancel or re-request the first.
+
 ### B-178 — `set-project init` run inside a worktree re-points the PROJECT's MCP registration at the worktree
 - **state:** open
 - **reported:** 2026-11-12 by this session, found by the new `set-doctor` on its first run.
