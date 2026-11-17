@@ -44,6 +44,7 @@ import FleetWaves from '../components/FleetWaves'
 import FleetRelay from '../components/FleetRelay'
 import FleetIdleClose from '../components/FleetIdleClose'
 import FleetSplitter from '../components/FleetSplitter'
+import { useFileListings } from '../hooks/useFileListings'
 import {
   MAX_PANE, MIN_PANE, SPLIT_PROJECTS, clampPane, loadSplits, positionOf, saveSplits,
   type Splits,
@@ -2894,7 +2895,6 @@ export default function Fleet() {
     sharing this one, because it also needs the cap and the truncation flag, and
     a set stripped of those would be the same data with the caveat removed.
   */
-  const [knownFiles, setKnownFiles] = useState<Record<string, ReadonlySet<string>>>({})
 
   /*
     EVERY checkout the file endpoints will serve, across every project.
@@ -2941,28 +2941,8 @@ export default function Fleet() {
     return [...roots]
   }, [active, openTerminals, tileRoot])
 
-  /* The listing arrives once per checkout, and only once a terminal is open. */
-  useEffect(() => {
-    if (openTerminals.length === 0) return
-    const wanted = listingRoots.filter(r => !knownFiles[r])
-    if (wanted.length === 0) return
-    let dead = false
-    for (const root of wanted) {
-      void fetch(`/api/fleet/files?root=${encodeURIComponent(root)}`)
-        .then(r => (r.ok ? r.json() : null))
-        .then(body => {
-          if (dead || !body) return
-          setKnownFiles(prev => ({ ...prev, [root]: new Set<string>(body.files ?? []) }))
-        })
-        .catch(() => {
-          // A listing that cannot be fetched means no file links for that
-          // checkout, which is the correct degradation: `fileReference` refuses
-          // everything without a known set, so nothing is offered that cannot
-          // be opened. Silent on purpose — the terminal itself is unaffected.
-        })
-    }
-    return () => { dead = true }
-  }, [listingRoots, openTerminals.length, knownFiles])
+  /* The listing arrives once per checkout, and only once a terminal is open (B-180). */
+  const knownFiles = useFileListings(listingRoots, openTerminals.length > 0)
 
   const toggleTerminal = useCallback((project: string | null, label: string | null, on: boolean) => {
     if (!label) { return }
