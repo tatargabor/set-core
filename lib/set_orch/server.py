@@ -14,6 +14,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -133,6 +134,15 @@ def create_app(web_dist_dir: str | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Compress JSON responses — B-181. `/api/fleet/agents` is ~200 KB raw and
+    # ~19 KB gzipped, and every open dashboard tab polls it every ~5 s; measured
+    # 2026-11-17 at 39 KiB/s of steady upload for ONE remote tab. Starlette's
+    # GZip already skips `text/event-stream`, so the status follow stream stays
+    # unbuffered; WebSockets do not pass through HTTP middleware at all.
+    # Level 6, not the default 9: the body is re-serialised on every poll, and
+    # 9 costs noticeably more CPU for a few percent of size.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
     # State
     app.state.watcher_manager = WatcherManager()
