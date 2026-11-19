@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""set-hook-notify-relay — Claude Code Notification hook: the blocking messages that
+are not questions reach the relay's outbound, one way (register B-184).
+
+While this machine's relay switch is on (`question_relay.enabled`), a permission
+prompt or a waiting-for-input notice is posted to `question_relay.notify_command`
+(or `question_relay.webhook_url`) as a notification naming the project, the agent
+and the message. There is NO answer path: the terminal stays the only place the
+message is acted on, and this hook can never hold, slow or answer a session — one
+attempt, 10 s hook timeout, 8 s outbound timeout, and every failure is a log line.
+
+The decision lives in `set_orch.fleet.question_relay.notify`; this file is the
+carrier. Output: nothing, always, and exit 0 — a notification has nothing to hand
+back to the runtime.
+
+Configuration (machine-local, `set-config set <key> <value>`):
+    question_relay.notify_command  one-way outbound: reads {"kind":"notification",...}
+                                   on stdin, posts it, prints nothing
+    question_relay.webhook_url     fallback one-way outbound (one HTTP POST)
+    question_relay.enabled         the same switch the question relay uses
+
+Referenced by name from .claude/settings.json; on PATH through install.sh.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import sys
+
+_SET_TOOLS_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+_LIB = os.path.join(_SET_TOOLS_ROOT, "lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+
+
+def main() -> int:
+    try:
+        hook_input = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    if not isinstance(hook_input, dict):
+        return 0
+    try:
+        from set_orch.fleet import question_relay as qr
+
+        # The common case is "off": answer it before touching the log file.
+        if not qr.readiness()["enabled"]:
+            return 0
+        folder = qr.state_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(filename=str(folder / "relay.log"), level=logging.INFO,
+                            format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        qr.notify(hook_input)
+    except Exception as exc:  # never let a notification touch the session
+        logging.getLogger("set-hook-notify-relay").warning(
+            "notify failed (%s)", type(exc).__name__)
+        return 0
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -52,6 +52,10 @@ KEY_AUDIENCE = "question_relay.audience"
 KEY_WEBHOOK = "question_relay.webhook_url"
 KEY_DETAIL = "question_relay.webhook_detail"
 KEY_TIMEOUT = "question_relay.timeout_s"
+#: One-way notification of the blocking messages that are not questions (B-184): a
+#: permission prompt or a waiting-for-input notice cannot be answered through the
+#: channel, so it takes its own outbound — a command that posts, or the webhook.
+KEY_NOTIFY_COMMAND = "question_relay.notify_command"
 
 #: What each target cannot work without. The framework supplies none of these.
 REQUIRED = {
@@ -88,16 +92,24 @@ def readiness(get: Getter = local_config.get) -> Dict[str, Any]:
         missing.append(KEY_TARGET)
     else:
         missing.extend(k for k in REQUIRED[target] if not _text(get(k)))
+    # The notify outbound is a separate gate on purpose: a machine that relays questions
+    # but has not configured notifications must not lose the questions — it gets its own
+    # named gap, which readiness surfaces without touching `ready` for questions.
+    notify_missing: List[str] = []
+    if _truthy(get(KEY_ENABLED, default=False)) and not (_text(get(KEY_NOTIFY_COMMAND)) or _text(get(KEY_WEBHOOK))):
+        notify_missing.append(KEY_NOTIFY_COMMAND)
     return {
         "enabled": _truthy(get(KEY_ENABLED, default=False)),
         "target": target or None,
         "missing": missing,
         "ready": not missing,
+        "notify_missing": notify_missing,
     }
 
 
 RELAY_HOOK = "set-hook-question-relay"
 WAIT_HOOK = "set-hook-wait-detect"
+NOTIFY_HOOK = "set-hook-notify-relay"
 #: A PreToolUse matcher that covers AskUserQuestion: the tool's own name, or a match-all.
 _ASK_MATCHERS = (TOOL, "", "*", None)
 
@@ -118,6 +130,11 @@ def _hooks_in(settings: Any) -> set:
             continue
         if any(isinstance(h, dict) and h.get("command") == WAIT_HOOK for h in entry.get("hooks") or []):
             found.add(WAIT_HOOK)
+    for entry in hooks.get("Notification") or []:
+        if not isinstance(entry, dict):
+            continue
+        if any(isinstance(h, dict) and h.get("command") == NOTIFY_HOOK for h in entry.get("hooks") or []):
+            found.add(NOTIFY_HOOK)
     return found
 
 
@@ -156,7 +173,7 @@ def unwired_projects(projects: Optional[List[Dict[str, Any]]] = None,
         found = set(user)
         found |= _settings_hooks(root / ".claude" / "settings.json")
         found |= _settings_hooks(root / ".claude" / "settings.local.json")
-        missing = [h for h in (RELAY_HOOK, WAIT_HOOK) if h not in found]
+        missing = [h for h in (RELAY_HOOK, WAIT_HOOK, NOTIFY_HOOK) if h not in found]
         if missing:
             out.append({"project": proj.get("name") or root.name, "missing": missing})
     return out
@@ -164,6 +181,7 @@ def unwired_projects(projects: Optional[List[Dict[str, Any]]] = None,
 
 _RELAY_ENTRY = {"matcher": TOOL, "hooks": [{"type": "command", "command": RELAY_HOOK, "timeout": 3600}]}
 _WAIT_ENTRY = {"matcher": "", "hooks": [{"type": "command", "command": WAIT_HOOK, "timeout": 60}]}
+_NOTIFY_ENTRY = {"matcher": "", "hooks": [{"type": "command", "command": NOTIFY_HOOK, "timeout": 30}]}
 
 
 def _exclude_from_git(root: Path, rel: str) -> None:
@@ -209,7 +227,7 @@ def wire_project(root: Path, user_settings: Optional[Path] = None) -> List[str]:
     found |= _settings_hooks(root / ".claude" / "settings.json")
     local = root / ".claude" / "settings.local.json"
     found |= _settings_hooks(local)
-    missing = [h for h in (RELAY_HOOK, WAIT_HOOK) if h not in found]
+    missing = [h for h in (RELAY_HOOK, WAIT_HOOK, NOTIFY_HOOK) if h not in found]
     if not missing:
         return []
     data: Dict[str, Any] = {}
@@ -227,6 +245,8 @@ def wire_project(root: Path, user_settings: Optional[Path] = None) -> List[str]:
         hooks.setdefault("PreToolUse", []).append(json.loads(json.dumps(_RELAY_ENTRY)))
     if WAIT_HOOK in missing:
         hooks.setdefault("Stop", []).append(json.loads(json.dumps(_WAIT_ENTRY)))
+    if NOTIFY_HOOK in missing:
+        hooks.setdefault("Notification", []).append(json.loads(json.dumps(_NOTIFY_ENTRY)))
     local.parent.mkdir(parents=True, exist_ok=True)
     tmp = local.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
@@ -525,6 +545,75 @@ def _run_command(command: str, payload: str) -> int:
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                           timeout=120).returncode
 
+
+# --------------------------------------------------------------------------- #
+# notifications: the blocking messages that are not questions (B-184)
+# --------------------------------------------------------------------------- #
+
+NOTIFY_TIMEOUT_S = 25
+
+
+def _run_notify(command: str, payload: str) -> int:
+    # The same no-pipe rule as _run_command (a bridge that leaves a child running must
+    # not hold the hand-off open); the shorter timeout is the point — a notification
+    # must never hold a hook slot the way a held question may.
+    return subprocess.run(shlex.split(command), input=payload, text=True,
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                          timeout=NOTIFY_TIMEOUT_S).returncode
+
+
+def notify(hook_input: Dict[str, Any], *,
+           get: Getter = local_config.get,
+           run: Callable[[str, str], int] = _run_notify,
+           post: Callable[[str, str], None] = post_webhook,
+           project_name: Callable[[str], str] = _project_name) -> Optional[str]:
+    """Deliver one non-question blocking message. One attempt, never waits.
+
+    Permission prompts and waiting-for-input notices reach the outbound one way:
+    there is no answer to bring back, so there is nothing to hold the session on.
+    Returns None when the notification went out, else the drop reason — a log
+    line, never anything the session could feel: a notify that fails must say so
+    somewhere, or it reproduces exactly the silence this exists to end (B-184).
+    Nothing derived from the message is persisted — no record, no file; the log
+    line carries the reason and the session label, never the message text.
+    """
+    state = readiness(get)
+    if not state["enabled"]:
+        return None
+    message = _text(hook_input.get("message"))
+    session_id = str(hook_input.get("session_id") or "")
+    sid = _safe_id(session_id)[:8] or "unknown"
+    if not message:
+        logger.warning("question relay notify [%s]: dropped — the event carried no message", sid)
+        return "the event carried no message"
+    command = _text(get(KEY_NOTIFY_COMMAND))
+    webhook = _text(get(KEY_WEBHOOK))
+    if not command and not webhook:
+        logger.warning("question relay notify [%s]: dropped — %s is not set (and neither is %s)",
+                       sid, KEY_NOTIFY_COMMAND, KEY_WEBHOOK)
+        return f"missing {KEY_NOTIFY_COMMAND}"
+    project = project_name(str(hook_input.get("cwd") or os.getcwd()))
+    if command:
+        envelope = {"kind": "notification", "project": project, "agent": f"{project} · {sid}",
+                    "session_id": session_id, "message": message}
+        try:
+            code = run(command, json.dumps(envelope, ensure_ascii=False))
+        except Exception as exc:
+            logger.warning("question relay notify [%s]: outbound could not run (%s)", sid, type(exc).__name__)
+            return f"outbound could not run ({type(exc).__name__})"
+        if code != 0:
+            logger.warning("question relay notify [%s]: outbound exited %s", sid, code)
+            return f"outbound exited {code}"
+    else:
+        # Unlike a question, a notification HAS no options to hide behind a detail
+        # setting: the message is the whole content, so it goes out in every shape.
+        try:
+            post(webhook, f"⚠ {project} · {sid}\n{message}"[:1900])
+        except Exception as exc:
+            logger.warning("question relay notify [%s]: webhook post failed (%s)", sid, type(exc).__name__)
+            return f"webhook post failed ({type(exc).__name__})"
+    logger.info("question relay notify [%s]: delivered (%d chars)", sid, len(message))
+    return None
 
 def relay(hook_input: Dict[str, Any], *,
           get: Getter = local_config.get,
