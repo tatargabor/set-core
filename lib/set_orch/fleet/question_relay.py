@@ -562,6 +562,66 @@ def _run_notify(command: str, payload: str) -> int:
                           timeout=NOTIFY_TIMEOUT_S).returncode
 
 
+def _tool_summary(block: Dict[str, Any]) -> str:
+    """One line naming what is actually being asked, or '' when it says nothing."""
+    name = str(block.get("name") or "")
+    inp = block.get("input") if isinstance(block.get("input"), dict) else {}
+    if name == "Bash":
+        command = _text(inp.get("command")).replace("\n", " ; ")
+        return f"Bash: {command[:160]}" if command else ""
+    if name in ("Edit", "Write", "Read", "NotebookEdit"):
+        target = _text(inp.get("file_path"))
+        return f"{name}: {target[:120]}" if target else ""
+    if name == TOOL:
+        return ""  # a question tool's ask is the OTHER carrier's job — never double-report
+    return name
+
+
+def enrich_message(hook_input: Dict[str, Any]) -> str:
+    """The runtime's notification text plus WHAT is being asked, from the transcript.
+
+    The notification event itself carries only a generic sentence ("Claude needs your
+    permission to use Bash"), measured 2026-11-19 as 32 characters on a real prompt —
+    the owner cannot act on that from the channel. The transcript's most recent
+    tool_use is the thing the prompt is about; its summary is appended. Best effort:
+    any unreadable transcript returns the message unchanged, and a newest tool_use
+    that is a question tool returns the message unchanged too (the question relay
+    owns that ask, and an older tool_use is not the pending one).
+    """
+    message = _text(hook_input.get("message"))
+    path = hook_input.get("transcript_path")
+    if not path:
+        return message
+    try:
+        with open(str(path), "rb") as handle:
+            handle.seek(0, 2)
+            size = handle.tell()
+            handle.seek(max(0, size - 65536))
+            tail = handle.read().decode("utf-8", "replace")
+    except OSError as exc:
+        logger.debug("question relay notify: transcript unreadable: %s", type(exc).__name__)
+        return message
+    for line in reversed([ln for ln in tail.split("\n") if ln.strip()]):
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        content = entry.get("message", {}).get("content") if isinstance(entry, dict) else None
+        if not isinstance(content, list):
+            continue
+        newest = next((b for b in reversed(content)
+                       if isinstance(b, dict) and b.get("type") == "tool_use"), None)
+        if newest is None:
+            continue
+        if newest.get("name") == TOOL:
+            return message
+        summary = _tool_summary(newest)
+        if summary and summary not in message:
+            return f"{message} — {summary}" if message else summary
+        return message
+    return message
+
+
 def notify(hook_input: Dict[str, Any], *,
            get: Getter = local_config.get,
            run: Callable[[str, str], int] = _run_notify,
@@ -580,12 +640,12 @@ def notify(hook_input: Dict[str, Any], *,
     state = readiness(get)
     if not state["enabled"]:
         return None
-    message = _text(hook_input.get("message"))
+    message = enrich_message(hook_input)
     session_id = str(hook_input.get("session_id") or "")
     sid = _safe_id(session_id)[:8] or "unknown"
     if not message:
-        logger.warning("question relay notify [%s]: dropped — the event carried no message", sid)
-        return "the event carried no message"
+        logger.warning("question relay notify [%s]: dropped — nothing to say: no message and no pending call readable", sid)
+        return "nothing to say: no message and no pending call readable"
     command = _text(get(KEY_NOTIFY_COMMAND))
     webhook = _text(get(KEY_WEBHOOK))
     if not command and not webhook:

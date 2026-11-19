@@ -63,7 +63,7 @@ def test_no_message_is_dropped_and_named():
     calls = []
     reason = qr.notify(event(message=""), get=config(),
                        run=lambda c, p: calls.append(c) or 0)
-    assert reason == "the event carried no message"
+    assert reason == "nothing to say: no message and no pending call readable"
     assert calls == []  # nothing ran
 
 
@@ -180,3 +180,54 @@ def test_unwired_list_names_the_notification_hook(tmp_path):
         [{"name": "proj", "path": str(root)}],
         user_settings=tmp_path / "absent-user.json")
     assert missing and set(missing[0]["missing"]) == {qr.RELAY_HOOK, qr.WAIT_HOOK, qr.NOTIFY_HOOK}
+
+
+# ── enrichment: the generic notification text gains WHAT is being asked ───────
+
+def transcript(tmp_path, tool_name, tool_input, eventname="event"):
+    lines = [
+        json.dumps({"type": "user", "message": {"content": [{"type": "text", "text": "go"}]}}),
+        json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": tool_name, "input": tool_input}]}}),
+    ]
+    p = tmp_path / f"{eventname}.jsonl"
+    p.write_text("\n".join(lines) + "\n")
+    return str(p)
+
+
+def test_enrichment_appends_the_pending_bash_command(tmp_path):
+    path = transcript(tmp_path, "Bash", {"command": "git merge origin/dev\n"})
+    out = qr.enrich_message({"message": MESSAGE, "transcript_path": path})
+    assert out.startswith(MESSAGE)
+    assert "Bash: git merge origin/dev" in out
+
+
+def test_enrichment_covers_an_empty_message_from_the_transcript(tmp_path):
+    path = transcript(tmp_path, "Bash", {"command": "git push origin dev"})
+    out = qr.enrich_message({"message": "", "transcript_path": path})
+    assert out == "Bash: git push origin dev"
+
+
+def test_enrichment_skips_a_question_tool_and_says_nothing_new(tmp_path):
+    path = transcript(tmp_path, "AskUserQuestion", {"questions": [{"question": "x"}]})
+    assert qr.enrich_message({"message": MESSAGE, "transcript_path": path}) == MESSAGE
+
+
+def test_enrichment_falls_back_when_the_transcript_is_unreadable():
+    out = qr.enrich_message({"message": MESSAGE,
+                             "transcript_path": "/nowhere/at/all.jsonl"})
+    assert out == MESSAGE
+
+
+def test_notify_delivers_the_enriched_message(tmp_path):
+    path = transcript(tmp_path, "Bash", {"command": "git merge origin/dev"})
+    seen = []
+
+    def run(command, payload):
+        seen.append(json.loads(payload))
+        return 0
+
+    assert qr.notify({"message": MESSAGE, "session_id": SESSION,
+                      "cwd": "/somewhere/project", "transcript_path": path},
+                     get=config(), run=run) is None
+    assert seen and "git merge origin/dev" in seen[0]["message"]
