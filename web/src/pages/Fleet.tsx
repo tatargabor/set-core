@@ -50,7 +50,7 @@ import {
   type Splits,
 } from '../lib/fleetSplits'
 import FleetTerminal from '../components/FleetTerminal'
-import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, History, Kanban, Layers, MessageCircleQuestion, Minimize2, Presentation, Repeat, Square, TriangleAlert } from 'lucide-react'
+import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, History, Kanban, Layers, MessageCircleQuestion, Minimize2, Presentation, Repeat, Square, TriangleAlert, ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react'
 import { Chip, Dot } from '../components/Chip'
 
 import { age } from '../lib/fleetAge'
@@ -3377,6 +3377,85 @@ export default function Fleet() {
     askIx.current += 1
     goTo(a => a.pid === pick.agent.pid)
   }, [askers, goTo])
+
+  const ASK_STEP_MS = 5000
+
+  /**
+   * AUTO-STEP THROUGH THE ASKERS — asked for 2026-11-19, beside the jump chip:
+   * *"automatikusan lépeget — ne kelljen rákattintanom"*. While on, the view
+   * steps to the next asking agent every {@link ASK_STEP_MS} through the same
+   * `jumpToAsker` path a click uses, so the history below records the steps
+   * and the reader can walk back over them. The step is 5 s on purpose: a
+   * standing question needs reading time, and a faster cycle yanks the view
+   * before the reader saw what it came to show. The toggle rides the chip, so
+   * it is invisible while nobody asks and stays on, dormant, until one does.
+   */
+  const [autoAsk, setAutoAsk] = useState(false)
+  useEffect(() => {
+    if (!autoAsk || askers.length === 0) return
+    const t = setInterval(jumpToAsker, ASK_STEP_MS)
+    return () => clearInterval(t)
+  }, [autoAsk, askers.length, jumpToAsker])
+
+  /**
+   * VIEW HISTORY — browser-style back/forward for the fleet screen, asked for
+   * 2026-11-19 in the same breath: *"kellene egy prev és next gomb is, ami az
+   * előző és következő chatre áll át… mint régen volt a böngészőkön az oda-vissza"*.
+   *
+   * ONE observation point: the effective view is (which project, which agent is
+   * enlarged), and every switch — tab click, tile enlarge, the asking chip, an
+   * auto-step — lands as a change of exactly that pair. The effect below pushes
+   * each change; a navigation from these buttons raises `navLock` first, so its
+   * own effect run is applied, not pushed. A fresh navigation truncates the
+   * forward tail, the way a browser does.
+   */
+  type ViewEntry = { project: string | null; pid: number | null }
+  const [viewHist, setViewHist] = useState<{ stack: ViewEntry[]; ix: number }>({ stack: [], ix: 0 })
+  const navLock = useRef(false)
+  /**
+   * THE APPLY — one place turns a recorded view into the actual screen, so the
+   * back/forward pair and goTo cannot drift apart about what a view IS.
+   */
+  const applyView = useCallback((entry: ViewEntry) => {
+    if (entry.project === LATEST_VIEW_KEY) {
+      if (!latestOn) setLatest({ on: true })
+      setEnlarged(LATEST_VIEW_KEY, entry.pid)
+      return
+    }
+    if (latestOn) setLatest({ on: false })
+    if (entry.project && selected !== entry.project) setSelected(entry.project)
+    if (entry.project) {
+      writeView(entry.project, { enlarged: entry.pid })
+      setMemory({ project: entry.project, view: readView(entry.project) })
+    }
+  }, [latestOn, selected, setLatest, setEnlarged])
+  useEffect(() => {
+    // Every switch lands as a change of (which project, which agent enlarged):
+    // tab click, tile enlarge, the asking chip, an auto-step. A navigation from
+    // back/forward raises `navLock` first, so this run applies and does not
+    // push; a fresh push truncates the forward tail, the way a browser does.
+    if (navLock.current) { navLock.current = false; return }
+    const entry: ViewEntry = { project: latestOn ? LATEST_VIEW_KEY : (selected ?? null), pid: enlarged }
+    setViewHist(h => {
+      const at = h.stack[h.ix]
+      if (at && at.project === entry.project && at.pid === entry.pid) return h
+      const stack = [...h.stack.slice(0, h.ix + 1), entry]
+      return { stack, ix: stack.length - 1 }
+    })
+  }, [latestOn, selected, enlarged])
+  const viewBack = useCallback(() => {
+    if (viewHist.ix <= 0) return
+    navLock.current = true
+    setViewHist({ stack: viewHist.stack, ix: viewHist.ix - 1 })
+    applyView(viewHist.stack[viewHist.ix - 1])
+  }, [viewHist, applyView])
+  const viewForward = useCallback(() => {
+    if (viewHist.ix >= viewHist.stack.length - 1) return
+    navLock.current = true
+    setViewHist({ stack: viewHist.stack, ix: viewHist.ix + 1 })
+    applyView(viewHist.stack[viewHist.ix + 1])
+  }, [viewHist, applyView])
+
   const onJumpPid = useCallback((pid: number) => goTo(a => a.pid === pid), [goTo])
 
   /**
@@ -3777,6 +3856,38 @@ export default function Fleet() {
             {askers.length}
           </button>
         )}
+        {/* B-186 — the auto-step and the view history, asked for together on
+            2026-11-19: step through the askers hands-free, and walk back over
+            where the reader has been, the way browsers did with oda-vissza.
+            Back/forward are ALWAYS here (a fresh screen starts with both
+            inert), disabled rather than absent at the ends — the pair is one
+            control whose reach changes, not two that appear and vanish. */}
+        <span className="inline-flex items-center gap-0.5 shrink-0">
+          <button type="button" onClick={viewBack} disabled={viewHist.ix <= 0}
+                  aria-label="back to the view before this one"
+                  title="Back — the view you came from (browser-style)"
+                  data-fleet-view-back={viewHist.ix}
+                  className="p-1 rounded border border-surface-line text-fg-muted hover:text-fg-strong disabled:opacity-40 disabled:hover:text-fg-muted">
+            <ChevronLeft size={13} strokeWidth={1.75} aria-hidden />
+          </button>
+          <button type="button" onClick={viewForward} disabled={viewHist.ix >= viewHist.stack.length - 1}
+                  aria-label="forward to the view after this one"
+                  title="Forward — the view you came back from (browser-style)"
+                  data-fleet-view-forward={viewHist.stack.length - 1 - viewHist.ix}
+                  className="p-1 rounded border border-surface-line text-fg-muted hover:text-fg-strong disabled:opacity-40 disabled:hover:text-fg-muted">
+            <ChevronRight size={13} strokeWidth={1.75} aria-hidden />
+          </button>
+        </span>
+        {askers.length > 0 && (
+          <button type="button" onClick={() => setAutoAsk(a => !a)} aria-pressed={autoAsk}
+                  data-fleet-asking-auto={autoAsk ? 'on' : 'off'}
+                  aria-label={autoAsk ? 'stop stepping through asking agents' : 'step through asking agents automatically'}
+                  title={autoAsk ? 'Stepping through the asking agents — click to stop' : 'Steps to the next asking agent every few seconds — click to start'}
+                  className={`inline-flex items-center rounded p-1 border text-xs shrink-0 ${autoAsk ? 'border-sky-400/60 bg-sky-400/10 text-sky-300' : 'border-surface-line text-fg-muted hover:text-fg-strong'}`}>
+            {autoAsk ? <Pause size={12} strokeWidth={1.75} aria-hidden /> : <Play size={12} strokeWidth={1.75} aria-hidden />}
+          </button>
+        )}
+
         {/* The nightly auto-close of agents with no input from the owner: its switch, and how
             many agents the next run will close riding on it. */}
         <FleetIdleClose />

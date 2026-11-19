@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 
 import Fleet from '../../src/pages/Fleet'
 
@@ -121,5 +121,50 @@ describe('the jump-to-asking control', () => {
     await wait(() => expect(activeTab(container)).toBe('1'))
     fireEvent.click(jump)
     await wait(() => expect(activeTab(container)).toBe('2'))
+  })
+
+  it('auto-steps through the askers while on, and stops on pause', async () => {
+    // Asked for 2026-11-19: "automatikusan lépeget — ne kelljen rákattintanom".
+    // Fake timers START AFTER the load settled, so only the step interval is
+    // under test control.
+    install(body([asking(1), asking(2)]))
+    const { container } = render(<Fleet />)
+    await ready(container)
+    await wait(() => expect(container.querySelector('[data-fleet-asking-auto]')).toBeTruthy())
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(container.querySelector('[data-fleet-asking-auto]'))
+      await act(async () => { await vi.advanceTimersByTimeAsync(5100) })
+      expect(activeTab(container)).toBe('1')
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+      expect(activeTab(container)).toBe('2')
+      fireEvent.click(container.querySelector('[data-fleet-asking-auto]')) // pause
+      await act(async () => { await vi.advanceTimersByTimeAsync(12000) })
+      expect(activeTab(container)).toBe('2')
+    } finally { vi.useRealTimers() }
+  })
+
+  it('walks back and forward over the views the way a browser does', async () => {
+    // Asked for 2026-11-19: "prev és next gomb… mint régen volt a böngészőkön
+    // az oda-vissza". Chip jump, then a manual tab switch, then back twice and
+    // forward once — the recorded path, replayed.
+    install(body([asking(1), agent(2), agent(3)]))
+    const { container } = render(<Fleet />)
+    await ready(container)
+    const chip = await wait(() => {
+      const el = container.querySelector('[data-fleet-asking-jump]')
+      expect(el).toBeTruthy()
+      return el as HTMLElement
+    })
+    fireEvent.click(chip)
+    await wait(() => expect(activeTab(container)).toBe('1'))
+    fireEvent.click(container.querySelector('[data-fleet-agent-tab="3"]'))
+    await wait(() => expect(activeTab(container)).toBe('3'))
+    fireEvent.click(container.querySelector('[data-fleet-view-back]'))
+    await wait(() => expect(activeTab(container)).toBe('1'))
+    fireEvent.click(container.querySelector('[data-fleet-view-back]'))
+    await wait(() => expect(activeTab(container)).toBeNull())
+    fireEvent.click(container.querySelector('[data-fleet-view-forward]'))
+    await wait(() => expect(activeTab(container)).toBe('1'))
   })
 })
