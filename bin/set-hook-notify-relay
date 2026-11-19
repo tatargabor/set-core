@@ -35,12 +35,22 @@ if _LIB not in sys.path:
 
 
 def main() -> int:
-    try:
-        hook_input = json.load(sys.stdin)
-    except ValueError:
-        return 0
-    if not isinstance(hook_input, dict):
-        return 0
+    # `--text "…"`: a hook that RAISED the blocking answer can send its own reason —
+    # the one text no transcript carries (measured 2026-11-19: hook outputs are
+    # terminal-prompt-only, B-188). Session unknown there; the project is the cwd.
+    if sys.argv[1:2] == ["--text"]:
+        text = " ".join(sys.argv[2:]).strip()
+        if not text:
+            return 0
+        hook_input = {"message": text, "session_id": os.environ.get("SET_SESSION_ID", ""),
+                      "cwd": os.getcwd()}
+    else:
+        try:
+            hook_input = json.load(sys.stdin)
+        except ValueError:
+            return 0
+        if not isinstance(hook_input, dict):
+            return 0
     try:
         from set_orch.fleet import question_relay as qr
 

@@ -231,3 +231,30 @@ def test_notify_delivers_the_enriched_message(tmp_path):
                       "cwd": "/somewhere/project", "transcript_path": path},
                      get=config(), run=run) is None
     assert seen and "git merge origin/dev" in seen[0]["message"]
+
+
+def test_carrier_text_mode_sends_the_hooks_own_reason(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    seen = tmp_path / "seen.json"
+    fake = tmp_path / "fake-notify"
+    fake.write_text("#!/usr/bin/env python3\nimport sys\n"
+                    f"open({str(seen)!r},'w').write(sys.stdin.read())\n")
+    fake.chmod(0o755)
+    env = carrier_env(tmp_path, {qr.KEY_ENABLED: "true", qr.KEY_TARGET: "command",
+                                 qr.KEY_COMMAND: "bridge be --json -", qr.KEY_AUDIENCE: "DEV",
+                                 qr.KEY_NOTIFY_COMMAND: str(fake)})
+    res = subprocess.run([str(root / "bin" / "set-hook-notify-relay"), "--text",
+                          "aiplus-bash-guard: publish must run as one bare command"],
+                         input="", capture_output=True, text=True, env=env, timeout=30)
+    assert res.returncode == 0 and res.stdout == ""
+    envelope = json.loads(seen.read_text())
+    assert "aiplus-bash-guard" in envelope["message"]
+    assert envelope["session_id"] in ("", None)
+
+
+def test_carrier_text_mode_without_text_is_silent(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    res = subprocess.run([str(root / "bin" / "set-hook-notify-relay"), "--text"],
+                         input="", capture_output=True, text=True,
+                         env=carrier_env(tmp_path, None), timeout=30)
+    assert res.returncode == 0 and res.stdout == ""
