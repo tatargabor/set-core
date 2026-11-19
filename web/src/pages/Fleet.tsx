@@ -50,7 +50,7 @@ import {
   type Splits,
 } from '../lib/fleetSplits'
 import FleetTerminal from '../components/FleetTerminal'
-import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, History, Kanban, Layers, Minimize2, Presentation, Repeat, Square, TriangleAlert } from 'lucide-react'
+import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, History, Kanban, Layers, MessageCircleQuestion, Minimize2, Presentation, Repeat, Square, TriangleAlert } from 'lucide-react'
 import { Chip, Dot } from '../components/Chip'
 
 import { age } from '../lib/fleetAge'
@@ -3352,6 +3352,31 @@ export default function Fleet() {
   const canJumpSeat = useCallback((seat: string) => findAgent(a => a.seat === seat) !== null, [findAgent])
   const onJumpSeat = useCallback((seat: string) => goTo(a => a.seat === seat), [goTo])
   const canJumpPid = useCallback((pid: number) => findAgent(a => a.pid === pid) !== null, [findAgent])
+
+  /**
+   * JUMP TO THE AGENT ASKING YOU — asked for 2026-11-19: *"kapcsoljon át arra, ami
+   * kérdésre vár… amikor a gép előtt vagyok, ezt használnám"*. One header control,
+   * rendered ONLY while at least one agent holds an open question tool (a control
+   * that goes nowhere is the shape 8.2 forbids, and an absent control when nothing
+   * asks is the same rule the other way). One click puts that agent in front of the
+   * reader through `goTo`, which owns every view rule — project selection, latest
+   * mode, the enlarged write. With several agents asking, the NEXT click moves to
+   * the next asking agent, wrapping: the reader cycles without hunting tabs.
+   */
+  const askers = useMemo(() => {
+    const found: { project: string; agent: FleetAgent }[] = []
+    for (const p of projects) {
+      for (const a of p.agents) if (a.state === 'asking') found.push({ project: p.name, agent: a })
+    }
+    return found
+  }, [projects])
+  const askIx = useRef(0)
+  const jumpToAsker = useCallback(() => {
+    if (askers.length === 0) return
+    const pick = askers[askIx.current % askers.length]
+    askIx.current += 1
+    goTo(a => a.pid === pick.agent.pid)
+  }, [askers, goTo])
   const onJumpPid = useCallback((pid: number) => goTo(a => a.pid === pid), [goTo])
 
   /**
@@ -3735,6 +3760,23 @@ export default function Fleet() {
             channel. Beside the PM switch because both are machine-wide modes; the count
             of questions waiting on the channel rides on it, closed. */}
         <FleetRelay />
+        {/* B-185 — jump to the agent asking you, for reading at the machine. The
+            pulsing dot is the asking state's colour everywhere else on this screen,
+            so the chip borrows it rather than inventing a second mark. Absent while
+            nobody asks; cycles when several do. */}
+        {askers.length > 0 && (
+          <button
+            onClick={jumpToAsker}
+            data-fleet-asking-jump={askers.length}
+            aria-label={`${askers.length} agent${askers.length === 1 ? '' : 's'} waiting on your answer — click to switch to ${askers[0].agent.name ?? 'it'}`}
+            title={`${askers.map(x => `${x.project} · ${x.agent.name ?? 'unnamed'}`).join('  ·  ')} — click switches to it${askers.length > 1 ? ', the next click to the next one' : ''}`}
+            className="inline-flex items-center gap-1 rounded px-1 border border-sky-400/60 bg-sky-400/10 text-xs tabular-nums text-sky-300 shrink-0"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-300 animate-pulse shrink-0" />
+            <MessageCircleQuestion size={12} strokeWidth={1.75} aria-hidden />
+            {askers.length}
+          </button>
+        )}
         {/* The nightly auto-close of agents with no input from the owner: its switch, and how
             many agents the next run will close riding on it. */}
         <FleetIdleClose />
