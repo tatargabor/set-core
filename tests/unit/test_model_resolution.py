@@ -5,7 +5,7 @@ Two implementations must stay in sync:
 - Bash:   bin/set-common.sh::resolve_model_id
 
 These tests pin the contract:
-- `opus` shorthand resolves to the current release (currently 5)
+- `opus`, `sonnet`, `haiku` shorthands resolve to the current release (5.5)
 - Explicit `opus-4-6`, `opus-4-7` etc. pins are available for operators who
   want to lock a specific version
 - Bash and Python resolvers MUST agree on every short name
@@ -64,10 +64,50 @@ def test_explicit_opus_4_8_pin():
     assert resolve_model_id("opus-4-8") == "claude-opus-4-8"
 
 
-def test_sonnet_haiku_unchanged():
-    assert resolve_model_id("sonnet") == "claude-sonnet-4-6"
-    assert resolve_model_id("sonnet-1m") == "claude-sonnet-4-6[1m]"
-    assert resolve_model_id("haiku") == "claude-haiku-4-5-20251001"
+def test_sonnet_haiku_default_pins_current_release():
+    """`sonnet` / `haiku` resolve to 5.5 since 2026-11-22. They sat on 4.6 / 4.5
+    for months after newer releases shipped, because the table is bumped by hand
+    and only `opus` was ever moved (reported by a peer session, 2026-11-22)."""
+    assert resolve_model_id("sonnet") == "claude-sonnet-5-5"
+    assert resolve_model_id("sonnet-1m") == "claude-sonnet-5-5[1m]"
+    assert resolve_model_id("haiku") == "claude-haiku-5-5"
+
+
+def test_explicit_sonnet_haiku_pins():
+    assert resolve_model_id("sonnet-5-5") == "claude-sonnet-5-5"
+    assert resolve_model_id("sonnet-5-5-1m") == "claude-sonnet-5-5[1m]"
+    assert resolve_model_id("haiku-5-5") == "claude-haiku-5-5"
+    assert resolve_model_id("sonnet-4-6") == "claude-sonnet-4-6"
+    assert resolve_model_id("sonnet-4-6-1m") == "claude-sonnet-4-6[1m]"
+    assert resolve_model_id("haiku-4-5") == "claude-haiku-4-5-20251001"
+
+
+def _version(model_id: str) -> tuple:
+    """`claude-opus-5-5[1m]` -> (5, 5); `claude-haiku-4-5-20251001` -> (4, 5).
+
+    The numeric parts after the family, the 8-digit snapshot date dropped."""
+    parts = model_id.split("[", 1)[0].split("-")[2:]
+    return tuple(int(p) for p in parts if p.isdigit() and len(p) < 8)
+
+
+def test_every_shorthand_resolves_to_the_newest_release_it_ships():
+    """The check that would have caught `sonnet` -> 4.6: a family shorthand
+    (`opus`, `sonnet`, `haiku`, and their `-1m` forms) must resolve to the newest
+    release among the ids this table ships for that family. Adding a newer pin
+    without moving the shorthand fails here; `set-providers upstream` (exit 1 on
+    `behind`) covers a release the table does not ship at all."""
+    families = {}
+    for name, model_id in _MODEL_MAP.items():
+        family = model_id.split("-")[1]
+        families.setdefault(family, []).append(_version(model_id))
+    shorthands = [n for n in _MODEL_MAP if n in families or n.removesuffix("-1m") in families]
+    assert {"opus", "sonnet", "haiku"} <= set(shorthands)
+    for name in shorthands:
+        family = name.removesuffix("-1m")
+        newest = max(families[family])
+        assert _version(_MODEL_MAP[name]) == newest, (
+            f"`{name}` resolves to {_MODEL_MAP[name]}, but the table ships a newer "
+            f"{family} release {newest}: move the shorthand (defaults.py and set-common.sh)")
 
 
 def test_full_id_passthrough():
@@ -98,12 +138,9 @@ def _bash_resolve(name: str) -> str:
 
 def test_bash_python_parity():
     """The bash and python resolvers MUST agree on every short name."""
-    short_names = [
-        "haiku", "sonnet", "opus", "opus-1m", "sonnet-1m",
-        "opus-4-6", "opus-4-7", "opus-4-8", "opus-5",
-        "opus-4-6-1m", "opus-4-7-1m", "opus-5-1m",
-    ]
-    for name in short_names:
+    # Every name the Python table maps — a hand-copied list here is a second
+    # copy, and it had already fallen behind (no `opus-5-5` in it).
+    for name in _MODEL_MAP:
         py = resolve_model_id(name)
         sh = _bash_resolve(name)
         assert py == sh, (
@@ -144,7 +181,8 @@ def test_config_regex_accepts_new_aliases():
     regex = re.compile(pattern)
     for name in ("opus", "opus-4-6", "opus-4-7", "opus-4-8", "opus-5",
                  "opus-4-6-1m", "opus-4-7-1m", "opus-5-1m", "opus-5-5", "opus-5-5-1m",
-                 "sonnet", "sonnet-1m", "haiku"):
+                 "sonnet", "sonnet-1m", "haiku", "sonnet-5-5", "sonnet-5-5-1m",
+                 "haiku-5-5", "sonnet-4-6", "sonnet-4-6-1m", "haiku-4-5"):
         assert regex.match(name), f"regex rejects valid alias '{name}'"
     # Negative: random strings rejected
     assert not regex.match("claude-opus-5")  # full IDs not accepted via config

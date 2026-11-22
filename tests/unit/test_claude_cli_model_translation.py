@@ -20,6 +20,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from set_orch.providers.defaults import DEFAULT_MODEL_IDS
 from set_orch.subprocess_utils import resolve_model_id
 
 
@@ -31,13 +32,16 @@ def test_resolve_model_id_translates_short_pin_to_full_id():
     assert resolve_model_id("opus-4-7") == "claude-opus-4-7"
     assert resolve_model_id("opus-4-6-1m") == "claude-opus-4-6[1m]"
     assert resolve_model_id("opus-4-7-1m") == "claude-opus-4-7[1m]"
-    assert resolve_model_id("sonnet-1m") == "claude-sonnet-4-6[1m]"
+    assert resolve_model_id("sonnet-4-6-1m") == "claude-sonnet-4-6[1m]"
 
 
 def test_resolve_model_id_alias_translates():
-    assert resolve_model_id("opus") == "claude-opus-4-6"
-    assert resolve_model_id("sonnet") == "claude-sonnet-4-6"
-    assert resolve_model_id("haiku") == "claude-haiku-4-5-20251001"
+    """An alias translates to the shipped default — read from the table, not
+    retyped: the retyped literals here went stale twice (opus 4-6, sonnet 4-6).
+    WHICH release an alias names is pinned in test_model_resolution.py."""
+    for alias in ("opus", "sonnet", "haiku"):
+        assert resolve_model_id(alias) == DEFAULT_MODEL_IDS[alias]
+        assert resolve_model_id(alias).startswith(f"claude-{alias}-")
 
 
 def test_resolve_model_id_passes_through_full_ids():
@@ -73,10 +77,9 @@ def test_chat_short_pin_translated_in_cmd():
 def test_chat_alias_also_translated_to_full_id():
     s = _make_chat("opus")
     cmd = s._build_claude_cmd("hi", context="")
-    # The `opus` alias now maps to claude-opus-4-6 (the framework
-    # default after model-config-unified). Operators wanting 4-7 must
-    # pin `opus-4-7` explicitly via models.agent.
-    assert cmd[cmd.index("--model") + 1] == "claude-opus-4-6"
+    # The `opus` alias maps to the shipped default; operators wanting an
+    # older release pin it explicitly (e.g. `opus-4-7`) via models.agent.
+    assert cmd[cmd.index("--model") + 1] == DEFAULT_MODEL_IDS["opus"]
 
 
 def test_chat_full_id_passes_through():
@@ -144,4 +147,4 @@ def test_manager_supervisor_short_pin_translated(tmp_path):
     # real subprocess which we don't do at unit scope.
     assert resolve_model_id("opus-4-6") == "claude-opus-4-6"
     # And alias path
-    assert resolve_model_id("sonnet") == "claude-sonnet-4-6"
+    assert resolve_model_id("sonnet") == DEFAULT_MODEL_IDS["sonnet"]

@@ -43,11 +43,14 @@ from dataclasses import dataclass
 
 #: The date every figure below was read from platform.claude.com.
 #: Bump it only when the prices are actually re-read, never on an edit.
-PRICES_VERIFIED_ON = "2026-08-27"
+PRICES_VERIFIED_ON = "2026-11-22"
 PRICES_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing"
 
 #: Prompt-cache pricing, as multipliers of a model's base input price.
 #: Verified on PRICES_VERIFIED_ON against the source above.
+#: The read multiplier is the STANDARD one; the 5.x generation lowered it per
+#: model (0.05x Opus 5.5 / Sonnet 5.5, 0.025x Fable / Mythos 5.1 and 5.2), so a
+#: row may name its own — the write multipliers are still uniform.
 CACHE_READ_MULTIPLIER = 0.1
 CACHE_WRITE_5M_MULTIPLIER = 1.25
 CACHE_WRITE_1H_MULTIPLIER = 2.0
@@ -68,7 +71,7 @@ class _Rates:
         return self.input * CACHE_WRITE_1H_MULTIPLIER
 
 
-def _rates(*, input: float, output: float) -> _Rates:
+def _rates(*, input: float, output: float, cache_read_multiplier: float = CACHE_READ_MULTIPLIER) -> _Rates:
     """Build a rate row, DERIVING the cache figures from the input price.
 
     Typing the cache rates in by hand is how a table gains a row whose
@@ -78,18 +81,26 @@ def _rates(*, input: float, output: float) -> _Rates:
     return _Rates(
         input=input,
         output=output,
-        cache_read=input * CACHE_READ_MULTIPLIER,
+        cache_read=input * cache_read_multiplier,
         cache_create=input * CACHE_WRITE_5M_MULTIPLIER,
     )
 
 
 # Rate table. Verified on PRICES_VERIFIED_ON.
 _RATES: dict[str, _Rates] = {
+    # Fable / Mythos 5.2 and 5.1 — cache reads at 0.025x.
+    "claude-fable-5-2": _rates(input=8.00, output=40.00, cache_read_multiplier=0.025),
+    "claude-mythos-5-2": _rates(input=8.00, output=40.00, cache_read_multiplier=0.025),
+    "claude-fable-5-1": _rates(input=10.00, output=50.00, cache_read_multiplier=0.025),
+    "claude-mythos-5-1": _rates(input=10.00, output=50.00, cache_read_multiplier=0.025),
     # Fable / Mythos 5
     "claude-fable-5": _rates(input=10.00, output=50.00),
     "claude-mythos-5": _rates(input=10.00, output=50.00),
     # Opus 5 and the current 4.x line — all $5/$25, NOT the $15/$75 this
     # table carried for them until 2026-08-27.
+    # Opus 5.5 — the `opus` default; until 2026-11-22 it was priced through
+    # the `claude-opus-5` prefix at $5/$25, 25 % high.
+    "claude-opus-5-5": _rates(input=4.00, output=20.00, cache_read_multiplier=0.05),
     "claude-opus-5": _rates(input=5.00, output=25.00),
     "claude-opus-4-8": _rates(input=5.00, output=25.00),
     "claude-opus-4-7": _rates(input=5.00, output=25.00),
@@ -100,11 +111,16 @@ _RATES: dict[str, _Rates] = {
     "claude-opus-4-1": _rates(input=15.00, output=75.00),
     "claude-opus-4": _rates(input=15.00, output=75.00),
     # Sonnet
+    "claude-sonnet-5-5": _rates(input=2.00, output=10.00, cache_read_multiplier=0.05),
     "claude-sonnet-5": _rates(input=2.00, output=10.00),
     "claude-sonnet-4-6": _rates(input=3.00, output=15.00),
     "claude-sonnet-4-5": _rates(input=3.00, output=15.00),
     "claude-sonnet-4": _rates(input=3.00, output=15.00),
-    # Haiku
+    # Haiku. ⚠ Haiku 5.5 is priced by PROMPT LENGTH: these are the rates for a
+    # prompt up to 100 000 tokens; a longer prompt pays $0.50/$2.50 (5x). The
+    # estimate sees run totals, not per-request prompt sizes, so it uses the
+    # lower tier and can UNDER-state a long-context run.
+    "claude-haiku-5-5": _rates(input=0.10, output=0.50),
     "claude-haiku-4-5-20251001": _rates(input=1.00, output=5.00),
     "claude-haiku-4-5": _rates(input=1.00, output=5.00),
     "claude-haiku-4": _rates(input=1.00, output=5.00),
@@ -112,9 +128,9 @@ _RATES: dict[str, _Rates] = {
     # Bare alias fallbacks — the CURRENT member of each family, because a
     # bare "opus" in a log is far more likely to be today's model than a
     # retired one.
-    "opus": _rates(input=5.00, output=25.00),
-    "sonnet": _rates(input=2.00, output=10.00),
-    "haiku": _rates(input=1.00, output=5.00),
+    "opus": _rates(input=4.00, output=20.00, cache_read_multiplier=0.05),
+    "sonnet": _rates(input=2.00, output=10.00, cache_read_multiplier=0.05),
+    "haiku": _rates(input=0.10, output=0.50),
 }
 
 _DEFAULT_RATES = _RATES["claude-opus-5"]
@@ -127,10 +143,12 @@ def _resolve_rates(model: str | None) -> _Rates:
     m = model.lower().strip()
     if m in _RATES:
         return _RATES[m]
-    # Prefix match (e.g., "claude-opus-4-7-20251101" → "claude-opus-4-7")
-    for key, rates in _RATES.items():
-        if m.startswith(key):
-            return rates
+    # Longest prefix (e.g., "claude-opus-4-7-20251101" → "claude-opus-4-7").
+    # The FIRST match in table order priced `claude-opus-5-5…` from the
+    # `claude-opus-5` row whenever the shorter key came first.
+    matches = [k for k in _RATES if m.startswith(k)]
+    if matches:
+        return _RATES[max(matches, key=len)]
     # Family fallback
     for family in ("opus", "sonnet", "haiku"):
         if family in m:

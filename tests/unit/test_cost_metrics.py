@@ -410,7 +410,35 @@ def test_cache_figures_are_derived_from_the_input_price():
         _RATES, CACHE_READ_MULTIPLIER, CACHE_WRITE_5M_MULTIPLIER, CACHE_WRITE_1H_MULTIPLIER,
     )
 
+    # The read multiplier is per model since the 5.x generation (0.05x Opus 5.5 /
+    # Sonnet 5.5, 0.025x Fable / Mythos 5.1+) — still a multiple, never a typed rate.
     for name, r in _RATES.items():
-        assert r.cache_read == pytest.approx(r.input * CACHE_READ_MULTIPLIER), name
+        assert any(r.cache_read == pytest.approx(r.input * m)
+                   for m in (CACHE_READ_MULTIPLIER, 0.05, 0.025)), name
         assert r.cache_create == pytest.approx(r.input * CACHE_WRITE_5M_MULTIPLIER), name
         assert r.cache_write_1h == pytest.approx(r.input * CACHE_WRITE_1H_MULTIPLIER), name
+
+
+# The rows added 2026-11-22, read from the pricing page that day: base input,
+# output, and the cache-hit price the page states in dollars.
+@pytest.mark.parametrize("model,inp,out,hit", [
+    ("claude-opus-5-5", 4.00, 20.00, 0.20),
+    ("claude-sonnet-5-5", 2.00, 10.00, 0.10),
+    ("claude-haiku-5-5", 0.10, 0.50, 0.01),
+    ("claude-fable-5-2", 8.00, 40.00, 0.20),
+    ("claude-fable-5-1", 10.00, 50.00, 0.25),
+])
+def test_current_generation_prices(model, inp, out, hit):
+    from set_orch.cost import _resolve_rates
+    r = _resolve_rates(model)
+    assert (r.input, r.output) == (inp, out)
+    assert r.cache_read == pytest.approx(hit)
+
+
+def test_a_longer_id_is_priced_by_its_own_row_not_a_shorter_prefix():
+    """`claude-opus-5-5` starts with `claude-opus-5` ($5). The run estimate took the
+    FIRST prefix in table order, so Opus 5.5 was priced as Opus 5 — 25 % high."""
+    from set_orch.cost import _resolve_rates
+    assert _resolve_rates("claude-opus-5-5[1m]").input == 4.00
+    assert _resolve_rates("claude-sonnet-5-5-20261101").cache_read == pytest.approx(0.10)
+    assert _resolve_rates("claude-opus-5-20260101").input == 5.00

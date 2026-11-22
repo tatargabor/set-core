@@ -676,11 +676,12 @@ def test_a_pre_change_config_launches_exactly_as_before(tmp_path):
     """A file written before `model_ids` existed — every machine running today —
     loads and launches unchanged: the shipped default pins apply to a declared
     anthropic, and a real-id catalogue still passes through untouched."""
+    from set_orch.providers.defaults import DEFAULT_MODEL_IDS
     cfg = make(tmp_path)  # the pre-change shape: no model_ids anywhere
     assert cfg.providers["anthropic"].model_ids is None
     assert res.resolve(
         provider="anthropic", model="sonnet", config=cfg
-    ).launch_args()[-1] == "claude-sonnet-4-6"
+    ).launch_args()[-1] == DEFAULT_MODEL_IDS["sonnet"]
     assert res.resolve(
         provider="glm", model="glm-5.3-flash", config=cfg
     ).launch_args()[-1] == "glm-5.3-flash"

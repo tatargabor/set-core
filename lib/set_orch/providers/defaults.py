@@ -45,17 +45,21 @@ ANTHROPIC_MODEL_NAMES: tuple[str, ...] = (
     # name. It is therefore deliberately NOT in DEFAULT_MODEL_IDS below —
     # pass-through is the correct delivery, and B-118's anchor accepts it.
     "fable",
+    # Sonnet 5.5 and Haiku 5.5 — the `sonnet` / `haiku` defaults since 2026-11-22.
+    # The older releases stay reachable as explicit pins, as `opus-5` does for Opus.
+    "sonnet-5-5", "sonnet-5-5-1m", "haiku-5-5",
+    "sonnet-4-6", "sonnet-4-6-1m", "haiku-4-5",
 )
 
 #: The shipped-default id mapping for the Anthropic catalogue: short name ->
 #: the model id the agent CLI consumes. Moved verbatim from
 #: `subprocess_utils._MODEL_MAP`, comments included.
 DEFAULT_MODEL_IDS: Dict[str, str] = {
-    "haiku": "claude-haiku-4-5-20251001",
-    "sonnet": "claude-sonnet-4-6",
+    "haiku": "claude-haiku-5-5",
+    "sonnet": "claude-sonnet-5-5",
     "opus": "claude-opus-5-5",
     "opus-1m": "claude-opus-5-5[1m]",
-    "sonnet-1m": "claude-sonnet-4-6[1m]",
+    "sonnet-1m": "claude-sonnet-5-5[1m]",
     # Explicit version pins — bypass the shorthand default.
     "opus-4-6": "claude-opus-4-6",
     "opus-4-7": "claude-opus-4-7",
@@ -66,6 +70,12 @@ DEFAULT_MODEL_IDS: Dict[str, str] = {
     "opus-4-7-1m": "claude-opus-4-7[1m]",
     "opus-5-1m": "claude-opus-5[1m]",
     "opus-5-5-1m": "claude-opus-5-5[1m]",
+    "sonnet-5-5": "claude-sonnet-5-5",
+    "sonnet-5-5-1m": "claude-sonnet-5-5[1m]",
+    "haiku-5-5": "claude-haiku-5-5",
+    "sonnet-4-6": "claude-sonnet-4-6",
+    "sonnet-4-6-1m": "claude-sonnet-4-6[1m]",
+    "haiku-4-5": "claude-haiku-4-5-20251001",
 }
 
 #: Which provider name the default mapping belongs to. A provider whose

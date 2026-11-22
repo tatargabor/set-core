@@ -747,14 +747,14 @@ except Exception:
 
     local name="$1"
     case "$name" in
-        haiku)        echo "${prefix}claude-haiku-4-5-20251001" ;;
-        sonnet)       echo "${prefix}claude-sonnet-4-6" ;;
+        haiku)        echo "${prefix}claude-haiku-5-5" ;;
+        sonnet)       echo "${prefix}claude-sonnet-5-5" ;;
         # `opus` alias resolves to 5.5 (the current release, 2026-09-24). Pin
         # `opus-5`, `opus-4-6` or `opus-4-7` explicitly for older versions. Mirrors
         # DEFAULT_MODEL_IDS in lib/set_orch/providers/defaults.py.
         opus)         echo "${prefix}claude-opus-5-5" ;;
         opus-1m)      echo "${prefix}claude-opus-5-5[1m]" ;;
-        sonnet-1m)    echo "${prefix}claude-sonnet-4-6[1m]" ;;
+        sonnet-1m)    echo "${prefix}claude-sonnet-5-5[1m]" ;;
         opus-4-6)     echo "${prefix}claude-opus-4-6" ;;
         opus-4-7)     echo "${prefix}claude-opus-4-7" ;;
         opus-4-8)     echo "${prefix}claude-opus-4-8" ;;
@@ -764,6 +764,13 @@ except Exception:
         opus-4-7-1m)  echo "${prefix}claude-opus-4-7[1m]" ;;
         opus-5-1m)    echo "${prefix}claude-opus-5[1m]" ;;
         opus-5-5-1m)  echo "${prefix}claude-opus-5-5[1m]" ;;
+        # `sonnet` / `haiku` resolve to 5.5 since 2026-11-22; the older releases are pins.
+        sonnet-5-5)    echo "${prefix}claude-sonnet-5-5" ;;
+        sonnet-5-5-1m) echo "${prefix}claude-sonnet-5-5[1m]" ;;
+        haiku-5-5)     echo "${prefix}claude-haiku-5-5" ;;
+        sonnet-4-6)    echo "${prefix}claude-sonnet-4-6" ;;
+        sonnet-4-6-1m) echo "${prefix}claude-sonnet-4-6[1m]" ;;
+        haiku-4-5)     echo "${prefix}claude-haiku-4-5-20251001" ;;
         *)            echo "$name" ;;  # pass through full IDs
     esac
 }

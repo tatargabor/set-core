@@ -57,8 +57,8 @@ def test_model_change_between_resumes_is_honored():
     s = _make("sonnet", session_id="abc-123")
     cmd1 = s._build_claude_cmd("first", context="")
     # "sonnet" alias passes through claude CLI directly — no translation
-    # change. resolve_model_id maps "sonnet" → "claude-sonnet-4-6".
-    assert cmd1[cmd1.index("--model") + 1] == "claude-sonnet-4-6"
+    # change. resolve_model_id maps "sonnet" → "claude-sonnet-5-5".
+    assert cmd1[cmd1.index("--model") + 1] == "claude-sonnet-5-5"
     s.model = "opus-4-6"
     cmd2 = s._build_claude_cmd("second", context="")
     assert cmd2[cmd2.index("--model") + 1] == "claude-opus-4-6"

@@ -24,10 +24,10 @@ See [prompting](https://platform.claude.com/docs/en/build-with-claude/prompt-eng
 
 | Feature | Claude Fable 5.1 | Claude Opus 5.5 | Claude Sonnet 5.5 | Claude Haiku 4.5 |
 | :-- | :-- | :-- | :-- | :-- |
-| Claude API ID | `claude-fable-5-1` | `claude-opus-5-5` | `claude-sonnet-5-5` | `claude-haiku-4-5-20251001` |
+| Claude API ID | `claude-fable-5-1` | `claude-opus-5-5` | `claude-sonnet-9-9` | `claude-haiku-4-5-20251001` |
 | [Default effort](https://x/effort) | `high` | `medium` | `medium` | `low` |
-| Claude API alias | `claude-fable-5-1` | `claude-opus-5-5` | `claude-sonnet-5-5` | `claude-haiku-4-5` |
-| [Amazon Bedrock ID](https://platform.claude.com/docs/en/build-with-claude/claude-in-amazon-bedrock) | `anthropic.claude-fable-5-1` | `anthropic.claude-opus-9-9` | `anthropic.claude-sonnet-5-5` | `anthropic.claude-haiku-4-5` |
+| Claude API alias | `claude-fable-5-1` | `claude-opus-5-5` | `claude-sonnet-9-9` | `claude-haiku-4-5` |
+| [Amazon Bedrock ID](https://platform.claude.com/docs/en/build-with-claude/claude-in-amazon-bedrock) | `anthropic.claude-fable-5-1` | `anthropic.claude-opus-9-9` | `anthropic.claude-sonnet-9-9` | `anthropic.claude-haiku-4-5` |
 """
 
 ALL_SHIPPED = list(up.ANTHROPIC_MODEL_NAMES)
@@ -74,7 +74,7 @@ def failing(url):
 
 def test_ids_come_from_the_two_id_rows_only():            # AC-1
     ids = [i for i, _ in up.parse_overview(PAGE)]
-    assert ids == ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5-20251001"]
+    assert ids == ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-9-9", "claude-haiku-4-5-20251001"]
     assert not any("prompting" in i or "bedrock" in i for i in ids)
 
 
@@ -110,10 +110,10 @@ def test_a_new_sonnet_is_behind_and_names_the_shorthand(machine):   # AC-5
     machine()
     r = up.check(fetch=fetch_page())
     assert r.verdict == up.BEHIND
-    assert r.not_shipped == [{"id": "claude-sonnet-5-5", "family": "sonnet",
+    assert r.not_shipped == [{"id": "claude-sonnet-9-9", "family": "sonnet",
                               "shorthand_resolves_to": up.DEFAULT_MODEL_IDS["sonnet"]}]
     text = "\n".join(up.advice(r))
-    assert "claude-sonnet-5-5" in text and up.DEFAULT_MODEL_IDS["sonnet"] in text
+    assert "claude-sonnet-9-9" in text and up.DEFAULT_MODEL_IDS["sonnet"] in text
 
 
 def test_pass_through_family_is_covered():                 # AC-6
