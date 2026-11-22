@@ -15,6 +15,10 @@ from set_orch.fleet import question_relay as qr
 RELAY = {"matcher": "AskUserQuestion", "hooks": [{"type": "command", "command": "set-hook-question-relay"}]}
 WAIT = {"matcher": "", "hooks": [{"type": "command", "command": "set-hook-wait-detect"}]}
 NOTIFY = {"matcher": "", "hooks": [{"type": "command", "command": "set-hook-notify-relay"}]}
+PERM = {"matcher": "", "hooks": [{"type": "command", "command": "set-hook-permission-relay"}]}
+CONT = {"matcher": "", "hooks": [{"type": "command", "command": "set-hook-continue-relay", "asyncRewake": True}]}
+SUP = {"matcher": "", "hooks": [{"type": "command", "command": "set-hook-relay-supersede"}]}
+NEW_NAMES = ["set-hook-permission-relay", "set-hook-continue-relay", "set-hook-relay-supersede"]
 
 
 def _project(tmp_path, name, settings=None, local=None):
@@ -28,32 +32,32 @@ def _project(tmp_path, name, settings=None, local=None):
 
 
 def test_names_the_project_without_hooks_and_only_it(tmp_path):
-    wired = _project(tmp_path, "wired", {"hooks": {"PreToolUse": [RELAY], "Stop": [WAIT], "Notification": [NOTIFY]}})
+    wired = _project(tmp_path, "wired", {"hooks": {"PreToolUse": [RELAY], "Stop": [WAIT, CONT], "Notification": [NOTIFY], "PermissionRequest": [PERM], "UserPromptSubmit": [SUP]}})
     bare = _project(tmp_path, "hand-authored", {"hooks": {"Stop": [{"hooks": [{"command": "own-stop.sh"}]}]}})
     out = qr.unwired_projects([wired, bare], user_settings=tmp_path / "none.json")
     assert out == [{"project": "hand-authored",
-                    "missing": ["set-hook-question-relay", "set-hook-wait-detect", "set-hook-notify-relay"]}]
+                    "missing": ["set-hook-question-relay", "set-hook-wait-detect", "set-hook-notify-relay"] + NEW_NAMES}]
 
 
 def test_names_which_hook_is_missing(tmp_path):
     half = _project(tmp_path, "half", {"hooks": {"PreToolUse": [RELAY]}})
     out = qr.unwired_projects([half], user_settings=tmp_path / "none.json")
-    assert out == [{"project": "half", "missing": ["set-hook-wait-detect", "set-hook-notify-relay"]}]
+    assert out == [{"project": "half", "missing": ["set-hook-wait-detect", "set-hook-notify-relay"] + NEW_NAMES}]
 
 
 def test_relay_hook_under_another_tool_matcher_does_not_count(tmp_path):
     wrong = {"matcher": "Bash", "hooks": RELAY["hooks"]}
-    p = _project(tmp_path, "p", {"hooks": {"PreToolUse": [wrong], "Stop": [WAIT], "Notification": [NOTIFY]}})
+    p = _project(tmp_path, "p", {"hooks": {"PreToolUse": [wrong], "Stop": [WAIT, CONT], "Notification": [NOTIFY], "PermissionRequest": [PERM], "UserPromptSubmit": [SUP]}})
     out = qr.unwired_projects([p], user_settings=tmp_path / "none.json")
     assert out == [{"project": "p", "missing": ["set-hook-question-relay"]}]
 
 
 def test_local_and_user_settings_count(tmp_path):
-    split = _project(tmp_path, "split", {"hooks": {"PreToolUse": [RELAY]}}, local={"hooks": {"Stop": [WAIT], "Notification": [NOTIFY]}})
+    split = _project(tmp_path, "split", {"hooks": {"PreToolUse": [RELAY]}}, local={"hooks": {"Stop": [WAIT, CONT], "Notification": [NOTIFY], "PermissionRequest": [PERM], "UserPromptSubmit": [SUP]}})
     bare = _project(tmp_path, "bare", {})
     assert qr.unwired_projects([split], user_settings=tmp_path / "none.json") == []
     user = tmp_path / "user.json"
-    user.write_text(json.dumps({"hooks": {"PreToolUse": [RELAY], "Stop": [WAIT], "Notification": [NOTIFY]}}))
+    user.write_text(json.dumps({"hooks": {"PreToolUse": [RELAY], "Stop": [WAIT, CONT], "Notification": [NOTIFY], "PermissionRequest": [PERM], "UserPromptSubmit": [SUP]}}))
     assert qr.unwired_projects([bare], user_settings=user) == []
 
 
@@ -84,10 +88,10 @@ def _git_repo(path):
 def test_wires_both_hooks_into_the_local_file_only(tmp_path):
     root = _git_repo(tmp_path / "repo")
     added = qr.wire_project(root, user_settings=tmp_path / "none.json")
-    assert added == ["set-hook-question-relay", "set-hook-wait-detect", "set-hook-notify-relay"]
+    assert added == ["set-hook-question-relay", "set-hook-wait-detect", "set-hook-notify-relay"] + NEW_NAMES
     assert not (root / ".claude" / "settings.json").exists()
     local = json.loads((root / ".claude" / "settings.local.json").read_text())
-    assert qr._hooks_in(local) == {"set-hook-question-relay", "set-hook-wait-detect", "set-hook-notify-relay"}
+    assert qr._hooks_in(local) == set(qr.ALL_HOOKS)
     # The local file stays out of git, without touching a tracked .gitignore.
     assert not (root / ".gitignore").exists()
     ignored = subprocess.run(["git", "-C", str(root), "check-ignore", "-q", ".claude/settings.local.json"])
@@ -105,7 +109,7 @@ def test_merges_into_an_existing_local_file_and_is_idempotent(tmp_path):
     data = json.loads((root / ".claude" / "settings.local.json").read_text())
     assert data["permissions"] == own["permissions"]
     stop_cmds = [h["command"] for e in data["hooks"]["Stop"] for h in e["hooks"]]
-    assert stop_cmds == ["own.sh", "set-hook-wait-detect"]
+    assert stop_cmds == ["own.sh", "set-hook-wait-detect", "set-hook-continue-relay"]
     notify_cmds = [h["command"] for e in data["hooks"]["Notification"] for h in e["hooks"]]
     assert notify_cmds == ["set-hook-notify-relay"]
     relay = [e for e in data["hooks"]["PreToolUse"] if e["matcher"] == "AskUserQuestion"]
@@ -116,7 +120,7 @@ def test_never_adds_a_hook_the_project_settings_already_wire(tmp_path):
     """Two relay hooks would post every question twice."""
     p = _project(tmp_path, "half", {"hooks": {"PreToolUse": [RELAY]}})
     added = qr.wire_project(tmp_path / "half", user_settings=tmp_path / "none.json")
-    assert added == ["set-hook-wait-detect", "set-hook-notify-relay"]
+    assert added == ["set-hook-wait-detect", "set-hook-notify-relay"] + NEW_NAMES
     local = json.loads((tmp_path / "half" / ".claude" / "settings.local.json").read_text())
     assert "PreToolUse" not in local["hooks"]
 
@@ -149,4 +153,28 @@ def test_adding_a_project_through_the_api_wires_it(monkeypatch, tmp_path):
         "/api/projects", json={"name": "newproj", "path": str(root)})
     assert r.status_code == 200 and r.json()["status"] == "ok"
     local = json.loads((root / ".claude" / "settings.local.json").read_text())
-    assert qr._hooks_in(local) == {"set-hook-question-relay", "set-hook-wait-detect", "set-hook-notify-relay"}
+    assert qr._hooks_in(local) == set(qr.ALL_HOOKS)
+
+
+def test_a_synchronous_continue_hook_does_not_count(tmp_path):
+    """Run without asyncRewake it would hold the idle session for the whole wait."""
+    sync = {"matcher": "", "hooks": [{"type": "command", "command": "set-hook-continue-relay"}]}
+    p = _project(tmp_path, "p", {"hooks": {"PreToolUse": [RELAY], "Stop": [WAIT, sync], "Notification": [NOTIFY],
+                                           "PermissionRequest": [PERM], "UserPromptSubmit": [SUP]}})
+    assert qr.unwired_projects([p], user_settings=tmp_path / "none.json") == [
+        {"project": "p", "missing": ["set-hook-continue-relay"]}]
+
+
+def test_wires_the_answerable_blocking_point_hooks(tmp_path):
+    """AC-14: a project lacking the new hooks gets them machine-locally, once."""
+    p = _project(tmp_path, "p", {"hooks": {"PreToolUse": [RELAY], "Stop": [WAIT], "Notification": [NOTIFY]}})
+    from pathlib import Path
+    root = Path(p["path"])
+    assert qr.wire_project(root, user_settings=tmp_path / "none.json") == NEW_NAMES
+    assert qr.wire_project(root, user_settings=tmp_path / "none.json") == []
+    hooks = json.loads((root / ".claude" / "settings.local.json").read_text())["hooks"]
+    cont = [h for e in hooks["Stop"] for h in e["hooks"] if h["command"] == "set-hook-continue-relay"]
+    assert len(cont) == 1 and cont[0]["asyncRewake"] is True and cont[0]["timeout"] > 3300
+    assert [h["command"] for e in hooks["PermissionRequest"] for h in e["hooks"]] == ["set-hook-permission-relay"]
+    assert [h["command"] for e in hooks["UserPromptSubmit"] for h in e["hooks"]] == ["set-hook-relay-supersede"]
+    assert qr.unwired_projects([p], user_settings=tmp_path / "none.json") == []

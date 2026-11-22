@@ -2547,6 +2547,9 @@ def _relay_payload() -> Dict[str, Any]:
             "session_id": rec.get("session_id"),
             "project": rec.get("project"),
             "questions": rec.get("questions"),
+            # question (no kind) | permission | continuation — additive; the header still
+            # counts all three, because each one is a blocking point waiting on the channel.
+            "kind": rec.get("kind") or "question",
             "target": rec.get("target"),
             "seconds": (now - started) if isinstance(started, (int, float)) else None,
             "release_requested": bool(rec.get("release_requested")),

@@ -32,6 +32,13 @@ def config(**over):
     return lambda key, project=None, default=None: store.get(key, default)
 
 
+@pytest.fixture(autouse=True)
+def _state(tmp_path, monkeypatch):
+    """Every decision now writes a verdict record: keep it out of the machine's state dir."""
+    monkeypatch.setenv("SET_QUESTION_RELAY_DIR", str(tmp_path / "relay-state"))
+    return tmp_path / "relay-state"
+
+
 class Spy:
     def __init__(self, answer):
         self.answer, self.calls = answer, []
@@ -55,10 +62,45 @@ def test_relay_on_but_not_ready_runs_no_classifier():
 
 
 def test_already_continued_once():
-    """AC-2: the continuation's own Stop never converts again — no loop."""
+    """AC-2 / AC-19: the re-ask's own continuation never converts again — no loop."""
+    spy = Spy("WAITING")
+    assert wd.decide(stop_input(), get=config(), classifier=spy, env={})["decision"] == "block"
+    assert wd.decide(stop_input(active=True), get=config(), classifier=spy, env={}) is None
+    assert len(spy.calls) == 1
+    assert wd.read_verdict("cbcc4e64-6d8c")["verdict"] == "SKIPPED"
+
+
+def test_continued_without_any_record_keeps_the_guard():
     spy = Spy("WAITING")
     assert wd.decide(stop_input(active=True), get=config(), classifier=spy, env={}) is None
     assert spy.calls == []
+
+
+def test_a_turn_woken_from_the_channel_is_classified():
+    """AC-18: an asyncRewake wake ends with stop_hook_active true (measured); after DONE it is a new turn."""
+    wd.decide(stop_input("All done."), get=config(), classifier=Spy("DONE"), env={})
+    spy = Spy("WAITING")
+    out = wd.decide(stop_input(active=True), get=config(), classifier=spy, env={})
+    assert spy.calls == [WAIT] and out["decision"] == "block"
+
+
+def test_verdict_record_per_turn(_state):
+    """AC-15 / AC-17: DONE is recorded with the turn key; nothing while the relay is off; no text."""
+    hook = {**stop_input("Finished the Multi-Output work."), "prompt_id": "8593cae2-d5f3"}
+    assert wd.decide(hook, get=config(**{qr.KEY_ENABLED: None}), classifier=Spy("DONE"), env={}) is None
+    assert wd.read_verdict("cbcc4e64-6d8c") is None
+    assert wd.decide(hook, get=config(), classifier=Spy("DONE"), env={}) is None
+    rec = wd.read_verdict("cbcc4e64-6d8c")
+    assert rec["verdict"] == "DONE" and rec["turn"] == "8593cae2-d5f3"
+    raw = wd.verdict_path("cbcc4e64-6d8c").read_text()
+    assert "Multi-Output" not in raw
+    wd.decide(hook, get=config(), classifier=Spy(None), env={})
+    assert wd.read_verdict("cbcc4e64-6d8c")["verdict"] == "UNKNOWN"
+
+
+def test_turn_key_falls_back_to_a_message_hash():
+    a = wd.turn_key(stop_input("one"))
+    assert a.startswith("msg-") and a != wd.turn_key(stop_input("two")) and a == wd.turn_key(stop_input("one"))
 
 
 def test_inside_the_classifier_session_does_nothing():

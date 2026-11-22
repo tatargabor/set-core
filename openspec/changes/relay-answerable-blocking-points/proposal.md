@@ -11,7 +11,7 @@ The question relay answers only `AskUserQuestion`. A permission prompt, a confir
   - A prompt the owner types in the terminal supersedes an armed continuation. A late channel answer is then dropped with a log line and never injected.
 - **No double report.** A permission prompt held by the permission carrier is not also posted as a one-way notification.
 - **The wait detector** records its verdict per turn, with no text, so the continuation carrier acts only on DONE turns and never double-asks a WAITING one. Summary and suggestions come from a second headless call made only on DONE turns while the relay is on. That text lives only in the envelope handed to the outbound and is never written to disk by set-core.
-- **Wiring.** `set-relay-wire`, the unwired-project check and `set-deploy-hooks` include the three new hook entries (PermissionRequest, async Stop, UserPromptSubmit supersede marker).
+- **Wiring.** `set-relay-wire` (machine-local, the notification hook's precedent) and the unwired-project check include the three new hook entries: PermissionRequest, async Stop and the UserPromptSubmit supersede marker. `set-deploy-hooks` is deliberately left out, so a consumer's tracked settings stay untouched (see design).
 
 ## Capabilities
 
@@ -27,6 +27,6 @@ The question relay answers only `AskUserQuestion`. A permission prompt, a confir
 ## Impact
 
 - New carriers: `bin/set-hook-permission-relay`, `bin/set-hook-continue-relay`, `bin/set-hook-relay-supersede`, each a thin executable. The logic lives in `lib/set_orch/fleet/question_relay.py`, plus a new `lib/set_orch/fleet/continuation.py`.
-- Changed: `lib/set_orch/fleet/wait_detect.py` (verdict record and suggestions), `question_relay.notify()` (skips a prompt the permission carrier holds), `_hooks_in` / `unwired_projects` / `wire_project`, `bin/set-deploy-hooks`, `install.sh` (script list), `.claude/settings.json`.
+- Changed: `lib/set_orch/fleet/wait_detect.py` (verdict record and suggestions), `question_relay.notify()` (skips a prompt the permission carrier holds), `_hooks_in` / `unwired_projects` / `wire_project`, `install.sh` (script list), this repository's `.claude/settings.json`, and the fleet relay API (an additive `kind` field).
 - The bridge (separate repository) needs no change. Both new question kinds use the existing envelope and answer files, and its existing release check closes a withdrawn post. This holds only if each carrier keeps its waiting record in the shape the bridge reads.
 - Depends on runtime behaviour measured on Claude Code 2.1.330: `PermissionRequest` hooks run beside a drawn dialog and resolve it, and `asyncRewake` wakes an idle session on exit 2. A runtime that lacks either falls back to today: the terminal and the one-way notification.

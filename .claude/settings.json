@@ -8,6 +8,11 @@
             "type": "command",
             "command": "set-hook-skill",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "set-hook-relay-supersede",
+            "timeout": 5
           }
         ]
       }
@@ -89,6 +94,24 @@
             "type": "command",
             "command": "set-hook-wait-detect",
             "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "set-hook-continue-relay",
+            "timeout": 3700,
+            "asyncRewake": true
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-permission-relay",
+            "timeout": 3700
           }
         ]
       }

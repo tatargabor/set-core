@@ -101,12 +101,12 @@ The notification carrier SHALL post nothing for a session that has a permission 
 
 ### Requirement: The wire check counts the new hooks
 
-The wire check, the unwired-project list and `set-deploy-hooks` SHALL treat these entries as part of the relay:
+The wire check and the unwired-project list SHALL treat these entries as part of the relay:
 - the `PermissionRequest` entry (`set-hook-permission-relay`, matcher-all);
 - the asynchronous `Stop` entry (`set-hook-continue-relay`, `asyncRewake: true`);
 - the `UserPromptSubmit` entry (`set-hook-relay-supersede`).
 
-Machine-local wiring SHALL add whichever of them is missing, idempotently, and never twice.
+Machine-local wiring (`set-relay-wire`, and registration into the fleet) SHALL add whichever of them is missing, idempotently, and never twice. `set-deploy-hooks` SHALL NOT add them: they reach a consumer's machine-local settings, never its tracked `settings.json`.
 
 #### Scenario: A project missing the permission hook
 

@@ -11,6 +11,13 @@ Measured on Claude Code 2.1.330 on 2026-11-22, in a throwaway interactive sessio
 5. A new prompt typed by the owner does not cancel an armed async Stop hook: two armed hooks both woke the session, and the first was already stale.
 6. Claude Code's own prompt suggestion is not in the transcript and not in the Stop payload.
 
+Measured again the same day for task 1.1, in a second throwaway session:
+
+7. The `Stop` payload carries `session_id`, `prompt_id`, `permission_mode`, `effort`, `stop_hook_active`, `background_tasks`, `session_crons`, `last_assistant_message` and `transcript_path`. `prompt_id` is the turn key.
+8. `UserPromptSubmit` fires for an `asyncRewake` wake as well. Its prompt starts with `<task-notification>`. By then the waking hook has exited, so the supersede marker it leaves is harmless.
+9. The turn a wake starts ends with `stop_hook_active: true`. That is why the detector's skip on `stop_hook_active` is narrowed to "after its own WAITING re-ask" (spec delta `agent-wait-detection`, MODIFIED).
+10. A dialog refused in the terminal writes a `tool_result` with `is_error: true` for the pending `tool_use` id, and the turn ends as interrupted, with no `Stop`. An allowed one writes the normal `tool_result`. Either way the result's appearance is the terminal-first signal.
+
 The bridge needs nothing new: its `be` entry already accepts option buttons plus free text, and its release check closes a post whose waiting record vanished.
 
 ## Goals / Non-Goals
@@ -39,6 +46,8 @@ Non-Goals:
 - **Supersede by three independent signals.** The signals are a `UserPromptSubmit` marker (fast, so the post closes as soon as the owner types), a newer continuation id for the session, and an assistant entry in the transcript newer than the arm time. The transcript signal catches wakes that bypass `UserPromptSubmit`, such as a background task finishing. All three are re-checked immediately before exit 2. Any one of them alone has a measured or plausible gap; together they cover typed prompts, re-arms and background wakes.
 - **Withdrawal is record removal.** The bridge already closes a post whose waiting record disappeared, after its own short patience window. So the carriers keep the question hook's record shape (one per session, `relay-<sid>-<hash>` id) and add `kind`. No withdraw command, and no bridge change.
 - **No double report.** `notify()` skips a session that has a permission or continuation record. Because the record is written only after the outbound accepts, it re-checks after a grace of at most 3 s. The notification hook's entry timeout (30 s) leaves room for that.
+- **Machine-local wiring only, not `set-deploy-hooks`.** This follows the notification hook's precedent: it is wired by `set-relay-wire` and fleet registration into `.claude/settings.local.json` (git-excluded), and not by the deploy script. The deploy script rewrites a consumer's tracked `settings.json` the next time `set-project init` runs, and its "base present" check would then call every consumer non-canonical. The relay switch is machine-local configuration, so its hooks are machine-local too. The unwired list already reads all three settings levels, so a project missing them is still named. Decided during apply (2026-11-22). Before that, the proposal named `set-deploy-hooks`.
+- **A carrier killed mid-wait removes its own record.** Measured live: closing the session kills the waiting async hook, and a default signal death skips `finally:`. The record stayed, and the bridge reads record files directly, so it would have kept the post open. Both carriers turn SIGTERM, SIGHUP and SIGINT into a clean exit 0, which unwinds through `finally:`. Measured again after the fix: the record is gone 4 s after the session closes.
 - **Thin carriers, shared library.** The three executables follow `set-hook-question-relay`: parse stdin, call into `lib/set_orch/fleet/`, and log to the relay log. Permission logic sits beside `relay()` in `question_relay.py` and shares the envelope, answer and waiting-record helpers. The continuation logic lives in a new `continuation.py`, which imports those helpers and the classifier runner from `wait_detect.py`.
 
 ## Risks / Trade-offs
@@ -58,5 +67,4 @@ Rollback: remove the three entries, or turn the switch off. The verdict file is 
 
 ## Open Questions
 
-- The `Stop` payload's exact fields, `prompt_id` in particular. Measured in task 1.1. The hash fallback is designed so the answer does not block the design.
-- Whether `UserPromptSubmit` fires for an `asyncRewake` wake. If it does, the supersede marker written by our own wake must not cancel anything. That is harmless, because the waking hook has already exited, but it is measured in task 1.1.
+None open. Both questions this section held are answered by measurements 7 and 8 above.

@@ -13,7 +13,16 @@ import logging
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from set_orch.fleet import question_relay as qr
+
+
+@pytest.fixture(autouse=True)
+def _isolated(tmp_path, monkeypatch):
+    """The dedup check reads waiting records: keep it off the machine's state dir, no grace wait."""
+    monkeypatch.setenv("SET_QUESTION_RELAY_DIR", str(tmp_path / "relay-state"))
+    monkeypatch.setattr(qr, "NOTIFY_GRACE_S", 0.0)
 
 SESSION = "33cb8017-d1e5-41a4-bbb6-4e522ca4f648"
 MESSAGE = "Claude needs your permission to use Bash"
@@ -179,7 +188,7 @@ def test_unwired_list_names_the_notification_hook(tmp_path):
     missing = qr.unwired_projects(
         [{"name": "proj", "path": str(root)}],
         user_settings=tmp_path / "absent-user.json")
-    assert missing and set(missing[0]["missing"]) == {qr.RELAY_HOOK, qr.WAIT_HOOK, qr.NOTIFY_HOOK}
+    assert missing and set(missing[0]["missing"]) == set(qr.ALL_HOOKS)
 
 
 # ── enrichment: the generic notification text gains WHAT is being asked ───────
@@ -258,3 +267,33 @@ def test_carrier_text_mode_without_text_is_silent(tmp_path):
                          input="", capture_output=True, text=True,
                          env=carrier_env(tmp_path, None), timeout=30)
     assert res.returncode == 0 and res.stdout == ""
+
+
+@pytest.mark.parametrize("kind", ["permission", "continuation"])
+def test_a_held_blocking_point_is_not_reported_twice(tmp_path, kind):
+    """AC-13: the relay holds it as an answerable question — no second, one-way copy."""
+    base = tmp_path / "relay-state"
+    qr._write_json(qr.waiting_path(SESSION, base), {"id": "relay-x", "kind": kind, "session_id": SESSION})
+    calls = []
+    assert qr.notify(event(), get=config(), run=lambda c, p: calls.append(p) or 0, base=base) is None
+    assert calls == []
+
+
+def test_a_record_written_during_the_grace_suppresses_too(tmp_path):
+    base = tmp_path / "relay-state"
+    calls, slept = [], []
+
+    def sleep(s):
+        slept.append(s)
+        qr._write_json(qr.waiting_path(SESSION, base), {"id": "relay-x", "kind": "permission", "session_id": SESSION})
+    assert qr.notify(event(), get=config(), run=lambda c, p: calls.append(p) or 0, sleep=sleep, base=base) is None
+    assert calls == [] and len(slept) == 1
+
+
+def test_a_question_record_or_none_still_notifies(tmp_path):
+    base = tmp_path / "relay-state"
+    calls = []
+    assert qr.notify(event(), get=config(), run=lambda c, p: calls.append(p) or 0, base=base) is None
+    qr._write_json(qr.waiting_path(SESSION, base), {"id": "relay-q", "session_id": SESSION})
+    assert qr.notify(event(), get=config(), run=lambda c, p: calls.append(p) or 0, base=base) is None
+    assert len(calls) == 2

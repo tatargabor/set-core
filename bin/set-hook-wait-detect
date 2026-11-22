@@ -31,7 +31,9 @@ def main() -> int:
         hook_input = json.load(sys.stdin)
     except ValueError:
         return 0
-    if not isinstance(hook_input, dict) or hook_input.get("stop_hook_active"):
+    # `stop_hook_active` is decided inside (`wait_detect.decide`): a channel-woken turn
+    # carries it too, and only the detector's own re-ask continuation is skipped.
+    if not isinstance(hook_input, dict):
         return 0
     try:
         from set_orch.fleet import question_relay as qr

@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""set-hook-permission-relay — Claude Code PermissionRequest hook (B-188).
+
+While this machine's question relay is on with a two-way (`command`) outbound, a
+permission prompt (including one a PreToolUse hook raised with "ask") is posted as one
+relay question with Allow / Deny plus free text. The dialog stays live in the terminal
+while this waits (measured on 2.1.330), and whichever side answers first wins. The
+decision lives in `set_orch.fleet.question_relay.permission`; this file is the carrier.
+
+Output: `{"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": …}}`,
+or NOTHING — and nothing leaves the dialog to the terminal. Always exits 0. Only the
+literal "Allow" answer allows; anything else denies (fail closed).
+
+Logs go to the relay's log file, never to stderr, and carry no command text.
+Referenced by name from .claude/settings.json; on PATH through install.sh.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import signal
+import sys
+
+_SET_TOOLS_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+_LIB = os.path.join(_SET_TOOLS_ROOT, "lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+
+
+def _exit_cleanly(signum, _frame):
+    # Measured 2026-11-22: closing the session kills this hook mid-wait, and a default
+    # signal death skips the library's `finally:` — the waiting record stays, and the
+    # bridge (which reads the record files directly) keeps the channel post open. A
+    # SystemExit unwinds through `finally:`, removes the record, and exits 0 (no wake).
+    raise SystemExit(0)
+
+
+def main() -> int:
+    for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        signal.signal(sig, _exit_cleanly)
+    try:
+        hook_input = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    if not isinstance(hook_input, dict) or hook_input.get("hook_event_name", "PermissionRequest") != "PermissionRequest":
+        return 0
+    try:
+        from set_orch.fleet import question_relay as qr
+
+        if not qr.readiness()["enabled"]:
+            return 0
+        folder = qr.state_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(filename=str(folder / "relay.log"), level=logging.INFO,
+                            format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        out = qr.permission(hook_input)
+    except Exception as exc:  # never decide a permission over the relay's own failure
+        logging.getLogger("set-hook-permission-relay").warning(
+            "permission relay failed (%s); left to the terminal", type(exc).__name__)
+        return 0
+    if out is not None:
+        sys.stdout.write(json.dumps(out, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

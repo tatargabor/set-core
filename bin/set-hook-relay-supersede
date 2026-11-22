@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""set-hook-relay-supersede — Claude Code UserPromptSubmit hook (B-190).
+
+A prompt typed into a session makes any continuation question armed before it stale: the
+marker this writes is read by `set-hook-continue-relay`, and a waiting continuation record
+is removed at once so the bridge closes its post. It never blocks or alters the prompt:
+no output, always exit 0. The decision lives in `set_orch.fleet.continuation`.
+
+Referenced by name from .claude/settings.json; on PATH through install.sh.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import sys
+
+_SET_TOOLS_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+_LIB = os.path.join(_SET_TOOLS_ROOT, "lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+
+
+def main() -> int:
+    try:
+        hook_input = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    if not isinstance(hook_input, dict) or not hook_input.get("session_id"):
+        return 0
+    try:
+        from set_orch.fleet import continuation
+        from set_orch.fleet import question_relay as qr
+
+        if not qr.readiness()["enabled"]:
+            return 0
+        folder = qr.state_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(filename=str(folder / "relay.log"), level=logging.INFO,
+                            format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        continuation.mark_superseded(str(hook_input["session_id"]))
+    except Exception as exc:  # never let the marker stand between the owner and the session
+        logging.getLogger("set-hook-relay-supersede").warning("supersede failed (%s)", type(exc).__name__)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

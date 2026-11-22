@@ -110,12 +110,17 @@ def readiness(get: Getter = local_config.get) -> Dict[str, Any]:
 RELAY_HOOK = "set-hook-question-relay"
 WAIT_HOOK = "set-hook-wait-detect"
 NOTIFY_HOOK = "set-hook-notify-relay"
+PERMISSION_HOOK = "set-hook-permission-relay"
+CONTINUE_HOOK = "set-hook-continue-relay"
+SUPERSEDE_HOOK = "set-hook-relay-supersede"
+#: Every hook the relay needs in a project, in the order the unwired list names them.
+ALL_HOOKS = (RELAY_HOOK, WAIT_HOOK, NOTIFY_HOOK, PERMISSION_HOOK, CONTINUE_HOOK, SUPERSEDE_HOOK)
 #: A PreToolUse matcher that covers AskUserQuestion: the tool's own name, or a match-all.
 _ASK_MATCHERS = (TOOL, "", "*", None)
 
 
 def _hooks_in(settings: Any) -> set:
-    """Which of the two relay hooks one settings document wires (B-182)."""
+    """Which of the relay hooks one settings document wires (B-182)."""
     found: set = set()
     hooks = settings.get("hooks") if isinstance(settings, dict) else None
     if not isinstance(hooks, dict):
@@ -130,11 +135,21 @@ def _hooks_in(settings: Any) -> set:
             continue
         if any(isinstance(h, dict) and h.get("command") == WAIT_HOOK for h in entry.get("hooks") or []):
             found.add(WAIT_HOOK)
-    for entry in hooks.get("Notification") or []:
+    for event, name in (("Notification", NOTIFY_HOOK), ("PermissionRequest", PERMISSION_HOOK),
+                        ("UserPromptSubmit", SUPERSEDE_HOOK)):
+        for entry in hooks.get(event) or []:
+            if not isinstance(entry, dict):
+                continue
+            if any(isinstance(h, dict) and h.get("command") == name for h in entry.get("hooks") or []):
+                found.add(name)
+    for entry in hooks.get("Stop") or []:
         if not isinstance(entry, dict):
             continue
-        if any(isinstance(h, dict) and h.get("command") == NOTIFY_HOOK for h in entry.get("hooks") or []):
-            found.add(NOTIFY_HOOK)
+        # Only the ASYNC entry counts: run synchronously it would hold the idle session
+        # for the whole wait, which is exactly what it must never do.
+        if any(isinstance(h, dict) and h.get("command") == CONTINUE_HOOK and h.get("asyncRewake") is True
+               for h in entry.get("hooks") or []):
+            found.add(CONTINUE_HOOK)
     return found
 
 
@@ -173,7 +188,7 @@ def unwired_projects(projects: Optional[List[Dict[str, Any]]] = None,
         found = set(user)
         found |= _settings_hooks(root / ".claude" / "settings.json")
         found |= _settings_hooks(root / ".claude" / "settings.local.json")
-        missing = [h for h in (RELAY_HOOK, WAIT_HOOK, NOTIFY_HOOK) if h not in found]
+        missing = [h for h in ALL_HOOKS if h not in found]
         if missing:
             out.append({"project": proj.get("name") or root.name, "missing": missing})
     return out
@@ -182,6 +197,11 @@ def unwired_projects(projects: Optional[List[Dict[str, Any]]] = None,
 _RELAY_ENTRY = {"matcher": TOOL, "hooks": [{"type": "command", "command": RELAY_HOOK, "timeout": 3600}]}
 _WAIT_ENTRY = {"matcher": "", "hooks": [{"type": "command", "command": WAIT_HOOK, "timeout": 60}]}
 _NOTIFY_ENTRY = {"matcher": "", "hooks": [{"type": "command", "command": NOTIFY_HOOK, "timeout": 30}]}
+# Above the relay's own 3300 s wait, so the carrier's release always fires first.
+_PERMISSION_ENTRY = {"matcher": "", "hooks": [{"type": "command", "command": PERMISSION_HOOK, "timeout": 3700}]}
+_CONTINUE_ENTRY = {"matcher": "", "hooks": [{"type": "command", "command": CONTINUE_HOOK, "timeout": 3700,
+                                             "asyncRewake": True}]}
+_SUPERSEDE_ENTRY = {"matcher": "", "hooks": [{"type": "command", "command": SUPERSEDE_HOOK, "timeout": 5}]}
 
 
 def _exclude_from_git(root: Path, rel: str) -> None:
@@ -227,7 +247,7 @@ def wire_project(root: Path, user_settings: Optional[Path] = None) -> List[str]:
     found |= _settings_hooks(root / ".claude" / "settings.json")
     local = root / ".claude" / "settings.local.json"
     found |= _settings_hooks(local)
-    missing = [h for h in (RELAY_HOOK, WAIT_HOOK, NOTIFY_HOOK) if h not in found]
+    missing = [h for h in ALL_HOOKS if h not in found]
     if not missing:
         return []
     data: Dict[str, Any] = {}
@@ -245,8 +265,12 @@ def wire_project(root: Path, user_settings: Optional[Path] = None) -> List[str]:
         hooks.setdefault("PreToolUse", []).append(json.loads(json.dumps(_RELAY_ENTRY)))
     if WAIT_HOOK in missing:
         hooks.setdefault("Stop", []).append(json.loads(json.dumps(_WAIT_ENTRY)))
-    if NOTIFY_HOOK in missing:
-        hooks.setdefault("Notification", []).append(json.loads(json.dumps(_NOTIFY_ENTRY)))
+    for name, event, entry in ((NOTIFY_HOOK, "Notification", _NOTIFY_ENTRY),
+                               (PERMISSION_HOOK, "PermissionRequest", _PERMISSION_ENTRY),
+                               (CONTINUE_HOOK, "Stop", _CONTINUE_ENTRY),
+                               (SUPERSEDE_HOOK, "UserPromptSubmit", _SUPERSEDE_ENTRY)):
+        if name in missing:
+            hooks.setdefault(event, []).append(json.loads(json.dumps(entry)))
     local.parent.mkdir(parents=True, exist_ok=True)
     tmp = local.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
@@ -304,6 +328,12 @@ def _write_json(path: Path, data: Dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
+#: What a live relay carrier's command line contains. Every carrier that keeps a waiting
+#: record must be listed, or `list_waiting` reads its record as orphaned and removes it —
+#: which the bridge then takes as a release and closes the post mid-wait.
+_CARRIER_MARKS = (b"question-relay", b"question_relay", b"permission-relay", b"continue-relay")
+
+
 def _hook_alive(pid: Any) -> bool:
     """Whether the hook process that wrote a record still runs.
 
@@ -323,7 +353,7 @@ def _hook_alive(pid: Any) -> bool:
         cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
     except OSError:
         return True          # no /proc (macOS): the pid alone answers
-    return b"question-relay" in cmdline or b"question_relay" in cmdline
+    return any(name in cmdline for name in _CARRIER_MARKS)
 
 
 def list_waiting(base: Optional[Path] = None) -> List[Dict[str, Any]]:
@@ -622,11 +652,27 @@ def enrich_message(hook_input: Dict[str, Any]) -> str:
     return message
 
 
+#: A notification for a session whose blocking point the relay already holds as an
+#: answerable question would be a second, unanswerable copy of it on the channel.
+NOTIFY_GRACE_S = 3.0
+_HELD_KINDS = ("permission", "continuation")
+
+
+def _held(session_id: str, base: Optional[Path]) -> bool:
+    try:
+        record = json.loads(waiting_path(session_id, base).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(record, dict) and record.get("kind") in _HELD_KINDS
+
+
 def notify(hook_input: Dict[str, Any], *,
            get: Getter = local_config.get,
            run: Callable[[str, str], int] = _run_notify,
            post: Callable[[str, str], None] = post_webhook,
-           project_name: Callable[[str], str] = _project_name) -> Optional[str]:
+           project_name: Callable[[str], str] = _project_name,
+           sleep: Callable[[float], None] = time.sleep,
+           base: Optional[Path] = None) -> Optional[str]:
     """Deliver one non-question blocking message. One attempt, never waits.
 
     Permission prompts and waiting-for-input notices reach the outbound one way:
@@ -643,6 +689,16 @@ def notify(hook_input: Dict[str, Any], *,
     message = enrich_message(hook_input)
     session_id = str(hook_input.get("session_id") or "")
     sid = _safe_id(session_id)[:8] or "unknown"
+    if state["target"] == "command" and _safe_id(session_id):
+        # The record is written only after the outbound accepted the question, so a
+        # notification fired at the same moment checks once more after a short grace.
+        held = _held(session_id, base)
+        if not held:
+            sleep(NOTIFY_GRACE_S)
+            held = _held(session_id, base)
+        if held:
+            logger.info("question relay notify [%s]: skipped — the relay holds this as an answerable question", sid)
+            return None
     if not message:
         logger.warning("question relay notify [%s]: dropped — nothing to say: no message and no pending call readable", sid)
         return "nothing to say: no message and no pending call readable"
@@ -757,3 +813,221 @@ def relay(hook_input: Dict[str, Any], *,
             sleep(POLL_S)
     finally:
         _clear_waiting(session_id, base)
+
+
+# --------------------------------------------------------------------------- #
+# answerable blocking points that are not questions (B-188, B-190)
+# --------------------------------------------------------------------------- #
+
+KIND_PERMISSION = "permission"
+KIND_CONTINUATION = "continuation"
+PERMISSION_OPTIONS = ("Allow", "Deny")
+TRANSCRIPT_TAIL = 262144
+
+
+def hand_over_one(hook_input: Dict[str, Any], kind: str, question: str, options: List[str], *,
+                  get: Getter, run: Callable[[str, str], int], project_name: Callable[[str], str],
+                  wall: Callable[[], float], base: Path) -> Optional[Dict[str, Any]]:
+    """Hand ONE question to the two-way outbound and write its waiting record.
+
+    The envelope and the record keep the question hook's shapes exactly (plus `kind` on
+    the record), because the bridge reads both: the envelope to post, the record's
+    disappearance to close the post. Returns the record, or None when nothing was handed
+    over (the caller then releases). No question text is written anywhere here.
+    """
+    session_id = str(hook_input.get("session_id") or "")
+    sid = _safe_id(session_id)[:8] or "unknown"
+    state = readiness(get)
+    if not (state["enabled"] and state["ready"]) or state["target"] != "command":
+        return None
+    cwd = str(hook_input.get("cwd") or os.getcwd())
+    project = project_name(cwd)
+    answer_dir = base / "answers"
+    answer_dir.mkdir(parents=True, exist_ok=True)
+    prune_answers(base, wall())
+    cid = call_id(session_id, f"{kind}:{hook_input.get('prompt_id') or ''}:{wall()}")
+    envelope = build_envelope({"questions": [{"question": question, "multiSelect": False,
+                                              "options": [{"label": o} for o in options]}]},
+                              cid, _text(get(KEY_AUDIENCE)), f"{project} · {sid}", answer_dir)
+    try:
+        code = run(_text(get(KEY_COMMAND)), json.dumps(envelope, ensure_ascii=False))
+    except Exception as exc:
+        logger.warning("question relay %s [%s]: outbound could not run (%s); released", kind, sid, type(exc).__name__)
+        return None
+    if code != 0:
+        logger.warning("question relay %s [%s]: outbound exited %s; released", kind, sid, code)
+        return None
+    record = {"session_id": session_id, "id": cid, "project": project, "cwd": cwd, "questions": 1,
+              "target": "command", "started": wall(), "pid": os.getpid(), "kind": kind}
+    _clear_waiting(session_id, base)
+    _write_json(waiting_path(session_id, base), record)
+    logger.info("question relay %s [%s]: handed over as %s; waiting", kind, sid, cid)
+    return record
+
+
+def record_is_own(record: Dict[str, Any], base: Path) -> bool:
+    """Whether the session's waiting record is still the one this carrier wrote."""
+    try:
+        current = json.loads(waiting_path(str(record.get("session_id")), base).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(current, dict) and current.get("id") == record.get("id")
+
+
+def clear_own(record: Dict[str, Any], base: Path) -> None:
+    """Remove the waiting record only while it is still this carrier's own."""
+    if record_is_own(record, base):
+        _clear_waiting(str(record.get("session_id")), base)
+
+
+def wait_one(record: Dict[str, Any], *, get: Getter, clock: Callable[[], float],
+             sleep: Callable[[float], None], base: Path,
+             stale: Callable[[], Optional[str]] = lambda: None) -> Optional[str]:
+    """Poll for the one answer. Returns its text, or None when released (reason logged).
+
+    `stale` names a reason the item no longer stands (answered in the terminal, superseded)
+    or returns None; it is asked every poll and once more after an answer arrived, so an
+    answer racing a terminal action never acts.
+    """
+    sid = _safe_id(str(record.get("session_id")))[:8] or "unknown"
+    kind = record.get("kind", "?")
+    cid = str(record.get("id"))
+    answer_dir = base / "answers"
+    deadline = clock() + timeout_s(get)
+    while True:
+        reason = stale()
+        if reason:
+            logger.info("question relay %s [%s]: %s; released", kind, sid, reason)
+            return None
+        text = collect_answers(answer_dir, cid, 1)[0]
+        if text is not None:
+            answer_file(answer_dir, cid, "Q1").unlink(missing_ok=True)
+            reason = stale()
+            if reason:
+                logger.info("question relay %s [%s]: answer arrived but %s; dropped", kind, sid, reason)
+                return None
+            logger.info("question relay %s [%s]: answered on the channel (%s)", kind, sid, cid)
+            return text
+        if not record_is_own(record, base):
+            logger.info("question relay %s [%s]: waiting record replaced or removed; released", kind, sid)
+            return None
+        if not readiness(get)["enabled"]:
+            logger.info("question relay %s [%s]: switch turned off while waiting; released", kind, sid)
+            return None
+        if release_path(str(record.get("session_id")), base).exists():
+            logger.info("question relay %s [%s]: released from the fleet", kind, sid)
+            return None
+        if clock() >= deadline:
+            logger.warning("question relay %s [%s]: no answer within %.0f s; released", kind, sid, timeout_s(get))
+            return None
+        sleep(POLL_S)
+
+
+def transcript_entries(path: Any, tail: int = TRANSCRIPT_TAIL) -> List[Dict[str, Any]]:
+    """The parseable entries in the last `tail` bytes of a transcript ([] when unreadable)."""
+    if not path:
+        return []
+    try:
+        with open(str(path), "rb") as handle:
+            handle.seek(0, 2)
+            size = handle.tell()
+            handle.seek(max(0, size - tail))
+            raw = handle.read().decode("utf-8", "replace")
+    except OSError as exc:
+        logger.debug("question relay: transcript unreadable: %s", type(exc).__name__)
+        return []
+    out = []
+    for line in raw.split("\n"):
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(entry, dict):
+            out.append(entry)
+    return out
+
+
+def _blocks(entry: Dict[str, Any], kind: str) -> List[Dict[str, Any]]:
+    content = entry.get("message", {}).get("content") if isinstance(entry.get("message"), dict) else None
+    if not isinstance(content, list):
+        return []
+    return [b for b in content if isinstance(b, dict) and b.get("type") == kind]
+
+
+def resolved_calls(entries: List[Dict[str, Any]], tool_name: str, tool_input: Any) -> set:
+    """Ids of tool_use blocks matching (name, input) that already have a tool_result.
+
+    Measured 2026-11-22: a dialog answered in the terminal writes a tool_result for the
+    pending call either way (allowed → the result; refused → `is_error: true`). The hook
+    is not stopped when that happens, so the result's appearance is its only signal.
+    """
+    matching = {b.get("id") for e in entries for b in _blocks(e, "tool_use")
+                if b.get("name") == tool_name and b.get("input") == tool_input}
+    results = {b.get("tool_use_id") for e in entries for b in _blocks(e, "tool_result")}
+    return {i for i in matching & results if i}
+
+
+def permission_question(project: str, sid: str, hook_input: Dict[str, Any]) -> str:
+    tool = str(hook_input.get("tool_name") or "a tool")
+    tool_input = hook_input.get("tool_input") if isinstance(hook_input.get("tool_input"), dict) else {}
+    summary = _tool_summary({"name": tool, "input": tool_input}) or tool
+    return (f"🔐 Permission asked — {project} · {sid}\n{summary}\n"
+            f"Allow runs it once; Deny refuses it. Free text refuses it and passes your words to the agent.")
+
+
+def permission_output(text: str) -> Dict[str, Any]:
+    """Fail closed: only the literal Allow option allows."""
+    answer = text.strip()
+    if answer == PERMISSION_OPTIONS[0]:
+        decision: Dict[str, Any] = {"behavior": "allow"}
+    elif answer == PERMISSION_OPTIONS[1]:
+        decision = {"behavior": "deny", "message": "The owner denied this from the relay channel."}
+    else:
+        decision = {"behavior": "deny",
+                    "message": f"The owner answered from the relay channel instead of allowing it: \"{answer}\""}
+    return {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": decision}}
+
+
+def permission(hook_input: Dict[str, Any], *,
+               get: Getter = local_config.get,
+               run: Callable[[str, str], int] = _run_command,
+               project_name: Callable[[str], str] = _project_name,
+               clock: Callable[[], float] = time.monotonic,
+               wall: Callable[[], float] = time.time,
+               sleep: Callable[[float], None] = time.sleep,
+               read_entries: Callable[[Any], List[Dict[str, Any]]] = transcript_entries,
+               base: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """Decide one `PermissionRequest`. Returns the hook output, or None to leave it to the terminal.
+
+    The dialog is drawn while this waits (measured), so the terminal stays live; whichever
+    side answers first wins, and a terminal answer is noticed from the transcript.
+    """
+    tool = hook_input.get("tool_name")
+    if not tool or tool == TOOL:
+        return None  # the question tool is the question relay's own
+    state = readiness(get)
+    if not (state["enabled"] and state["ready"]) or state["target"] != "command":
+        return None  # off, incomplete, or a webhook that cannot bring an answer back
+    base = base or state_dir()
+    tool_input = hook_input.get("tool_input")
+    transcript = hook_input.get("transcript_path")
+    baseline = resolved_calls(read_entries(transcript), str(tool), tool_input)
+    session_id = str(hook_input.get("session_id") or "")
+    sid = _safe_id(session_id)[:8] or "unknown"
+    project = project_name(str(hook_input.get("cwd") or os.getcwd()))
+    record = hand_over_one(hook_input, KIND_PERMISSION, permission_question(project, sid, hook_input),
+                           list(PERMISSION_OPTIONS), get=get, run=run,
+                           project_name=lambda _cwd: project, wall=wall, base=base)
+    if record is None:
+        return None
+
+    def stale() -> Optional[str]:
+        if resolved_calls(read_entries(transcript), str(tool), tool_input) - baseline:
+            return "answered in the terminal first"
+        return None
+
+    try:
+        text = wait_one(record, get=get, clock=clock, sleep=sleep, base=base, stale=stale)
+    finally:
+        clear_own(record, base)
+    return permission_output(text) if text is not None else None
