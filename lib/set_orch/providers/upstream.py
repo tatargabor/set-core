@@ -166,6 +166,9 @@ class Report:
     not_declared: List[str] = field(default_factory=list)
     machine_config: Optional[str] = None
     machine_note: Optional[str] = None
+    #: The machine's anthropic `model_ids` entries that copy an id set-core has
+    #: since moved away from: {"name", "copied", "current"} (B-191).
+    stale_pins: List[Dict[str, str]] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return dict(self.__dict__)
@@ -195,36 +198,40 @@ def not_shipped(models: List[Tuple[str, Optional[str]]]) -> List[Dict[str, Optio
     return out
 
 
-def _machine_gap() -> Tuple[List[str], Optional[str], Optional[str]]:
-    """``(missing_names, config_path, note)`` — read-only."""
+def _machine_gap() -> Tuple[List[str], Optional[str], Optional[str], List[Dict[str, str]]]:
+    """``(missing_names, config_path, note, stale_pins)`` — read-only."""
     from .config import load_or_legacy, config_path
     from .errors import ProviderError
+    from .migrate import stale_pins
     try:
         cfg, _notice = load_or_legacy()
     except ProviderError as exc:
-        return [], None, f"machine catalogue not checked: {exc}"
+        return [], None, f"machine catalogue not checked: {exc}", []
     declared = cfg.providers.get(PROVIDER)
     if declared is None:
-        return [], str(config_path()), f"machine catalogue not checked: no '{PROVIDER}' provider declared"
+        return [], str(config_path()), f"machine catalogue not checked: no '{PROVIDER}' provider declared", []
     have = set(declared.models)
-    return [n for n in ANTHROPIC_MODEL_NAMES if n not in have], str(config_path()), None
+    stale = [{"name": n, "copied": c, "current": cur}
+             for n, c, cur in stale_pins({"model_ids": declared.model_ids})]
+    return [n for n in ANTHROPIC_MODEL_NAMES if n not in have], str(config_path()), None, stale
 
 
 def check(*, refresh: bool = False, fetch: Optional[Fetcher] = None,
           cache: Optional[Path] = None, now: Optional[float] = None) -> Report:
     """The whole verdict. Writes nothing but its own cache file."""
-    missing, cfg_path, note = _machine_gap()
+    missing, cfg_path, note, stale = _machine_gap()
     models, fetched_at, error = upstream_models(refresh=refresh, fetch=fetch, cache=cache, now=now)
     report = Report(verdict=UNKNOWN, fetched_at=fetched_at, error=error,
-                    not_declared=missing, machine_config=cfg_path, machine_note=note)
+                    not_declared=missing, machine_config=cfg_path, machine_note=note,
+                    stale_pins=stale)
     if models is None:
         # The machine gap is still reported, but the verdict stays unknown: the
         # upstream half was not measured, and `behind` would imply it had been.
         return report
     report.not_shipped = not_shipped(models)
-    report.verdict = BEHIND if (report.not_shipped or missing) else CURRENT
-    logger.info("upstream models: verdict=%s not_shipped=%s not_declared=%s", report.verdict,
-                [x["id"] for x in report.not_shipped], missing)
+    report.verdict = BEHIND if (report.not_shipped or missing or stale) else CURRENT
+    logger.info("upstream models: verdict=%s not_shipped=%s not_declared=%s stale_pins=%s", report.verdict,
+                [x["id"] for x in report.not_shipped], missing, [x["name"] for x in stale])
     return report
 
 
@@ -251,6 +258,11 @@ def advice(report: Report) -> List[str]:
         lines.append(f"  set-core ships {', '.join(report.not_declared)}, but this machine's "
                      f"'{PROVIDER}' catalogue does not offer them")
         lines.append(f"  → add them to providers.{PROVIDER}.models in {report.machine_config}")
+    for x in report.stale_pins:
+        lines.append(f"  this machine pins `{x['name']}` to {x['copied']}, a copy of an old set-core "
+                     f"default (now {x['current']})")
+    if report.stale_pins or report.not_declared:
+        lines.append("  → set-providers refresh  (dry run; --write applies it, with a backup)")
     if report.machine_note:
         lines.append(f"  {report.machine_note}")
     return lines

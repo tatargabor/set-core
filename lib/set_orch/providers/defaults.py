@@ -78,6 +78,23 @@ DEFAULT_MODEL_IDS: Dict[str, str] = {
     "haiku-4-5": "claude-haiku-4-5-20251001",
 }
 
+#: Every value set-core has SHIPPED for a name and since moved away from, read
+#: from git history on 2026-11-22. It tells a machine's COPY of an old default
+#: (which a migration used to write) from a deliberate pin: an entry whose value
+#: appears here for its name is a stale copy, and `set-providers refresh` may
+#: replace it; any other value is the owner's choice and is never touched.
+#:
+#: ⚠ When a shorthand moves, add its previous value here in the same commit.
+#: Forgetting fails safe — the old copy then reads as an override and is kept —
+#: but the machine stays on the old release until someone notices.
+PREVIOUSLY_SHIPPED_IDS: Dict[str, tuple] = {
+    "haiku": ("claude-haiku-4-5-20251001",),
+    "sonnet": ("claude-sonnet-4-6",),
+    "sonnet-1m": ("claude-sonnet-4-6[1m]",),
+    "opus": ("claude-opus-4-6", "claude-opus-4-7", "claude-opus-5"),
+    "opus-1m": ("claude-opus-4-6[1m]", "claude-opus-4-7[1m]", "claude-opus-5[1m]"),
+}
+
 #: Which provider name the default mapping belongs to. A provider whose
 #: catalogue holds real ids (`glm`) must never have it applied: translating
 #: there would send a Claude id at that provider's endpoint — a wrong value
