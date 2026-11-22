@@ -328,10 +328,13 @@ def _write_json(path: Path, data: Dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
-#: What a live relay carrier's command line contains. Every carrier that keeps a waiting
-#: record must be listed, or `list_waiting` reads its record as orphaned and removes it —
-#: which the bridge then takes as a release and closes the post mid-wait.
-_CARRIER_MARKS = (b"question-relay", b"question_relay", b"permission-relay", b"continue-relay")
+#: What a live relay carrier's command line contains. A carrier missing here has its record
+#: read as orphaned and removed — which the bridge takes as a release and closes the post
+#: mid-wait. B-192: a list of carrier NAMES is a copy held by a different, long-lived
+#: process (set-web), so a reader started before a new carrier shipped deleted every one of
+#: its records. The shared `set-hook-` prefix covers any carrier, present or future; the
+#: check only guards against a reused pid, which a `set-hook-` process almost never is.
+_CARRIER_MARKS = (b"set-hook-", b"question-relay", b"question_relay")
 
 
 def _hook_alive(pid: Any) -> bool:

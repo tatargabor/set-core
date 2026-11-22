@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -363,6 +364,24 @@ def test_a_record_whose_hook_is_gone_is_dropped(tmp_path):
     listed = [r["session_id"] for r in qr.list_waiting(tmp_path)]
     assert listed == ["old-2"]                       # no pid → trusted, as before the fix
     assert not qr.waiting_path("dead-1", tmp_path).exists()
+
+
+def test_a_carrier_the_reader_was_not_built_with_is_kept(tmp_path):
+    """B-192: the reader (set-web) is long-lived; a carrier shipped after it started must
+    not have its record removed as orphaned — that closed every continuation post."""
+    live = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)", "set-hook-some-future-relay"])
+    reused = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)", "unrelated"])
+    try:
+        qr._write_json(qr.waiting_path("new-1", tmp_path), {"session_id": "new-1", "pid": live.pid,
+                                                           "questions": 1, "started": 0})
+        qr._write_json(qr.waiting_path("reuse-2", tmp_path), {"session_id": "reuse-2", "pid": reused.pid,
+                                                             "questions": 1, "started": 0})
+        assert [r["session_id"] for r in qr.list_waiting(tmp_path)] == ["new-1"]
+        assert not qr.waiting_path("reuse-2", tmp_path).exists()   # a reused pid still drops
+    finally:
+        for p in (live, reused):
+            p.kill()
+            p.wait()
 
 
 def test_the_waiting_record_names_the_hook_pid(tmp_path):
