@@ -811,7 +811,7 @@ def relay(hook_input: Dict[str, Any], *,
                 logger.info("question relay [%s]: released from the fleet", sid)
                 return None
             if clock() >= deadline:
-                logger.warning("question relay [%s]: no answer within %.0f s; released", sid, timeout_s(get))
+                logger.info("question relay [%s]: no answer within %.0f s; released", sid, timeout_s(get))
                 return None
             sleep(POLL_S)
     finally:
@@ -921,7 +921,7 @@ def wait_one(record: Dict[str, Any], *, get: Getter, clock: Callable[[], float],
             logger.info("question relay %s [%s]: released from the fleet", kind, sid)
             return None
         if clock() >= deadline:
-            logger.warning("question relay %s [%s]: no answer within %.0f s; released", kind, sid, timeout_s(get))
+            logger.info("question relay %s [%s]: no answer within %.0f s; released", kind, sid, timeout_s(get))
             return None
         sleep(POLL_S)
 

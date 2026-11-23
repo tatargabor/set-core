@@ -37,9 +37,9 @@
 
 ## 5. Log hygiene sweep
 
-- [ ] 5.1 Measure WARNING lines per day and the top 10 messages for set-web, set-agent-owner and each set-core hook from the journal; record the table in the change's notes (no consumer names) [REQ: a-sweep-is-measured-before-and-after]
-- [ ] 5.2 For each top message: an operator-actionable one stays, an expected outcome moves to debug, a repeating one is logged once per state change [REQ: a-normal-answer-is-not-a-warning]
-- [ ] 5.3 A test per demoted message that fails when its level is reverted [REQ: a-sweep-is-measured-before-and-after]
+- [x] 5.1 Measure WARNING lines per day and the top 10 messages for set-web, set-agent-owner and each set-core hook from the journal; record the table in the change's notes (no consumer names) [REQ: a-sweep-is-measured-before-and-after]
+- [x] 5.2 For each top message: an operator-actionable one stays, an expected outcome moves to debug, a repeating one is logged once per state change [REQ: a-normal-answer-is-not-a-warning]
+- [x] 5.3 A test per demoted message that fails when its level is reverted [REQ: a-sweep-is-measured-before-and-after]
 - [ ] 5.4 Restart the services (the agent owner only when no agent it holds is working) and re-measure after 24 hours; record before → after [REQ: a-sweep-is-measured-before-and-after]
 
 ## 6. Public/private split and roadmap
@@ -137,3 +137,12 @@
   `docs/readme-guide.md`, which does NOT exist — so the guide's checklist could not be run;
   the rewrite followed the existing section order instead. The four follow-ups carry
   proposal.md only, each naming its precondition.
+- **5.1-5.3, the hooks (measured 2026-11-23).** The hooks log to no journal. The seven relay
+  hooks share one file (`~/.local/share/set-core/question-relay/relay.log`): 5 WARNING in 24 h,
+  all five "no answer within N s; released" — a normal outcome (the question returns to the
+  terminal), while its three sibling release paths already log INFO. Demoted to INFO on both
+  paths (question and continuation); `tests/unit/test_relay_log_levels.py` fails 2/2 with both
+  lines reverted to WARNING (restore verified with `cmp`). `set-hook-waveboard` logs WARNING to
+  stderr only, which lands in the session transcript, not in a log that can be counted per day;
+  `set-hook-{activity,checkout-guard,leakscan,skill,stop}` log nothing. Totals after this:
+  set-web 0, set-agent-owner 1 (actionable), relay 0 expected. 5.4 still owes the 24-hour re-measure.
