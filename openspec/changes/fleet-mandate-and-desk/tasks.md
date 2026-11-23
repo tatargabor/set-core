@@ -56,12 +56,12 @@ Every test written for a fix or a guard is proven with the fix stashed (see the
 
 ## 5. Engagements (CORE, API, CLI)
 
-- [ ] 5.1 CORE — `lib/set_orch/fleet/engagement.py`: the record (id, asker seat and mandate, addressed project and desk, kind, subject, room, timestamp, state, reason class, times) and its store beside the mandate store, same write discipline. No field can hold request or reply text. [REQ: an-engagement-stores-a-pointer-and-never-the-request]
-- [ ] 5.2 CORE — Closure from the bus: parse entry headings only, in the engagement's room, for an entry by a seat of the addressed project that links to the request's timestamp. Built on the fixtures from 1.6. A test plants a marker in an entry body and asserts it reaches no payload and no log. [REQ: an-engagement-is-answered-only-by-a-reply-the-bus-links-to-it]
-- [ ] 5.3 CORE — The waiting bound (a display state, default from config) and the per-asker bound on resolving-or-open engagements (default five), refused with the list of what is open. [REQ: open-engagements-per-asker-are-bounded]
+- [x] 5.1 CORE — `lib/set_orch/fleet/engagement.py`: the record (id, asker seat and mandate, addressed project and desk, kind, subject, room, timestamp, state, reason class, times) and its store beside the mandate store, same write discipline. No field can hold request or reply text. [REQ: an-engagement-stores-a-pointer-and-never-the-request]
+- [x] 5.2 CORE — Closure from the bus: parse entry headings only, in the engagement's room, for an entry by a seat of the addressed project that links to the request's timestamp. Built on the fixtures from 1.6. A test plants a marker in an entry body and asserts it reaches no payload and no log. [REQ: an-engagement-is-answered-only-by-a-reply-the-bus-links-to-it]
+- [x] 5.3 CORE — The waiting bound (a display state, default from config) and the per-asker bound on resolving-or-open engagements (default five), refused with the list of what is open. [REQ: open-engagements-per-asker-are-bounded]
 - [ ] 5.4 API — Routes: report an engagement as sent (room, timestamp) or failed (reason class); list engagements filtered by asker, addressed project or state; report states as unmeasured when the bus store cannot be read. [REQ: engagements-can-be-listed-by-the-asker-and-the-screen]
 - [ ] 5.5 CLI — `bin/set-fleet-ask <project> "<request>" [--subject …] [--question]`: find the asker's own seat from its session id, resolve, send on the bus as the asker addressed to the desk's seat, report the entry back, print the engagement id and the desk; `--list` shows the asker's engagements. Non-zero exit with the reason on every failure path. [REQ: asking-a-project-is-one-command-that-sends-as-the-asker]
-- [ ] 5.6 CORE — An engagement open past the bound is listed as waiting with its age, state unchanged. [REQ: an-engagement-open-past-the-bound-is-reported-as-waiting]
+- [x] 5.6 CORE — An engagement open past the bound is listed as waiting with its age, state unchanged. [REQ: an-engagement-open-past-the-bound-is-reported-as-waiting]
 - [ ] 5.7 CLI — Tests for `set-fleet-ask` against a fake API and a fake bus: success, bus refusal, resolution refusal, the bound. [REQ: asking-a-project-is-one-command-that-sends-as-the-asker]
 
 ## 6. The role rule learns the flows (CORE)
