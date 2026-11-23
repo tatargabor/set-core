@@ -8,13 +8,14 @@
 # handoff package's reload and arm hooks, and nothing of the base set. See the block
 # after _merge_hooks_additively.
 #
-# Deploys 3 hook events (4 entries) to <target-dir>/.claude/settings.json:
-#   - UserPromptSubmit: skill detection (timeout: 5s)
-#   - PreToolUse[Skill]: activity tracking (timeout: 5s)
+# Deploys 2 hook events (2 entries) to <target-dir>/.claude/settings.json:
 #   - PreToolUse[AskUserQuestion]: question relay, off unless this machine turns it on
 #     (timeout: 3600s — it may wait for an answer from a chat channel)
-#   - Stop: stop hook (timeout: 5s) + wave-board push reminder (timeout: 15s)
+#   - Stop: wave-board push reminder (timeout: 15s)
 #     + wait detector (timeout: 60s; acts only while the question relay is on)
+#
+# It REMOVES, on every run, the skill-tracking hooks retired by `hook-diet`
+# (set-hook-skill, set-hook-activity, set-hook-stop, and the old activity-track.sh path).
 #
 # It also REMOVES, on every run and without a flag, every `set-hook-memory` command it
 # finds in any event array, plus the legacy individual memory scripts. The memory
@@ -87,6 +88,13 @@ $DRY_RUN || mkdir -p "$TARGET_DIR/.claude"
 # removed after it was measured injecting a false "user frustrated" label into unrelated
 # sessions (168 of 187 injections over 21 days). See openspec/changes/remove-shodh-memory.
 #
+# It also carries NO skill-tracking hooks any more (`hook-diet`, 2026-11-23):
+# `set-hook-skill`, `set-hook-activity` and `set-hook-stop` spawned a process on every
+# prompt, Skill call and Stop, and the only readers of what they wrote were the
+# orchestration engine's worktree and session routes and the git-bus MCP tools — all
+# being retired. The fleet reads neither file. Every deploy STRIPS them, like the memory
+# hooks below.
+#
 # This file is also the ROOT CAUSE fix. It does not merely stop emitting those hooks —
 # every deploy STRIPS any it finds, so a project cleaned by hand, restored from a backup,
 # or created from an old branch converges on the next `set-project init` without anybody
@@ -94,29 +102,7 @@ $DRY_RUN || mkdir -p "$TARGET_DIR/.claude"
 hook_json=$(cat << 'HOOKJSON'
 {
   "hooks": {
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-skill",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
-      {
-        "matcher": "Skill",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-activity",
-            "timeout": 5
-          }
-        ]
-      },
       {
         "matcher": "AskUserQuestion",
         "hooks": [
@@ -132,11 +118,6 @@ hook_json=$(cat << 'HOOKJSON'
       {
         "matcher": "",
         "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-stop",
-            "timeout": 5
-          },
           {
             "type": "command",
             "command": "set-hook-waveboard",
@@ -192,13 +173,18 @@ _merge_hooks_additively() {
             (.command // "") | test("^set-hook-memory-(warmstart|recall|pretool|posttool|save)");
         def is_memory_cmd:
             (.command // "") | startswith("set-hook-memory");
+        # Retired by hook-diet: no live reader. Stripped with the memory hooks.
+        def is_retired_cmd:
+            (.command // "") as $c
+            | ($c == "set-hook-skill" or $c == "set-hook-activity" or $c == "set-hook-stop"
+               or $c == ".claude/hooks/activity-track.sh");
 
         # Drop set-core-owned hooks an explicit flag asked us to retire, then drop any
         # entry left with no hooks at all. A project entry never matches either filter.
         def prune($arr):
             [ $arr[]?
               | .hooks = [ (.hooks // [])[]
-                           | select(($purge and is_legacy_cmd) or ($strip and is_memory_cmd) | not) ]
+                           | select(($purge and is_legacy_cmd) or ($strip and (is_memory_cmd or is_retired_cmd)) | not) ]
             ]
             | map(select(((.hooks // []) | length) > 0));
 
@@ -311,9 +297,7 @@ if [[ -f "$settings_file" ]]; then
     # a project initialised before either existed canonical, and the hook would never
     # reach it. The wave-board hook is looked for in ANY Stop entry, because the merge
     # appends it to the matcher-"" entry wherever that entry sits.
-    if jq -e '.hooks.Stop[0].hooks[] | select(.command == "set-hook-stop")' "$settings_file" &>/dev/null \
-        && jq -e '.hooks.UserPromptSubmit[0].hooks[] | select(.command == "set-hook-skill")' "$settings_file" &>/dev/null \
-        && jq -e '.hooks.Stop[]? | .hooks[]? | select(.command == "set-hook-waveboard")' "$settings_file" &>/dev/null \
+    if jq -e '.hooks.Stop[]? | .hooks[]? | select(.command == "set-hook-waveboard")' "$settings_file" &>/dev/null \
         && jq -e '.hooks.PreToolUse[]? | select(.matcher == "AskUserQuestion") | .hooks[]? | select(.command == "set-hook-question-relay")' "$settings_file" &>/dev/null \
         && jq -e '.hooks.Stop[]? | .hooks[]? | select(.command == "set-hook-wait-detect")' "$settings_file" &>/dev/null; then
         has_base=true
@@ -329,12 +313,15 @@ if [[ -f "$settings_file" ]]; then
                 "$settings_file" 2>/dev/null || echo 0)
     [[ "$mem_count" -gt 0 ]] && has_memory=true
 
-    # Old activity-track.sh path? (pre-PATH migration)
-    if jq -e '.hooks.PreToolUse[]? | .hooks[]? | select(.command == ".claude/hooks/activity-track.sh")' "$settings_file" &>/dev/null; then
-        has_old_activity=true
-    fi
+    # Any hook retired by hook-diet, in any event array (the old activity-track.sh path
+    # included — it is the same retired hook under its pre-PATH name).
+    retired_count=$(jq '[.hooks | to_entries[] | .value[]? | .hooks[]? |
+                         select((.command // "") as $c | $c == "set-hook-skill" or $c == "set-hook-activity"
+                                or $c == "set-hook-stop" or $c == ".claude/hooks/activity-track.sh")] | length' \
+                    "$settings_file" 2>/dev/null || echo 0)
+    [[ "$retired_count" -gt 0 ]] && has_old_activity=true
 
-    # Already canonical? Base hooks present, no memory hook anywhere, no stale activity path.
+    # Already canonical? Base hooks present, no memory hook anywhere, no retired hook.
     if $has_base && ! $has_memory && ! $has_old_activity; then
         return 0 2>/dev/null || exit 0
     fi
@@ -342,24 +329,14 @@ if [[ -f "$settings_file" ]]; then
     # Backup before modification
     cp "$settings_file" "$settings_file.bak"
 
-    if $has_old_activity; then
-        # Migrate old activity-track.sh path to set-hook-activity, then fall through to the
-        # merge so the memory strip still runs on the same file.
-        jq '
-            .hooks.PreToolUse = [.hooks.PreToolUse // [] | .[] |
-                if (.hooks[]?.command == ".claude/hooks/activity-track.sh")
-                then .hooks = [.hooks[] | if .command == ".claude/hooks/activity-track.sh" then .command = "set-hook-activity" else . end]
-                else . end
-            ]
-        ' "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
-        _success "Migrated: $settings_file (activity-track.sh → set-hook-activity)"
-    fi
 
     # One merge, always with BOTH removals on: the legacy individual scripts and every
     # set-hook-memory command. A project's own hooks match neither filter and survive in
     # their order.
     _merge_hooks_additively "$settings_file" "$(echo "$deploy_json" | jq '.hooks')" true true
-    if $has_memory; then
+    if $has_old_activity; then
+        _success "Updated: $settings_file (removed $retired_count retired skill-tracking hook(s); project hooks preserved)"
+    elif $has_memory; then
         _success "Updated: $settings_file (removed $mem_count memory hook(s); project hooks preserved)"
     else
         _success "Updated: $settings_file (hooks merged; project hooks preserved)"

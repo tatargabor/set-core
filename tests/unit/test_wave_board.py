@@ -613,7 +613,8 @@ def test_deploy_adds_the_hook_once_and_keeps_project_hooks(tmp_path):
         cmds = stop_commands()
         assert cmds.count("set-hook-waveboard") == 1
         assert "my-project-stop-hook" in cmds
-        assert cmds.count("set-hook-stop") == 1
+        # Retired by hook-diet: stripped, not kept.
+        assert cmds.count("set-hook-stop") == 0
 
     fresh = tmp_path / "fresh"
     fresh.mkdir()
