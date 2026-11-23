@@ -344,7 +344,8 @@ What the desktop gets is therefore exactly:
 
 - a path under no registered project or worktree of one;
 - a MEDIA file — a name ending in one of the media suffixes the desktop-open capability lists
-  (video, audio, raster image, PDF) — wherever it lives, inside a checkout included. The file
+  (video, audio, raster image, PDF, and the binary documents: office documents, e-books and
+  archives) — wherever it lives, inside a checkout included. The file
   view is an editor; a person activating a video or a picture in a terminal wants the player or
   the viewer, and sending it through the editor first is a detour that, on a drive without Unix
   permissions, ends in two refusals. The list is the SAME list the desktop guard lifts the
@@ -410,6 +411,17 @@ pointing the other way: the file is right and the reader's belief about it is no
 - **WHEN** a person activates a path ending in `.mp4` or `.png` that lies inside a checkout the
   file view serves
 - **THEN** it is handed to the desktop, and the file view is not opened
+
+#### Scenario: An office document inside a checkout goes to the desktop
+
+- **WHEN** a person activates a path ending in `.docx`, `.xlsx` or `.zip` that lies inside a
+  checkout the file view serves
+- **THEN** it is handed to the desktop, and the file view is not opened
+
+#### Scenario: A page inside a checkout opens in the file view
+
+- **WHEN** a person activates a `.html` file of the agent's checkout
+- **THEN** the file view opens it; its own desktop button hands it to the browser
 
 #### Scenario: A TypeScript file is not media
 
