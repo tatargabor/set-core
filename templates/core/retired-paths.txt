@@ -30,3 +30,14 @@
 .claude/skills/set/forensics/
 .claude/skills/set/harvest/
 .claude/skills/set/write-spec/
+#
+# 2026-11-23, hook-diet / fleet-era-consolidation: orchestration-era core rules. Each was
+# loaded into EVERY session of every project (about 19 KB of the 42 KB core rule set), and
+# none applies outside an orchestration run: the design pipeline (its design tool is
+# deprecated), E2E test naming and infrastructure, and the sentinel's "fix and restart
+# without asking" — an instruction that is wrong in any project the owner works in.
+.claude/rules/set-design-bridge.md
+.claude/rules/set-design-source-hygiene.md
+.claude/rules/set-e2e-infra-evolution.md
+.claude/rules/set-sentinel-autonomy.md
+.claude/rules/set-set-testing.md
