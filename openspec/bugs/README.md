@@ -68,6 +68,20 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-213 — set-web's startup waits on a 15 s Discord connect timeout, so every dashboard reader gets connection refused for ~26 s after a restart
+- **state:** open
+- **reported:** 2026-11-23 by a set-core session, as a side finding of `fleet-mandate-and-desk` task 9.1 (`measurements.md` M8 there).
+- **measured:** set-web restarted at 21:24:38 and answered nothing until 21:25:04; its log shows `[SET] Discord bot timeout — not connected` and only then `Application startup complete`. During those ~26 s `set-fleet-ask --list` and `GET /api/fleet/map` failed with connection refused; the bus path was unaffected.
+- **fail direction:** loud but misleading — a reader sees the dashboard as DOWN while it is only waiting on an optional integration.
+- **fixed when:** a restart with the Discord connect unreachable serves `GET /api/fleet/owner` within a few seconds (the Discord connect moved off the startup path, or bounded short and backgrounded), measured with `systemctl --user restart set-web` and a `curl` loop timestamping the first 200.
+
+### B-212 — `test_waiting_record_lifecycle_without_text` passes or fails depending on the pytest command line
+- **state:** open
+- **reported:** 2026-11-23 by a set-core session, while running the relay suites for `fleet-auto-answer`.
+- **measured:** `pytest tests/unit/test_question_relay.py -k waiting_record_lifecycle_without_text` → 1 passed; `pytest tests/unit -k waiting_record_lifecycle_without_text` → 1 failed, with `waiting record … has no live hook (pid <pytest>); removed` and then `ValueError: not enough values to unpack`. The waiting record names the test's own pid, and `question_relay._hook_alive` accepts a pid only when its `/proc/<pid>/cmdline` carries one of `_CARRIER_MARKS` (`set-hook-`, `question-relay`, `question_relay`). The pytest process's command line carries `question_relay` only when the test FILE is named on it. The relay code under test is unchanged (`git diff dfbb706e -- lib/set_orch/fleet/question_relay.py` touches neither `_hook_alive` nor `_CARRIER_MARKS`).
+- **fail direction:** loud in a directory-wide run, silent in a per-file run. The test measures its own invocation, not the relay. A per-file run is green whatever `_hook_alive` does.
+- **fixed when:** the test makes the hook liveness explicit (for example `monkeypatch.setattr(qr, "_hook_alive", lambda pid: True)`, as `test_auto_answer_worker.py` does) and passes under both invocations above.
+
 ### B-211 — nothing shows which live sessions the auto-clear watcher excludes, so a session can grow without ever being asked for a handoff
 - **state:** open
 - **reported:** 2026-11-23 by the user ("itt nem kellett volna már handoffnak elműködnie?"), on a 410k-token session.

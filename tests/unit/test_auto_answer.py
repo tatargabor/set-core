@@ -127,6 +127,9 @@ def test_one_bad_answer_does_not_sink_the_other():
     ("Mehet a push?", "publish"),
     ("Pusholjam?", "publish"),
     ("Publish the page now?", "publish"),
+    ("Cut the release now?", "publish"),
+    ("Release the fix today?", "publish"),
+    ("Ship it?", "publish"),
     ("Deploy to staging?", "deploy"),
     ("Élesítsük a javítást?", "deploy"),
     ("Run it against production?", "production"),
@@ -152,6 +155,7 @@ def test_each_family_fires(text, family):
     "Is the payload size right?",                   # pay
     "Is the repayment-free plan fine?",             # pay inside a word
     "Which tokenizer?",                             # token is not a credential on its own
+    "Which release colour should the banner use?",  # about a release, not releasing
     "Use the elegant layout?",                      # eles (élesít) as a substring
     "Keep the products and the prodigy tests?",
 ])
@@ -172,6 +176,9 @@ def test_exclusion_sides():
     assert aa.exclusion(aa.KIND_ASK, q(text="Deploy now?", options=["Yes", "No"]), "Yes", False)
     # the model's flag alone excludes
     assert aa.exclusion(aa.KIND_ASK, plain, "TEAL", True) == "outward step: flagged by the model"
+    # an OPTION alone is enough: the step is on the table even if another one is chosen
+    assert aa.exclusion(aa.KIND_ASK, q(text="How do we go on?", options=["Push to main", "Keep it local"]),
+                        "Keep it local", False) == "outward step: publish"
     # the CHOSEN answer is checked too
     assert aa.exclusion(aa.KIND_CONTINUATION, q(text="Next?", options=[]), "push it", False)
 

@@ -333,8 +333,12 @@ def parse_decision(raw: str, questions: Sequence[Question], kind: str) -> Tuple[
 #: "payload" does not fire `pay`. Hungarian forms are written folded (élesít → elesit).
 #: The list is the floor; `auto_answer.never_patterns` extends it per machine.
 EXCLUSION_FAMILIES: Dict[str, Tuple[str, ...]] = {
-    "publish": (r"push\w*", r"publish\w*", r"publik\w*", r"kozze\w*", r"release\w*",
-                r"upload\w*", r"feltolt\w*", r"tag(?:s|ged|ging)? (?:and|&) push\w*"),
+    # "release" only as an act: "the release colour" is a question about a release, not a
+    # publish, and a bare `release\w*` excluded it (measured on this module's own tests).
+    "publish": (r"push\w*", r"publish\w*", r"publik\w*", r"kozze\w*", r"upload\w*", r"feltolt\w*",
+                r"(?:cut|ship|tag|make|do) (?:a |the |this )?release\w*",
+                r"release (?:it|this|them|now|the (?:fix|version|build|change|update)\w*)",
+                r"ship (?:it|this|them|the)"),
     "deploy": (r"deploy\w*", r"elesit\w*", r"rollout\w*", r"roll out", r"kitelepit\w*"),
     "production": (r"prod", r"production\w*", r"produkci\w*", r"eles\w*", r"live (?:system|site|server)"),
     "send": (r"send\w*", r"sent", r"e-?mail\w*", r"kuld\w*", r"uzen\w*",

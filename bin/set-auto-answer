@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+"""set-auto-answer — the question relay's outbound that answers on the operator's behalf.
+
+Configure it as the relay's outbound and move the operator's real outbound behind it:
+
+    set-config set auto_answer.forward_command "<the current question_relay.command>"
+    set-config set question_relay.command set-auto-answer
+
+With `auto_answer.enabled` off it forwards every envelope byte for byte. With it on, a
+detached worker decides by forking the asking session, forwards the question with the
+proposal attached, and writes an allowed answer after `auto_answer.window_s` unless a
+human answered first. Outward steps and permission prompts are never written.
+
+Machine-local configuration (`set-config set <key> <value>`):
+    auto_answer.enabled          true | false (default false)
+    auto_answer.forward_command  the operator's real two-way outbound
+    auto_answer.window_s         seconds between the proposal and the write (60)
+    auto_answer.likely_min       the bar a `likely` answer must reach (0.8)
+    auto_answer.model            the sources-only fallback's model (sonnet); never a fork's
+    auto_answer.never_patterns   extra exclusion patterns, a JSON list or one per line
+    auto_answer.extra_paths      extra decision locations for the fork to read
+    auto_answer.log_days         decision-log retention (90)
+    auto_answer.decide_timeout_s the decision's time bound (120)
+
+The decision log is ~/.local/share/set-core/auto-answer/decisions.jsonl (mode 600), never
+in a repository. Logs: ~/.local/share/set-core/question-relay/auto-answer.log.
+"""
+from __future__ import annotations
+
+import os
+import sys
+
+_SET_TOOLS_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+_LIB = os.path.join(_SET_TOOLS_ROOT, "lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+
+from set_orch.fleet.auto_answer_worker import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -148,5 +148,12 @@ What this settles:
 - **The session's model is in the transcript**: every assistant entry carries `message.model`
   (`claude-haiku-5-5` here) — the fallback source for D8's "the session's own model" when the fleet
   has no provider record.
+- **The tool restriction holds on a resumed fork, at execution, not in the prefix** (23:35, the full
+  `fork_argv` of `auto_answer.py` on the same transcript). The fork still *lists* Bash, Edit, Write
+  and the deferred tools — they are in the cached prefix it shares with the original, which is why
+  the cache read matched — but asked to `touch` a marker with Bash and to create one with Write it
+  reported both as *disabled for this session*, and no marker file existed afterwards (`ls`).
+  Asked to call a read-only MCP tool, it found the tool absent and ToolSearch disabled
+  (`--strict-mcp-config`). So a model's own list of its tools is not evidence of what it can run.
 - Not measured here: whether the fleet's discovery lists a fork while it runs (it lived 2.5 s), and
   a fork of a GLM session through its wrapper.
