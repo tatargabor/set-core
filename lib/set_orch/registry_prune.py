@@ -422,8 +422,8 @@ def _clear_dangling_default(
     Returns the cleared name so the caller can REPORT it. A default that
     disappears silently is a configuration change nobody can trace later.
     """
-    from .project_registry import PROJECTS_FILE
-    src = Path(registry_file) if registry_file else PROJECTS_FILE
+    from .project_registry import default_registry_file as _default_registry
+    src = Path(registry_file) if registry_file else _default_registry()
     removed = set(removed)
     if not removed or not src.exists():
         return None

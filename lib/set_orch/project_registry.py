@@ -20,6 +20,27 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 PROJECTS_FILE = Path.home() / ".config" / "set-core" / "projects.json"
+_DEFAULT_PROJECTS_FILE = PROJECTS_FILE
+
+
+def default_registry_file() -> Path:
+    """The registry this process should read: SET_CORE_REGISTRY, else SET_CONFIG_DIR, else XDG.
+
+    Resolved at CALL time through the one shared resolver (`set_kb.lifecycle.registry_path`,
+    B-175). `PROJECTS_FILE` above is kept only for callers that import the name; it is the
+    default location and ignores the environment, which is the defect B-200 measured:
+    `set-project archive` under a sandbox `SET_CONFIG_DIR` reached for the REAL registry.
+    """
+    # A caller (or a test) that re-pointed PROJECTS_FILE asked for THAT file. Ignoring it in
+    # favour of the environment would send a sandboxed test to the real registry.
+    if PROJECTS_FILE != _DEFAULT_PROJECTS_FILE:
+        return PROJECTS_FILE
+    try:
+        from set_kb.lifecycle import registry_path
+    except ImportError:
+        logger.warning("project registry: set_kb is not importable; using %s", PROJECTS_FILE)
+        return PROJECTS_FILE
+    return Path(registry_path())
 
 
 def load_projects(registry_file: Optional[Path] = None) -> list[dict]:
@@ -29,7 +50,7 @@ def load_projects(registry_file: Optional[Path] = None) -> list[dict]:
     Returns a list of dicts, each carrying `name` plus every stored field —
     including ones this module knows nothing about, such as `archived`.
     """
-    src = Path(registry_file) if registry_file else PROJECTS_FILE
+    src = Path(registry_file) if registry_file else default_registry_file()
     if not src.exists():
         return []
     try:
@@ -57,7 +78,7 @@ def save_projects(projects: list[dict], registry_file: Optional[Path] = None) ->
     Entry fields are passed through verbatim — a known-key allowlist here would
     silently drop whatever a newer version of set-core stores.
     """
-    dest = Path(registry_file) if registry_file else PROJECTS_FILE
+    dest = Path(registry_file) if registry_file else default_registry_file()
     dest.parent.mkdir(parents=True, exist_ok=True)
     existing = {}
     if dest.exists():
@@ -83,7 +104,7 @@ def backup_registry(registry_file: Optional[Path] = None) -> Optional[str]:
     An abort is the correct outcome of a failure here: an operation that cannot
     be undone must not start. Returns None only when there is no registry yet.
     """
-    src = Path(registry_file) if registry_file else PROJECTS_FILE
+    src = Path(registry_file) if registry_file else default_registry_file()
     if not src.exists():
         return None
     dest = src.with_name(f"{src.name}.bak-{int(time.time())}")

@@ -132,7 +132,7 @@ consumer's name, path, or content.
 - **fixed when:** an expired or legacy "private" entry is re-asked, and a public repository's scan blocks a deny-term again (both in the test).
 
 ### B-200 — `set_orch.project_registry` hard-codes the registry at `Path.home()/.config/set-core/projects.json`, so `set-project archive|unarchive|prune` ignore `SET_CONFIG_DIR` / `SET_CORE_REGISTRY` while every other reader honours them
-- **state:** open — same class as B-175 (one resolver for the config dir, `set_kb.lifecycle.registry_path`).
+- **state:** closed (this commit) — `project_registry.default_registry_file()` resolves through `registry_path` at call time; a re-pointed `PROJECTS_FILE` still wins, so the prune/archive tests that sandbox by patching it never reach the real registry. `tests/unit/test_project_registry_env.py` 3 cases, 2 red on the reverted source. Same class as B-175.
 - **reported:** 2026-11-23 by this session, sandbox-testing `fleet-era-consolidation` 3.3.
 - **measured:** with `SET_CONFIG_DIR=<tmp>` holding a registry with entry `x`, `set-project roles` found `x` (it uses `registry_path`) while `set-project archive x` answered `Not found in the registry: x` and wrote nothing; `lib/set_orch/project_registry.py:22` is `PROJECTS_FILE = Path.home() / ".config" / "set-core" / "projects.json"`. With `HOME=<tmp>` as well, both agree.
 - **fail direction:** a sandbox or a test that sets only `SET_CONFIG_DIR` runs `archive`/`prune` against the REAL registry — here it refused (unknown name), but a name present in both would have been archived for real.
