@@ -1,21 +1,21 @@
 ## 1. Stage 1 — dead code, no behaviour change
 
-- [ ] 1.1 Record the before-state: `python -c "import set_orch.server"` module count, an import probe of every `lib/set_orch/*.py`, and a regression baseline (regression-baseline skill) [REQ: ikp-config-loading]
-- [ ] 1.2 Remove `lib/set_orch/_api_old.py` and `tests/unit/test_api_old_deprecated.py`; re-grep importers including tests and conftest first [REQ: none — dead-code removal, design D1]
-- [ ] 1.3 Remove the bridge's lazy call sites in `lib/set_orch/planner.py` and `lib/set_orch/dispatcher.py`, and any reference in `verifier.py` and `templates.py`, so each path behaves as "no bridge configured" did [REQ: planner-assigns-ikp-packs-per-change]
-- [ ] 1.4 Remove `lib/set_orch/ikp_bridge.py`, `tests/test_ikp_bridge.py`, `tests/test_ikp_decomposer_dispatch.py`, and the bridge's entry in `tests/unit/test_model_touch_point_coverage.py` [REQ: ikp-config-loading]
-- [ ] 1.5 Grep lib, bin, modules, templates and web/src for the stopped design-tool integration and remove what remains, keeping any consumer-facing design rule that is still generic [REQ: rule-file-injection]
-- [ ] 1.6 After-state: the same import probe and module count, and a set diff against the 1.1 baseline that shows no new failure; restart set-web and confirm it serves the fleet view [REQ: graceful-degradation]
+- [x] 1.1 Record the before-state: `python -c "import set_orch.server"` module count, an import probe of every `lib/set_orch/*.py`, and a regression baseline (regression-baseline skill) [REQ: ikp-config-loading]
+- [x] 1.2 Remove `lib/set_orch/_api_old.py` and `tests/unit/test_api_old_deprecated.py`; re-grep importers including tests and conftest first [REQ: none — dead-code removal, design D1]
+- [x] 1.3 Remove the bridge's lazy call sites in `lib/set_orch/planner.py` and `lib/set_orch/dispatcher.py`, and any reference in `verifier.py` and `templates.py`, so each path behaves as "no bridge configured" did [REQ: planner-assigns-ikp-packs-per-change]
+- [x] 1.4 Remove `lib/set_orch/ikp_bridge.py`, `tests/test_ikp_bridge.py`, `tests/test_ikp_decomposer_dispatch.py`, and the bridge's entry in `tests/unit/test_model_touch_point_coverage.py` [REQ: ikp-config-loading]
+- [x] 1.5 Grep lib, bin, modules, templates and web/src for the stopped design-tool integration and remove what remains, keeping any consumer-facing design rule that is still generic [REQ: rule-file-injection]
+- [x] 1.6 After-state: the same import probe and module count, and a set diff against the 1.1 baseline that shows no new failure; restart set-web and confirm it serves the fleet view [REQ: graceful-degradation]
 
 ## 2. Stage 2 — stop deploying unused consumer artifacts
 
-- [ ] 2.1 Re-measure before deleting: `/set:*` slash and Skill invocations across transcripts (30 days), and whether any consumer's own skill or command references a `/set:*` name [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
-- [ ] 2.2 Add a `retired` list to the deploy, holding the zero-use `/set:*` commands, `skills/set` entries, and the git-bus messaging commands (keep `set:inbox` only if 2.1 finds a live caller) [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
-- [ ] 2.3 In `lib/project/deploy.sh` and the ledger (`lib/set_orch/deploy_ledger.py`): skip retired sources; remove a deployed copy whose hash matches the ledger record; keep and report one that differs [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
-- [ ] 2.4 Make `set-project init --dry-run` list each planned retirement, and write nothing [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
-- [ ] 2.5 Tests: an unchanged retired copy is removed, an edited one is kept, and the dry-run lists both and writes nothing — each test fails with the change stashed [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
-- [ ] 2.6 Remove the retired command and skill sources from set-core's own `.claude/` once no deploy path reads them [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
-- [ ] 2.7 Run the dry-run on two real consumers and read the plan; after the real run, diff their hand-authored `.claude/` files, hook config and gate scripts — an empty diff is the pass [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+- [x] 2.1 Re-measure before deleting: `/set:*` slash and Skill invocations across transcripts (30 days), and whether any consumer's own skill or command references a `/set:*` name [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+- [x] 2.2 Add a `retired` list to the deploy, holding the zero-use `/set:*` commands, `skills/set` entries, and the git-bus messaging commands (keep `set:inbox` only if 2.1 finds a live caller) [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+- [x] 2.3 In `lib/project/deploy.sh` and the ledger (`lib/set_orch/deploy_ledger.py`): skip retired sources; remove a deployed copy whose hash matches the ledger record; keep and report one that differs [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+- [x] 2.4 Make `set-project init --dry-run` list each planned retirement, and write nothing [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+- [x] 2.5 Tests: an unchanged retired copy is removed, an edited one is kept, and the dry-run lists both and writes nothing — each test fails with the change stashed [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+- [x] 2.6 Remove the retired command and skill sources from set-core's own `.claude/` once no deploy path reads them [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+- [x] 2.7 Run the dry-run on two real consumers and read the plan; after the real run, diff their hand-authored `.claude/` files, hook config and gate scripts — an empty diff is the pass [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
 
 ## 3. Archived projects
 
@@ -54,6 +54,25 @@
 - [ ] 7.1 `openspec validate fleet-era-consolidation --strict`, then `/opsx:verify` with `templates/core/rules/spec-verify-gate.md` [REQ: operator-specific-integrations-live-behind-plugin-seams]
 - [ ] 7.2 Run `set-leakscan` on the range before any push [REQ: operator-specific-integrations-live-behind-plugin-seams]
 
+## Notes from applying (measured, 2026-11-23)
+
+- 1.1/1.6 — unit suite, clean worktree at HEAD vs this tree, three import roots, leak check 0 both
+  sides: no failure present here that is absent at HEAD (the diff is captured log-line numbers and
+  24 baseline-only failures that depend on the checkout path). Import probe: 223 → 221 modules,
+  the two removed ones; the only failing import (`manager.api`, aiohttp missing) predates this.
+  `import set_orch.server` loads 84 `set_orch` modules before and after. set-web restarted, the
+  fleet API answers. Its startup traceback from the chat-bot integration predates the change
+  (present at the previous start) — group 5 material.
+- 1.5 — no reference to the stopped design-tool integration remained outside the removed bridge.
+- 2.1 — 30 days, 12 621 transcripts: 0 `/set:*` slash calls; `set:inbox` 7 Skill calls, all from
+  agents reaching for the git-based inbox no project has. Retired anyway — see design.md, Risks.
+- 2.5 — the five retire tests catch four mutants (guard off, deploy skip off, ledger forget off,
+  dry-run writes), restore verified with `cmp`.
+- 2.7 — dry-run on two consumers: 25 planned removals each, `git status` unchanged. Real init on
+  one (files gitignored there): removed 25, kept 0; outside the retired paths only `.set-version`,
+  the ledger and a first deploy of `set:blueprint` changed. Where the files are tracked, init leaves
+  the deletions in the working tree for the project to commit.
+
 ## Acceptance Criteria (from spec scenarios)
 
 ### project-role-rule
@@ -78,9 +97,9 @@
 - [ ] AC-15: WHEN the role file changed after a rule was generated THEN the role check warns with `set-project roles` as the fix [REQ: the-project-role-rule-is-checked, scenario: a-stale-role-rule]
 
 ### project-init-deploy
-- [ ] AC-16: WHEN a consumer holds an unchanged retired command THEN init removes it and reports it under "retired" [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed, scenario: a-retired-command-deployed-earlier]
-- [ ] AC-17: WHEN the consumer's retired copy differs from the ledger hash THEN it stays and is reported as kept [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed, scenario: a-retired-file-the-consumer-edited]
-- [ ] AC-18: WHEN the dry-run runs in a project holding retired copies THEN it lists each removal and writes nothing [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed, scenario: the-dry-run-shows-the-removal]
+- [x] AC-16: WHEN a consumer holds an unchanged retired command THEN init removes it and reports it under "retired" [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed, scenario: a-retired-command-deployed-earlier]
+- [x] AC-17: WHEN the consumer's retired copy differs from the ledger hash THEN it stays and is reported as kept [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed, scenario: a-retired-file-the-consumer-edited]
+- [x] AC-18: WHEN the dry-run runs in a project holding retired copies THEN it lists each removal and writes nothing [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed, scenario: the-dry-run-shows-the-removal]
 
 ### opensource
 - [ ] AC-19: WHEN the public core runs without the private package THEN commands and the dashboard run with no error or WARNING naming it [REQ: operator-specific-integrations-live-behind-plugin-seams, scenario: the-operator-plugin-is-not-installed]

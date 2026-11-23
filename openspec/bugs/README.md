@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-199 — the skills set-core deploys one level deeper (`.claude/skills/set/<name>/SKILL.md`: `set:kb`, `set:wave-board`, `glm`, `set:blueprint`, …) are not discovered by Claude Code, so they reach no session in any project
+- **state:** open — found while scoping stage 2 of `fleet-era-consolidation`; that change retires the orchestration ones, this entry covers the three that are meant to be used.
+- **reported:** 2026-11-23 by this session.
+- **measured:** the skill list injected into this set-core session holds `set` (the top-level `.claude/skills/set/SKILL.md`) and the `set:*` entries that come from `.claude/commands/set/*.md`, but no `set:kb`, `set:wave-board` or `glm`, whose only source is a nested `SKILL.md`. Across 12 621 transcripts of the last 30 days, `"skill":"set:kb"`, `"skill":"set:wave-board"` and `"skill":"glm"` occur 0 times, while the CLIs they teach were called 1768 (`set-kb`) and 2400 (`set-wave-board`) times — the knowledge reaches agents through rules and memory, not through these skills.
+- **fail direction:** silent absence — the deploy reports the files as deployed and `_deploy_kb` checks the nested source exists, so everything looks wired while no session can load it.
+- **fixed when:** each of the three is deployed where Claude Code discovers it (`.claude/skills/<name>/SKILL.md`, a flat directory), and a fresh session in a consumer lists it.
+
 ### B-198 — the fleet asks `git worktree list` about a worktree whose directory is gone on every poll, and logs each `FileNotFoundError` as a WARNING (~98k lines a day)
 - **state:** closed 2026-11-23 in the commit that adds this line: `_worktree_porcelain` answers an empty listing at debug level when the directory does not exist; `test_a_missing_directory_is_a_quiet_empty_answer` fails with the check removed (mutation run, restore verified with `cmp`). set-web restarted on it.
 - **reported:** 2026-11-23 by the usage-audit agent ("98k warnings a week"); re-measured by this session as a DAY.

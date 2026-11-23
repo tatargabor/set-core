@@ -1,0 +1,32 @@
+# Files set-core no longer ships. `set-project init` never deploys a path listed here,
+# and removes a copy it wrote earlier when that copy is still byte-identical to what it
+# wrote (deploy ledger). An edited copy, or one of unknown provenance, is kept and named.
+# One project-relative path per line; a line ending in `/` covers every file under it.
+#
+# 2026-11-23, fleet-era-consolidation stage 2: zero invocations in the 30 days measured,
+# or (set:inbox, set:msg, set:broadcast) a git-based bus no registered project has.
+.claude/commands/set/audit.md
+.claude/commands/set/broadcast.md
+.claude/commands/set/close.md
+.claude/commands/set/decompose.md
+.claude/commands/set/forensics.md
+.claude/commands/set/harvest.md
+.claude/commands/set/help.md
+.claude/commands/set/inbox.md
+.claude/commands/set/list.md
+.claude/commands/set/loop.md
+.claude/commands/set/merge.md
+.claude/commands/set/msg.md
+.claude/commands/set/new.md
+.claude/commands/set/plan-review.md
+.claude/commands/set/push.md
+.claude/commands/set/sentinel.md
+.claude/commands/set/start.md
+.claude/commands/set/status.md
+.claude/commands/set/work.md
+.claude/commands/set/write-spec.md
+.claude/skills/set/SKILL.md
+.claude/skills/set/decompose/
+.claude/skills/set/forensics/
+.claude/skills/set/harvest/
+.claude/skills/set/write-spec/

@@ -105,6 +105,18 @@ debug) is the pattern; the sweep applies it per service, with before/after count
 
 - **A consumer still calls a retired slash command** → none measured in 30 days; the dry-run
   lists every removal, and a locally edited copy is never removed.
+- **Stage 2 takes the dormant engine's entry points out of consumers** — measured while
+  applying it: the planner tells its agent to use `/set:decompose` and the supervisor reads a
+  consumer's `commands/set/sentinel.md`, so after a consumer's next init the orchestration
+  engine cannot be started there. Accepted: 0 orchestration runs in 30 days across every
+  registered project, and the owner named orchestration a branch to cut. Reverting
+  `templates/core/retired-paths.txt` and the source deletion restores it; stage 5 removes the
+  engine itself. `set:inbox` is retired although 2.1 found 7 calls: all came from agents
+  reaching for the git-based inbox, which no registered project has, so each call was a
+  wasted turn — the live bus is `sac`.
+- **`set:blueprint` is kept deployed**, although it measured 0 calls: it is weeks old, it is
+  an owner-requested feature rather than orchestration, and under D6 it belongs in the private
+  package — it moves there in task 6.1, not by retirement.
 - **The role rule goes stale** → the doctor warns when it is older than the role file;
   regeneration is one command and idempotent.
 - **A public repo's rule leaks a private name through a wrong visibility answer** → an

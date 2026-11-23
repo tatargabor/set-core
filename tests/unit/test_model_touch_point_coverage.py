@@ -134,7 +134,7 @@ def _string_literal_violations(file_path: Path) -> list[tuple[int, str]]:
 
 def _python_files() -> list[Path]:
     """Yield every .py file under lib/set_orch and modules/web/set_project_web,
-    excluding exempt files and __pycache__/_api_old.py.
+    excluding exempt files and __pycache__.
     """
     targets: list[Path] = []
     for root in (
@@ -143,9 +143,6 @@ def _python_files() -> list[Path]:
     ):
         for p in root.rglob("*.py"):
             if "__pycache__" in p.parts:
-                continue
-            # _api_old.py is legacy code path being phased out
-            if p.name == "_api_old.py":
                 continue
             if p in EXEMPT_FILES:
                 continue

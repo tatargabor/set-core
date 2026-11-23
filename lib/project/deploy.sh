@@ -300,6 +300,20 @@ _deploy_mcp() {
     _register_mcp_server "$project_path" "$@"
 }
 
+# Remove the framework files set-core no longer ships (templates/core/retired-paths.txt).
+# Provenance-guarded: only a copy the ledger says set-core wrote, unchanged, is removed.
+# Never runs against set-core's own checkout — there the "copies" are the sources.
+_retire_framework_files() {
+    local project_path="$1" target_root
+    target_root=$(git -C "$project_path" rev-parse --show-toplevel 2>/dev/null || true)
+    if [[ -n "$target_root" ]] && [[ "$(realpath "$target_root" 2>/dev/null)" == "$(realpath "$SET_TOOLS_ROOT" 2>/dev/null)" ]]; then
+        return 0
+    fi
+    _pv_begin "$project_path"
+    _pv_retire_paths "$project_path"
+    _pv_end
+}
+
 # Deploy the knowledge-base search support (kb-search change, wave W3).
 #
 # The set:kb skill and the short search rule go through the provenance-guarded

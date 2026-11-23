@@ -406,6 +406,74 @@ _pv_deploy_file ".claude/a.md" "$SRC/a.md" "$PROJ/.claude/a.md" >/dev/null 2>&1
 _pv_end
 assert_content "$PROJ/.claude/a.md" "content" "no-git fell back to refusing the deploy"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Retirement (fleet-era-consolidation stage 2): the framework withdraws a file.
+# Each case runs in a subshell with its own retired list, so the repository's real
+# list never decides a test outcome.
+# ─────────────────────────────────────────────────────────────────────────────
+retire_setup() {
+    # $1 scenario name. Deploys two files and a dir tree through the guard, then
+    # writes a retired list naming one file and the dir. Echoes "<proj> <list>".
+    local name="$1" src proj list
+    read -r src proj <<< "$(new_scenario "$name")"
+    echo "old cmd" > "$src/cmd.md"; echo "keep me" > "$src/live.md"
+    mkdir -p "$src/sk"; echo "skill" > "$src/sk/SKILL.md"
+    _pv_begin "$proj"
+    _pv_deploy_file ".claude/commands/set/cmd.md" "$src/cmd.md" "$proj/.claude/commands/set/cmd.md"
+    _pv_deploy_file ".claude/commands/set/live.md" "$src/live.md" "$proj/.claude/commands/set/live.md"
+    _pv_deploy_tree "$src/sk" "$proj/.claude/skills/set/sk" "$proj"
+    _pv_end
+    list="$WORK/$name/retired.txt"
+    printf '# comment\n.claude/commands/set/cmd.md\n.claude/skills/set/sk/\n' > "$list"
+    echo "$proj $list"
+}
+ledger_has() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(sys.argv[2] in d.get('files',{}), sys.argv[2] in d.get('tombstones',[]))" "$1/set/.deploy-manifest.json" "$2"; }
+
+test_start "retire: an unchanged copy is removed, the ledger forgets it, a live file stays"
+read -r PROJ LIST <<< "$(retire_setup retire_clean 2>/dev/null)"
+( _pv_retired_list() { echo "$LIST"; }; _pv_begin "$PROJ"; _pv_retire_paths "$PROJ"; _pv_end ) >/dev/null 2>&1
+if [[ ! -e "$PROJ/.claude/commands/set/cmd.md" && -f "$PROJ/.claude/commands/set/live.md" \
+      && ! -e "$PROJ/.claude/skills/set/sk" && "$(ledger_has "$PROJ" .claude/commands/set/cmd.md)" == "False False" ]]; then
+    test_pass
+else
+    test_fail "cmd.md exists=$([[ -e $PROJ/.claude/commands/set/cmd.md ]] && echo y || echo n) sk-dir=$([[ -e $PROJ/.claude/skills/set/sk ]] && echo y || echo n) ledger=$(ledger_has "$PROJ" .claude/commands/set/cmd.md)"
+fi
+
+test_start "retire: a copy the project edited is kept"
+read -r PROJ LIST <<< "$(retire_setup retire_edited 2>/dev/null)"
+echo "my own version" > "$PROJ/.claude/commands/set/cmd.md"
+( _pv_retired_list() { echo "$LIST"; }; _pv_begin "$PROJ"; _pv_retire_paths "$PROJ"; _pv_end ) >/dev/null 2>&1
+assert_content "$PROJ/.claude/commands/set/cmd.md" "my own version" "an edited retired file was removed"
+
+test_start "retire: a file of unknown provenance under a retired dir is kept, the dir with it"
+read -r PROJ LIST <<< "$(retire_setup retire_unknown 2>/dev/null)"
+echo "project wrote this" > "$PROJ/.claude/skills/set/sk/notes.md"
+( _pv_retired_list() { echo "$LIST"; }; _pv_begin "$PROJ"; _pv_retire_paths "$PROJ"; _pv_end ) >/dev/null 2>&1
+if [[ -f "$PROJ/.claude/skills/set/sk/notes.md" && ! -e "$PROJ/.claude/skills/set/sk/SKILL.md" ]]; then
+    test_pass
+else
+    test_fail "notes.md kept=$([[ -f $PROJ/.claude/skills/set/sk/notes.md ]] && echo y || echo n), SKILL.md gone=$([[ ! -e $PROJ/.claude/skills/set/sk/SKILL.md ]] && echo y || echo n)"
+fi
+
+test_start "retire: the dry-run names each removal and writes nothing"
+read -r PROJ LIST <<< "$(retire_setup retire_dry 2>/dev/null)"
+before=$(sha256sum "$PROJ/set/.deploy-manifest.json" | cut -c1-64)
+out=$( _pv_retired_list() { echo "$LIST"; }; DRY_RUN=true; _pv_begin "$PROJ"; _pv_retire_paths "$PROJ"; _pv_end ) 2>&1
+after=$(sha256sum "$PROJ/set/.deploy-manifest.json" | cut -c1-64)
+if [[ -f "$PROJ/.claude/commands/set/cmd.md" && -f "$PROJ/.claude/skills/set/sk/SKILL.md" && "$before" == "$after" \
+      && "$out" == *"Would remove .claude/commands/set/cmd.md"* && "$out" == *"Would remove .claude/skills/set/sk/SKILL.md"* ]]; then
+    test_pass
+else
+    test_fail "dry-run wrote or did not name the removals: $out"
+fi
+
+test_start "retire: a retired key is never deployed"
+read -r SRC PROJ <<< "$(new_scenario retire_nodeploy)"
+echo "x" > "$SRC/cmd.md"; printf '.claude/commands/set/cmd.md\n' > "$WORK/retire_nodeploy/retired.txt"
+( _pv_retired_list() { echo "$WORK/retire_nodeploy/retired.txt"; }; _pv_begin "$PROJ"
+  _pv_deploy_file ".claude/commands/set/cmd.md" "$SRC/cmd.md" "$PROJ/.claude/commands/set/cmd.md"; _pv_end ) >/dev/null 2>&1
+if [[ ! -e "$PROJ/.claude/commands/set/cmd.md" ]]; then test_pass; else test_fail "a retired file was deployed"; fi
+
 echo
 echo "─────────────────────────────────────────"
 echo "Tests run: $TESTS_RUN, passed: $TESTS_PASSED, failed: $TESTS_FAILED"

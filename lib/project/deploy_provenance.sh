@@ -253,6 +253,101 @@ _pv_tombstone() {
     _PV_TOMBSTONED=$((_PV_TOMBSTONED + 1))
 }
 
+# ─── Retirement — the framework withdraws a file it deployed earlier ──────────────────
+#
+# The mirror image of a tombstone, and deliberately a separate list: a tombstone records
+# that the PROJECT removed a file, retirement that the FRAMEWORK stopped shipping one.
+# Reusing tombstones would make an un-retirement look like a project decision.
+#
+# The list is `templates/core/retired-paths.txt`, one project-relative key per line; a
+# line ending in `/` retires every file under that directory. A retired key is never
+# deployed, and a copy is REMOVED only when the ledger says set-core wrote it and it still
+# carries those exact bytes (`_pv_is_ours`). An edited copy, or one of unknown provenance,
+# stays and is reported — the same ownership rule the deploy itself follows.
+
+_pv_retired_list() {
+    printf '%s/templates/core/retired-paths.txt' "${SET_TOOLS_ROOT:-}"
+}
+
+# Is this project-relative key retired? Exact line, or under a `dir/` line.
+_pv_is_retired() {
+    local key="$1" list line
+    list="$(_pv_retired_list)"
+    [[ -f "$list" ]] || return 1
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%%#*}"; line="${line%"${line##*[![:space:]]}"}"
+        [[ -n "$line" ]] || continue
+        if [[ "$line" == */ ]]; then
+            [[ "$key" == "$line"* ]] && return 0
+        else
+            [[ "$key" == "$line" ]] && return 0
+        fi
+    done < "$list"
+    return 1
+}
+
+# Remove the retired copies set-core wrote into a project. Call inside a _pv_begin/_pv_end
+# session. Honours DRY_RUN. Sets _PV_RETIRED (removed) and _PV_RETIRED_KEPT (kept).
+_pv_retire_paths() {
+    local project_path="$1" list line f key
+    _PV_RETIRED=0
+    _PV_RETIRED_KEPT=0
+    list="$(_pv_retired_list)"
+    [[ -f "$list" ]] || return 0
+    [[ -n "${_PV_FORGET:-}" ]] || _PV_FORGET="$(mktemp -t set-pv-forget.XXXXXX)"
+
+    local -a candidates=()
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%%#*}"; line="${line%"${line##*[![:space:]]}"}"
+        [[ -n "$line" ]] || continue
+        if [[ "$line" == */ ]]; then
+            [[ -d "$project_path/$line" ]] || continue
+            while IFS= read -r -d '' f; do
+                candidates+=("${f#"$project_path"/}")
+            done < <(find "$project_path/$line" -type f -print0 2>/dev/null)
+        else
+            [[ -e "$project_path/$line" ]] && candidates+=("$line")
+        fi
+    done < "$list"
+
+    for key in "${candidates[@]}"; do
+        f="$project_path/$key"
+        if _pv_is_ours "$key" "$f"; then
+            if [[ "${DRY_RUN:-false}" == "true" ]]; then
+                info "    Would remove $key (retired by set-core)"
+            else
+                rm -f "$f" && printf '%s\n' "$key" >> "$_PV_FORGET"
+            fi
+            _PV_RETIRED=$((_PV_RETIRED + 1))
+        else
+            if [[ -n "$(_pv_known_hash "$key" 2>/dev/null)" ]]; then
+                info "    Kept $key — retired, locally modified"
+            else
+                info "    Kept $key — retired, unknown provenance (not written by this ledger)"
+            fi
+            _PV_RETIRED_KEPT=$((_PV_RETIRED_KEPT + 1))
+        fi
+    done
+
+    # Drop directories the removal emptied, deepest first. Never one that still holds a file.
+    if [[ "${DRY_RUN:-false}" != "true" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            line="${line%%#*}"; line="${line%"${line##*[![:space:]]}"}"
+            [[ "$line" == */ && -d "$project_path/$line" ]] || continue
+            find "$project_path/$line" -depth -type d -empty -delete 2>/dev/null || true
+        done < "$list"
+    fi
+
+    if [[ $_PV_RETIRED -gt 0 || $_PV_RETIRED_KEPT -gt 0 ]]; then
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            info "  Retired: would remove $_PV_RETIRED, would keep $_PV_RETIRED_KEPT project-owned file(s)"
+        else
+            info "  Retired: removed $_PV_RETIRED, kept $_PV_RETIRED_KEPT project-owned file(s)"
+        fi
+    fi
+    return 0
+}
+
 # Deploy one file through the provenance guard.
 #   $1 project-relative key   $2 source file   $3 destination file
 # Honours DRY_RUN (reports, writes nothing). Never returns non-zero for a skip —
@@ -260,6 +355,11 @@ _pv_tombstone() {
 _pv_deploy_file() {
     local key="$1" src="$2" dst="$3"
     local reason
+
+    # A retired key is withdrawn by the framework: never (re)deployed, whatever the ledger says.
+    if _pv_is_retired "$key"; then
+        return 0
+    fi
 
     if ! reason="$(_pv_should_deploy "$key" "$dst")"; then
         _PV_SKIPPED=$((_PV_SKIPPED + 1))
@@ -338,11 +438,12 @@ _pv_end() {
     local ledger
 
     if [[ -n "$project_path" ]] && [[ "${DRY_RUN:-false}" != "true" ]] \
-        && { [[ -s "${_PV_STAGED:-/nonexistent}" ]] || [[ -s "${_PV_NEWTOMBS:-/nonexistent}" ]]; } \
+        && { [[ -s "${_PV_STAGED:-/nonexistent}" ]] || [[ -s "${_PV_NEWTOMBS:-/nonexistent}" ]] \
+             || [[ -s "${_PV_FORGET:-/nonexistent}" ]]; } \
         && command -v python3 &>/dev/null; then
         ledger="$(_pv_ledger_path "$project_path")"
         mkdir -p "$(dirname "$ledger")"
-        python3 -c "
+        PV_FORGET="${_PV_FORGET:-}" python3 -c "
 import json, os, sys
 from datetime import datetime, timezone
 
@@ -386,6 +487,16 @@ if os.path.isfile(tombs_path):
             tombstones.add(key)
             files.pop(key, None)
 
+# Retired copies set-core removed itself: forget them entirely — neither a hash (the file
+# is gone) nor a tombstone (the project did not delete it; the framework withdrew it).
+forget_path = os.environ.get('PV_FORGET', '')
+if forget_path and os.path.isfile(forget_path):
+    with open(forget_path) as f:
+        for line in f:
+            key = line.rstrip('\n')
+            if key:
+                files.pop(key, None)
+
 # Both engines write this same file on every init. When each carried its own copy of
 # the help text they disagreed on the wording AND on the key order, so the ledger came
 # out different depending on which engine wrote last — a diff on every run with nothing
@@ -427,8 +538,8 @@ if not unchanged:
     fi
 
     rm -f "${_PV_KNOWN:-}" "${_PV_STAGED:-}" "${_PV_TOMBS:-}" "${_PV_NEWTOMBS:-}" \
-          "${_PV_GITDEL:-}" 2>/dev/null || true
-    unset _PV_KNOWN _PV_STAGED _PV_TOMBS _PV_NEWTOMBS _PV_GITDEL _PV_PROJECT
+          "${_PV_GITDEL:-}" "${_PV_FORGET:-}" 2>/dev/null || true
+    unset _PV_KNOWN _PV_STAGED _PV_TOMBS _PV_NEWTOMBS _PV_GITDEL _PV_PROJECT _PV_FORGET
 }
 
 # "Deployed" under a real run, "Would deploy" under --dry-run. Keeps the log honest:
