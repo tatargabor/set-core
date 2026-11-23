@@ -68,6 +68,20 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-211 — nothing shows which live sessions the auto-clear watcher excludes, so a session can grow without ever being asked for a handoff
+- **state:** open
+- **reported:** 2026-11-23 by the user ("itt nem kellett volna már handoffnak elműködnie?"), on a 410k-token session.
+- **measured:** a watcher unit passes `--started-after <install time>` (auto-clear-default-install D3: a process that loaded its hooks before the reload hook existed would lose its context on an automatic `/clear`). Comparing each live agent's `/proc/<pid>/stat` start time with its project unit's `--started-after` found 4 of 12 live sessions excluded. One of them was in set-core, whose own tree the rollout had skipped. Neither the fleet nor `set-doctor` says so: the tile looks exactly like a covered session.
+- **fail direction:** calm — a session excluded by design is indistinguishable from one the watcher will clear.
+- **fixed when:** the fleet (tile or map node) or the doctor marks a live session whose start precedes its project's watcher cutoff, with the remedy (handoff, then restart through the fleet), checked by a test over a fake unit and a fake process start.
+
+### B-210 — a fleet stop ends every process in the agent's scope, so background work an agent launched dies with it
+- **state:** open
+- **reported:** 2026-11-23 by this session, before restarting a seat whose peer said its three background reviewers were "independent of this process and must keep running".
+- **measured:** `cgroup.procs` of `set-agent-<label>.scope` held the agent's `claude` AND three `nohup … claude -p` reviewers (5 minutes old) with their bash wrappers. `nohup` does not leave the cgroup. The stop route runs `systemctl stop --no-block <scope>` (`lib/set_orch/fleet/scopes/_systemd.py:302`), which ends all of them. The desk sweep, the work sweep and idle-close stop through the same route, with nobody watching. Nothing was killed here: the restart was held until the reviewers finished.
+- **fail direction:** silent loss — background work disappears with no trace in the stop answer, and an automatic sweep can do it unattended.
+- **fixed when:** a stop (at least an automatic one) refuses, or names in its answer, any process in the scope that is neither the agent nor one of its MCP servers. A test with a fake cgroup listing shows the refusal; the agent-side remedy (`systemd-run --user --scope` for work that must outlive the seat) is written where an agent will read it.
+
 ### B-207 — `set-fleet-mandate done` sends the done line without a room, so a requester sharing several rooms with the agent is never told and the agent never ends
 - **state:** closed 2026-11-23 in the commit that adds this line. `_post_to_requester` asks the channel for the room of two (`sac dm <seat>`) and sends there; a requester that is not a seat, or a refused `dm`, falls back to the plain addressed send and its refusal is carried back unchanged. The new room test fails against the previous code and passes with the fix; the live re-run passed all four checks (see B-205).
 - **reported:** 2026-11-23 by this session, in the B-205 live check (`fleet-work-agent-done` 5.1).
