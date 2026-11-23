@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-198 — the fleet asks `git worktree list` about a worktree whose directory is gone on every poll, and logs each `FileNotFoundError` as a WARNING (~98k lines a day)
+- **state:** closed 2026-11-23 in the commit that adds this line: `_worktree_porcelain` answers an empty listing at debug level when the directory does not exist; `test_a_missing_directory_is_a_quiet_empty_answer` fails with the check removed (mutation run, restore verified with `cmp`). set-web restarted on it.
+- **reported:** 2026-11-23 by the usage-audit agent ("98k warnings a week"); re-measured by this session as a DAY.
+- **measured:** `journalctl --user -u set-web --since -1d | grep -c WARNING` → 98776; grouped, the top three were `set_orch.api.helpers: worktree list failed for <deleted scratchpad>/wt-…: FileNotFoundError` (35912 + 26934 + 17956). `subprocess.run(cwd=<missing dir>)` raises `FileNotFoundError`, which the helper logged at WARNING; the non-zero-exit branch had already been moved to debug for the same reason (B-139).
+- **fail direction:** noise that buries signal — every real WARNING in set-web's journal sat among ~68 identical lines a minute.
+- **fixed when:** a missing directory yields an empty listing with no WARNING, and the day count of that line in set-web's journal drops to zero after a restart.
+
 ### B-197 — in a consumer whose `core.hooksPath` is RELATIVE (e.g. `.husky/_`), every git worktree resolves it inside itself, gets only the hooks git-lfs writes there, and the whole pre-commit/pre-push gate chain silently does not run
 - **state:** open — consumer-side config, but set-core creates worktrees in consumers (orchestration, `/set:new`, agent isolation), so every unit of work done there pushes past the consumer's gates.
 - **reported:** 2026-11-23 by this session, pushing a gate fix from a fresh worktree of a consumer: the push printed only LFS and remote lines.

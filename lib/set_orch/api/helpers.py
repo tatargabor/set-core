@@ -269,6 +269,13 @@ def _parse_worktree_porcelain(text: str) -> list[dict]:
 
 def _worktree_porcelain(project_path: Path) -> str:
     """The raw porcelain listing, or an empty string when git cannot answer."""
+    if not Path(project_path).is_dir():
+        # A prunable worktree whose directory is gone (a deleted scratchpad, an
+        # archived run) is asked about on every fleet poll. That is a normal
+        # answer, not an anomaly: measured 2026-11-23 (B-198), two such paths
+        # produced ~98k WARNING lines a day and buried everything else.
+        logger.debug("worktree list skipped, no directory: %s", project_path)
+        return ""
     try:
         result = subprocess.run(
             ["git", "worktree", "list", "--porcelain"],

@@ -139,3 +139,16 @@ def test_git_failing_yields_no_locations_rather_than_an_exception(monkeypatch):
 
     monkeypatch.setattr(helpers, "_worktree_porcelain", lambda path: "")
     assert list_worktree_locations(Path("/repo")) == []
+
+
+def test_a_missing_directory_is_a_quiet_empty_answer(tmp_path, caplog):
+    """B-198: a prunable worktree whose directory is gone was asked about on every
+    fleet poll and logged a WARNING each time (~98k lines a day, measured
+    2026-11-23). Gone is a normal answer: empty listing, no warning."""
+    import logging
+    from set_orch.api.helpers import _worktree_porcelain
+
+    gone = tmp_path / "deleted-scratchpad" / "wt"
+    with caplog.at_level(logging.DEBUG, logger="set_orch.api.helpers"):
+        assert _worktree_porcelain(gone) == ""
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING], caplog.text
