@@ -135,18 +135,54 @@ def _sac_bin() -> Optional[str]:
     return fallback if os.access(fallback, os.X_OK) else None
 
 
+def _pair_room(sac: str, requester: str) -> Optional[str]:
+    """The room of two between this session and the requester seat, opened by the channel.
+
+    B-207: a done line sent with `--to <seat>` and no room is refused whenever the two
+    seats share more than one room — and two seats of ONE project share every default
+    room, so the commonest requester (a sibling session) was never told. The room is
+    NOT chosen here: `sac dm` derives it from the two seat names, the same way both sides
+    would, which keeps this layer free of any room convention. Only a seat (`name#id`) has
+    a room of two; anything else returns None and the caller sends without a room.
+    """
+    if "#" not in requester:
+        return None
+    try:
+        proc = subprocess.run([sac, "dm", requester], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("set-fleet-mandate done: sac dm %s did not run (%s)", requester, exc)
+        return None
+    if proc.returncode != 0:
+        logger.warning("set-fleet-mandate done: sac dm %s refused: %s", requester,
+                       (proc.stderr or proc.stdout or "").strip()[:300])
+        return None
+    try:
+        room = json.loads(proc.stdout).get("room")
+    except (ValueError, AttributeError):
+        logger.warning("set-fleet-mandate done: sac dm %s gave no usable answer", requester)
+        return None
+    return str(room) if room else None
+
+
 def _post_to_requester(requester: str, text: str) -> Optional[str]:
-    """Send the done line to the requester seat. Returns None on success, else the reason."""
+    """Send the done line to the requester seat. Returns None on success, else the reason.
+
+    In the room of two with the requester when the channel can open one (B-207), else
+    addressed without a room — and a refusal of that is carried back unchanged, never
+    retried as a broadcast.
+    """
     sac = _sac_bin()
     if sac is None:
         return "the bus client (sac) is not installed"
+    room = _pair_room(sac, requester)
+    argv = [sac, "send"] + ([room] if room else []) + ["FACT", text, "--to", requester]
     try:
-        proc = subprocess.run([sac, "send", "FACT", text, "--to", requester],
-                              capture_output=True, text=True, timeout=60)
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return f"the bus client did not run: {exc}"
     if proc.returncode != 0:
         return (proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()
+    logger.info("set-fleet-mandate done: told %s in %s", requester, room or "the resolved room")
     return None
 
 

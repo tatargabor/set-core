@@ -170,3 +170,69 @@ def test_a_person_counts():
 ])
 def test_harness_turns_do_not_count(entry):
     assert S._human_entry_epoch(_line(**entry)) is None
+
+
+# --------------------------------------------------------------------------- #
+# B-207 — the done line reaches a requester that shares several rooms
+# B-208 — the command the mandate names is installed
+# --------------------------------------------------------------------------- #
+
+FAKE_SAC = r'''#!/usr/bin/env python3
+"""A channel that refuses an un-roomed send, the way sac does when two seats share
+several rooms, and opens a room of two on `dm`. Every call is logged."""
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ["FAKE_SAC_LOG"], "a") as fh:
+    fh.write(json.dumps(args) + "\n")
+if args[0] == "dm":
+    if os.environ.get("FAKE_SAC_DM") == "refuse":
+        sys.stderr.write("dm: refused\n"); sys.exit(1)
+    print(json.dumps({"room": "dm-pair-room", "with": args[1], "created": True}))
+    sys.exit(0)
+if args[0] == "send":
+    if args[1] in ("FACT", "REQUEST", "QUESTION", "ANSWER"):
+        sys.stderr.write("You are in several rooms (a, b), so `room` is required\n"); sys.exit(1)
+    print(json.dumps({"room": args[1], "wakes": []})); sys.exit(0)
+sys.exit(2)
+'''
+
+
+@pytest.fixture
+def fake_sac(tmp_path, monkeypatch):
+    sac = tmp_path / "sac"
+    sac.write_text(FAKE_SAC)
+    sac.chmod(0o755)
+    log = tmp_path / "sac.log"
+    monkeypatch.setenv("FAKE_SAC_LOG", str(log))
+    monkeypatch.setattr(mandate_cli, "_sac_bin", lambda: str(sac))
+    return lambda: [json.loads(line) for line in log.read_text().splitlines()]
+
+
+def test_the_done_line_goes_to_the_room_of_two_when_rooms_are_shared(fake_sac):
+    assert mandate_cli._post_to_requester("set-core#abcd1234", "[done] x") is None
+    calls = fake_sac()
+    assert calls[0] == ["dm", "set-core#abcd1234"]
+    assert calls[1] == ["send", "dm-pair-room", "FACT", "[done] x", "--to", "set-core#abcd1234"]
+
+
+def test_a_refused_dm_falls_back_to_the_plain_send_and_carries_its_refusal(fake_sac, monkeypatch):
+    monkeypatch.setenv("FAKE_SAC_DM", "refuse")
+    why = mandate_cli._post_to_requester("set-core#abcd1234", "[done] x")
+    assert why and "room" in why
+    assert fake_sac()[-1] == ["send", "FACT", "[done] x", "--to", "set-core#abcd1234"]
+
+
+def test_a_requester_that_is_not_a_seat_opens_no_room(fake_sac):
+    mandate_cli._post_to_requester("some-project", "[done] x")
+    assert [c[0] for c in fake_sac()] == ["send"]
+
+
+def test_the_done_command_the_mandate_names_is_in_the_install_list():
+    import pathlib
+    import re
+    root = pathlib.Path(__file__).resolve().parents[2]
+    listed = re.search(r"local scripts=\(([^)]*)\)", (root / "install.sh").read_text()).group(1).split()
+    tool = mandate_delivery.DONE_COMMAND.split()[0]
+    assert (root / "bin" / tool).exists()
+    assert tool in listed
+    assert "set-fleet-ask" in listed

@@ -68,6 +68,27 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-207 — `set-fleet-mandate done` sends the done line without a room, so a requester sharing several rooms with the agent is never told and the agent never ends
+- **state:** closed 2026-11-23 in the commit that adds this line. `_post_to_requester` asks the channel for the room of two (`sac dm <seat>`) and sends there; a requester that is not a seat, or a refused `dm`, falls back to the plain addressed send and its refusal is carried back unchanged. The new room test fails against the previous code and passes with the fix; the live re-run passed all four checks (see B-205).
+- **reported:** 2026-11-23 by this session, in the B-205 live check (`fleet-work-agent-done` 5.1).
+- **measured:** a work agent started through `POST /api/fleet/agents` with `requested_by` set to a seat of the SAME project (mandate `m-3e64abf66e09`, label `b205-live`) ran `set-fleet-mandate done "live check"` → exit 1, `not done: the line did not reach <seat> (sac: You are in several rooms (...), so `room` is required …)`. `_post_to_requester` (`lib/set_orch/fleet/mandate_cli.py`) runs `sac send FACT <text> --to <seat>` with no room; two seats of one project share every default room, so the channel refuses to guess. Nothing was ended or stopped — the order contract held.
+- **fail direction:** safe for the record (no false `agent-done`), but it is exactly the B-205 symptom: the mandate stays open and the agent stays up until the work sweep.
+- **fixed when:** the same live check ends with the line in a room both seats can read, the mandate ended `agent-done`, the label gone from the owner, and the session in the roster; a unit test with a fake `sac` that refuses an un-roomed send holds it.
+
+### B-208 — `set-fleet-mandate` and `set-fleet-ask` are not in the install list, so a fleet-started agent cannot run the done step by the name its mandate gives
+- **state:** closed 2026-11-23 in the commit that adds this line. Both names are in `install.sh`'s list and were linked on this machine; a unit test holds that the command `DONE_COMMAND` names is in the list (it failed before the list was changed). Other unlisted `bin/set-*` tools (mostly orchestration-era) were left alone.
+- **reported:** 2026-11-23 by this session, in the same live check.
+- **measured:** the work agent's first `set-fleet-mandate done …` → `command not found` (exit 127); `ls ~/.local/bin/set-fleet-mandate` → missing. The `scripts=(…)` list in `install.sh` is hand-kept and names neither tool, while `mandate_delivery.DONE_COMMAND` tells every work agent to run `set-fleet-mandate done`.
+- **fail direction:** silent per agent — an agent that does not think to look in `bin/` never ends itself.
+- **fixed when:** both names are in the install list and linked, and a unit test holds that the command the mandate text names is in that list.
+
+### B-209 — `GET /api/fleet/roster/{project}` answers with the SPA's HTML for every roster project whose name is a path
+- **state:** open
+- **reported:** 2026-11-23 by this session, while looking up the agents to restore after the owner restart.
+- **measured:** `GET /api/fleet/roster` lists 20 projects whose name is an absolute path (temp dirs, `~`, a scratchpad); for each, `GET /api/fleet/roster/<url-encoded name>` returned `<!doctype html>…` instead of JSON. The route is `{project}` without `:path`, so an encoded slash does not match it and the SPA fallback answers.
+- **fail direction:** silent — those entries are listed and cannot be read, restored or forgotten through their own route.
+- **fixed when:** a path-named roster project is readable through the route (or such entries are not recorded at all), with a route test for it.
+
 ### B-206 — the commit gate refuses a rebuilt web bundle because the minifier emitted an identifier equal to the machine's login name
 - **state:** open
 - **reported:** 2026-11-23 by this session, on its own commit of `web/dist` after the relation-map build.
@@ -76,7 +97,7 @@ consumer's name, path, or content.
 - **fixed when:** a rebuilt `web/dist` commits without an allow-list entry and without `--no-verify` — by exempting generated bundles from the env-marker check (the source they are built from is still scanned), or by no longer tracking `web/dist`. A test stages a minified file containing a two-letter identifier equal to a machine name token and asserts the commit gate does not block on it, while the same token in a hand-written file still blocks.
 
 ### B-205 — an agent started by another agent for one task stays open after the task, and nothing closes it but the 48 h idle-close
-- **state:** open — implemented in `cd7faffb` (change `fleet-work-agent-done`): the done step, the `agent-done` and `work-idle` end reasons, a 5-minute work sweep with a 2 h bound, and the root cause, which is that task notifications and stop-hook turns were counted as human input. It stays open until the live check (task 5.1) runs, and that check needs an agent-owner restart which would end every held agent.
+- **state:** closed 2026-11-23 — implemented in `cd7faffb` (change `fleet-work-agent-done`), live-checked after the owner restart. The first live run found B-207 and B-208; after their fix in the commit that closes this entry, a work agent started by a same-project seat ran `set-fleet-mandate done`, the line arrived in the room of two, the mandate ended `agent-done`, the label left the owner, and the roster kept the session (evidence: `fleet-work-agent-done` task 5.1).
 - **reported:** 2026-11-22 by a consumer-family peer session on the bus (room `set-core`), relaying the owner's order: *„azt csinaljuk meg hogy miért nem zarodtal be ha megvlt a válasz. eza fleetben nyitott agent hiányossága"*. Read and registered 2026-11-23 by this session; it had sat unanswered in the room.
 - **measured (by the reporter, 2026-11-22, `GET /api/fleet/agents` at 5478078f):** an agent with `kind: interactive`, `parent {source: recorded}` and `purpose: null` answered its three questions and then kept an inbox watch open. `StartAgentBody` (`lib/set_orch/api/fleet.py`) has no lifetime field, so the fleet cannot tell a one-task agent from a standing seat. No command or rule tells the agent or its parent to call the stop route. `idle_close` keys on `last_human_input_seconds` with a 48 h threshold, and an agent-started agent never gets owner input after its brief. Not re-measured by this session; the field list and the idle-close key were confirmed in the code.
 - **fail direction:** cost, silently. Every bus entry wakes the idle agent, and it re-reads its whole context until the daily close.
