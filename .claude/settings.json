@@ -6,11 +6,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "set-hook-skill",
-            "timeout": 5
-          },
-          {
-            "type": "command",
             "command": "set-hook-relay-supersede",
             "timeout": 5
           }
@@ -18,16 +13,6 @@
       }
     ],
     "PreToolUse": [
-      {
-        "matcher": "Skill",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-activity",
-            "timeout": 5
-          }
-        ]
-      },
       {
         "matcher": "Bash",
         "hooks": [
@@ -97,11 +82,6 @@
       {
         "matcher": "",
         "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-stop",
-            "timeout": 5
-          },
           {
             "type": "command",
             "command": "set-hook-waveboard",

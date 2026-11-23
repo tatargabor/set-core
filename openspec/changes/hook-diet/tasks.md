@@ -7,8 +7,8 @@
 - [x] 2.1 `bin/set-deploy-hooks`: drop `set-hook-skill`, `set-hook-activity`, `set-hook-stop` from the base set
 - [x] 2.2 Strip them (and `.claude/hooks/activity-track.sh`) on every run, in every event array; a canonical file carrying one is not left alone
 - [x] 2.3 `tests/unit/test_deploy_hooks_hook_diet.py` — 3 of 4 red on the reverted script (the fourth, idempotence, holds either way); `test_wave_board.py` deploy test updated
-- [ ] 2.4 Roll out: `set-project init` per registered project (dry-run first, diff-check the hand-authored files)
-- [ ] 2.5 After 2.4, remove `bin/set-hook-{skill,activity,stop}` and their `install.sh` entries
+- [x] 2.4 Roll out: `set-project init` per registered project (dry-run first, diff-check the hand-authored files) — 2026-11-23: a dry-run and a real run on one pilot, then every other non-archived project serially. Hand-authored files (everything under `.claude/` except `set-*`, hooks, skills, commands, `settings.json`, the version stamp and the machine-local role rule, plus `CLAUDE.md`) were hashed before and checked after: 0 changed in every project. Two data repositories refused (`deploy: false`, correct), two directories without git skipped. One flagship consumer was NOT run — its own reload mechanism is wired, and the auto-clear step would add a hook beside it; that is its owner's call. set-core's own settings were cleaned with `set-deploy-hooks .`.
+- [ ] 2.5 After 2.4, remove `bin/set-hook-{skill,activity,stop}` and their `install.sh` entries — blocked on the one consumer above, whose settings still call `set-hook-skill`/`set-hook-activity`/`set-hook-stop`; removing the binaries first would make each of its prompts call a missing command
 
 ## 3. Git bus (not started)
 
