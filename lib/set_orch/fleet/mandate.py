@@ -40,7 +40,11 @@ logger = logging.getLogger(__name__)
 
 KINDS = ("work", "desk")
 SOURCES = ("start", "declared")
-END_REASONS = ("stopped", "ended", "desk-quiet")
+#: `agent-done`: the agent ran `set-fleet-mandate done` — its OWN claim that the work is
+#: over (fleet-work-agent-done). Like the others it says the mandate ended, never that it
+#: was fulfilled; checking that is `agent-goal-closure`'s job.
+#: `work-idle`: the work sweep closed a work agent that never ran its done step.
+END_REASONS = ("stopped", "ended", "desk-quiet", "agent-done", "work-idle")
 
 #: Why an agent has no mandate. `not-started-here`: the framework did not start it.
 #: `not-declared`: the framework started it and nobody gave it a goal.

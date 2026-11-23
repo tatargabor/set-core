@@ -461,6 +461,18 @@ def _human_entry_epoch(line: str) -> Optional[float]:
     # A tool result wears the user's clothes. It is the agent's own traffic.
     if entry.get("toolUseResult") is not None:
         return None
+    # So do the harness's own turns. Measured 2026-11-23 on a live transcript: a
+    # stop-hook feedback (`isMeta: true`) and a background task's notification
+    # (`origin.kind: "task-notification"`) both passed as a PERSON, so every time an
+    # agent's bus watch fired it looked freshly attended — and idle-close, which keys
+    # on this, never closed an agent that kept a watch (B-205). The runtime states
+    # who produced a turn in `origin.kind`; where it does, only `human` is a person.
+    # Where it does not (an older runtime), the text rule below still decides.
+    if entry.get("isMeta"):
+        return None
+    origin = entry.get("origin")
+    if isinstance(origin, dict) and origin.get("kind") not in (None, "human"):
+        return None
     message = entry.get("message")
     if not isinstance(message, dict):
         return None

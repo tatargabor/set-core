@@ -381,6 +381,14 @@ async def sweep_loop(interval: float = SWEEP_INTERVAL_SECONDS) -> None:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("fleet desk sweep: a round failed (%s)", type(exc).__name__)
+        # fleet-work-agent-done: the same round closes a forgotten work agent.
+        try:
+            from .fleet_work import sweep_work_agents
+            await asyncio.to_thread(sweep_work_agents)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("fleet work sweep: a round failed (%s)", type(exc).__name__)
 
 
 # --------------------------------------------------------------------------- #

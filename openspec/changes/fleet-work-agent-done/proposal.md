@@ -23,10 +23,17 @@ beside it.
   is closed by checkable evidence, never by the agent's report*) is unchanged.
 - **The agent is told about the done step.** The mandate delivered at session start adds one line for an
   agent-requested `work` mandate: when the work is done, answer the requester, then run the done step.
-- **Idle-close gets a short bound for agent-requested `work` agents** that have had no owner input since
-  their start. It is counted from the last movement, and the default is 2 hours (local config
-  `fleet_idle_close_work_hours`). Owner input after the start turns the agent into the owner's window,
-  and the 48-hour rule applies again. Anything unmeasured keeps the agent, as before.
+- **A periodic sweep closes a forgotten work agent.** It runs in the same five-minute round as
+  `fleet-mandate-and-desk`'s desk sweep. It closes an agent-requested `work` agent that is measured quiet,
+  has had no operator input since its brief, and has not moved for longer than the work bound (default 2
+  hours, local config `fleet_idle_close_work_hours`). The mandate is ended as `work-idle`. The daily
+  idle-close is not the carrier, because a 2-hour bound checked once a day closes after up to 26 hours.
+- **Harness turns stop counting as a person.** Measured 2026-11-23 on a live transcript: the human-input
+  measure counted a stop-hook feedback (`isMeta`) and a background task notification
+  (`origin.kind: task-notification`) as human input. So every time an agent's bus watch fired, the agent
+  looked freshly attended, and idle-close could never close an agent that kept a watch. That is the root
+  of the measured case. Where the runtime states `origin.kind`, only `human` counts now, and `isMeta`
+  never counts.
 
 ## Capabilities
 
@@ -37,7 +44,8 @@ beside it.
 ## IN SCOPE
 - The `done` verb of `set-fleet-mandate`, and the `agent-done` end reason
 - The one-line done instruction in the delivered mandate
-- The short idle-close bound for agent-requested `work` agents without owner input
+- The work sweep and its bound, and the `work-idle` end reason
+- The human-input measure: harness turns are not a person
 
 ## OUT OF SCOPE
 - Deciding that work was fulfilled (`agent-goal-closure`)

@@ -48,6 +48,7 @@ ENV_HOOK_BIN = "SET_FLEET_MANDATE_BIN"
 
 #: The command by which an agent reaches another project. Named in the delivered text.
 ASK_COMMAND = "set-fleet-ask"
+DONE_COMMAND = "set-fleet-mandate done"
 
 #: First-turn lines, chosen by kind and never taken from a caller. An agent started with no
 #: first turn sits at an empty prompt, and nothing on the bus can wake it there, because its
@@ -150,6 +151,18 @@ def render_context(record: Mapping[str, Any]) -> str:
         lines += [
             "This is why this session exists. Work towards it, and say so when something would "
             "take you away from it.",
+        ]
+        if requester:
+            # fleet-work-agent-done. Only for an agent another agent asked for: the
+            # operator's own window is theirs to close, and a desk closes on quiet.
+            lines += [
+                "",
+                "When the work is done: answer the requester on the bus, then run "
+                f"`{DONE_COMMAND} \"<one line: what you did>\"` as your LAST act. It sends that "
+                "line to the requester, ends this mandate and closes this session; the session "
+                "stays resumable from the roster. Do not keep waiting for more work.",
+            ]
+        lines += [
             "",
             "Requests from other agents: if another agent asks you for something outside this "
             f"mandate, decline it once and point them at this project's desk — "

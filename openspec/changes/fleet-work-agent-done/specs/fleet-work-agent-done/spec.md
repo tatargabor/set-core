@@ -39,19 +39,33 @@ instruction: when the work is done, answer the requester, then run the done step
 
 ### Requirement: A forgotten work agent is closed after a short bound
 
-Idle-close SHALL close an agent-requested `work` agent with no owner input since its start once its last
-movement is measured and older than `fleet_idle_close_work_hours` (default 2). Owner input after the
-start SHALL put the agent back under the ordinary threshold. Anything unmeasured, or an agent in the
-middle of a tool call, SHALL be kept.
+A periodic sweep SHALL stop an agent-requested `work` agent whose mandate is open, whose state is measured
+`quiet`, that is not in a tool call or at a permission prompt, that has had no operator input later than
+its brief, and whose last movement is measured and older than `fleet_idle_close_work_hours` (default 2).
+The mandate SHALL be ended with reason `work-idle`, and only after the owner confirms that it found the
+agent. Anything unmeasured SHALL keep the agent.
 
 #### Scenario: Answered, then forgotten
-- **WHEN** an agent-requested `work` agent has had no owner input and its last movement was 3 hours ago
-- **THEN** idle-close closes it, and its mandate is ended with reason `stopped`
+- **WHEN** such an agent is quiet, has had no operator input since its brief, and last moved 3 hours ago
+- **THEN** the sweep stops it, and its mandate is ended with reason `work-idle`
 
 #### Scenario: The owner took it over
-- **WHEN** the owner typed into such an agent after its start
-- **THEN** the 48-hour rule applies to it instead
+- **WHEN** the operator typed into such an agent after its brief
+- **THEN** the sweep keeps it
 
-#### Scenario: Movement unmeasured
-- **WHEN** the agent's last movement cannot be measured
-- **THEN** it is kept
+#### Scenario: Asking or unmeasured
+- **WHEN** the agent is asking a person, is in a tool call, or its movement or state is unmeasured
+- **THEN** the sweep keeps it
+
+### Requirement: Harness turns are not human input
+
+The human-input measure SHALL NOT count a transcript entry marked `isMeta`, or one whose `origin.kind` is
+present and is not `human`. An entry without an `origin` SHALL still be judged by its text, as before.
+
+#### Scenario: A bus watch fires
+- **WHEN** an agent's transcript gains a task notification or a stop-hook feedback entry
+- **THEN** its last human input does not move
+
+#### Scenario: The operator types
+- **WHEN** an entry with `origin.kind: human` and text is appended
+- **THEN** it is the last human input
