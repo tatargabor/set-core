@@ -8,6 +8,7 @@
 - [ ] 2.2 CORE the decision parser: one JSON object → `Decision(choice, tier, confidence, sources[{path, excerpt}], outward)`; refuse a missing tier, a `decided`/`found` without a source, a closed-list choice outside the options, any parse failure. Tests in both directions. [REQ: the-decision-names-its-tier-and-its-source]
 - [ ] 2.3 CORE the exclusion check: kind `permission` → excluded; deterministic patterns over question, options and choice (English and Hungarian forms of publish/push, deploy, production, send message/email, delete, pay, credential) plus `never_patterns`; the model's `outward` flag; either excludes. Tests: each pattern family fires; prose that merely contains a substring of a pattern word does not (whole-word); the model flag alone excludes; the pattern alone excludes. [REQ: outward-and-irreversible-steps-are-never-answered-automatically]
 - [ ] 2.4 CORE the allow rule: `decided`/`found` allowed; `likely` allowed at or above `likely_min`; anything excluded is never allowed. Table test. [REQ: an-automatic-answer-is-proposed-before-it-is-written-and-a-human-answer-wins]
+- [ ] 2.5a CORE the knowledge-base step: run `set-kb search --json --limit <n>` in the session's cwd with the question and options; hand path, heading and excerpt of each hit to the prompt as candidates; a failing or non-searchable kb → continue without it and log `kb: not used (<reason>)`. Tests with a fake `set-kb`: hits reach the prompt; a failure does not stop the decision. [REQ: the-lookup-reads-where-decisions-live-and-only-reads]
 - [ ] 2.5 CORE the lookup call: a headless `claude -p` in the session's cwd with read-only tools, hooks disabled, no persistence, the relay guard variable, a time bound (default 90 s); the prompt names the decision locations and `extra_paths`, carries the question, options and kind, and asks for the JSON object. Reuse `wait_detect.run_headless`'s shape rather than a second subprocess helper; extend it with a cwd and allowed tools if needed. Test with a fake `claude` on PATH: timeout and non-zero exit → no decision. [REQ: the-lookup-reads-where-decisions-live-and-only-reads]
 
 ## 3. The outbound and its worker
@@ -27,7 +28,7 @@
 ## 5. Live on this machine
 
 - [ ] 5.1 Configure per design "Migration Plan" with the switch OFF; one relayed question in a scratch session reaches the operator's outbound unchanged. [REQ: the-decider-is-the-relay-s-outbound-and-forwards-to-the-operator-s]
-- [ ] 5.2 Switch ON; in a scratch session ask a question whose answer is a decision recorded in that tree's rules → proposed with tier `decided` and its source, written after the window, the session continues. Then a push question → forwarded with a recommendation, not written. Record both in this task with timestamps and the log lines. [REQ: outward-and-irreversible-steps-are-never-answered-automatically]
+- [ ] 5.2 Switch ON; in a scratch session ask a question whose answer is a decision recorded in that tree's rules → proposed with tier `decided` and its source, written after the window, the session continues. A second question whose answer sits only in an indexed doc section → tier `found`, the source is that section. Then a push question → forwarded with a recommendation, not written. Record both in this task with timestamps and the log lines. [REQ: outward-and-irreversible-steps-are-never-answered-automatically]
 - [ ] 5.3 Capability guide row for `set-auto-answer` in `.claude/rules/capability-guide.md`. [REQ: the-decider-is-the-relay-s-outbound-and-forwards-to-the-operator-s]
 
 ## Acceptance Criteria (from spec scenarios)
@@ -44,6 +45,8 @@
 - [ ] AC-5: WHEN the model returns a choice that is not one of the options THEN no automatic answer is made and the question is forwarded unchanged [REQ: the-decision-names-its-tier-and-its-source, scenario: an-answer-outside-the-options]
 
 ### the-lookup-reads-where-decisions-live-and-only-reads
+- [ ] AC-6a: WHEN the answer is written in a documentation section outside the fixed locations THEN that section is among the model's candidates and a `found` choice names it [REQ: the-lookup-reads-where-decisions-live-and-only-reads, scenario: the-knowledge-base-finds-the-answer]
+- [ ] AC-6b: WHEN `set-kb` reports search does not work in the project THEN the decision uses the fixed locations alone and the log says the kb was not used [REQ: the-lookup-reads-where-decisions-live-and-only-reads, scenario: the-knowledge-base-cannot-search]
 - [ ] AC-6: WHEN the headless call does not answer within its bound THEN the question is forwarded unchanged and no answer is written [REQ: the-lookup-reads-where-decisions-live-and-only-reads, scenario: the-model-call-times-out]
 
 ### outward-and-irreversible-steps-are-never-answered-automatically

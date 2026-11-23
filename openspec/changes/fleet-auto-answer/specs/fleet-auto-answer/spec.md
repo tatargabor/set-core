@@ -1,6 +1,6 @@
 ## IN SCOPE
 - A decider outbound that answers a relayed blocking point (an agent's question, or a finished turn's continuation question) on the operator's behalf
-- Looking the answer up in the asking project's information and the operator's earlier decisions, with three tiers: decided, found, likely
+- Looking the answer up in the asking project's information — through the project knowledge-base search and the fixed decision locations — and the operator's earlier decisions, with three tiers: decided, found, likely
 - Hard exclusions: outward or irreversible steps, and every permission prompt
 - A proposal window: the automatic answer is shown before it is written, and a human answer wins
 - Forwarding to the operator's real outbound, with the decider's recommendation attached
@@ -46,7 +46,15 @@ For each question the decider SHALL produce one choice and a tier: `decided` whe
 - **THEN** no automatic answer is made and the question is forwarded unchanged
 
 ### Requirement: The lookup reads where decisions live, and only reads
-The decider SHALL make its decision with one headless model call per question, run in the asking session's working directory, with read-only file tools only, hooks disabled, and no session persisted. The call SHALL be pointed at the instruction files of the project and of the user, the project's rules directory, the session's newest handoff, the open OpenSpec changes, the bug register, the project's memory directory, and any paths listed in `auto_answer.extra_paths`. The call SHALL be bounded in time; a call that fails or times out SHALL produce no decision.
+Before the model call, the decider SHALL run the project knowledge-base search (`set-kb search --json`) in the asking session's working directory with the question and its options, and SHALL hand the ranked sections (path, heading, excerpt) to the model as candidate sources. When the knowledge base cannot search in that project, the decider SHALL continue without it and SHALL log that it did. The decider SHALL make its decision with one headless model call per question, run in the asking session's working directory, with read-only file tools only, hooks disabled, and no session persisted. The call SHALL also be pointed at the instruction files of the project and of the user, the project's rules directory, the session's newest handoff, the open OpenSpec changes, the bug register, the project's memory directory, and any paths listed in `auto_answer.extra_paths`. The call SHALL be bounded in time; a call that fails or times out SHALL produce no decision.
+
+#### Scenario: The knowledge base finds the answer
+- **WHEN** the answer to the question is written in a section of the project's documentation that is not one of the fixed locations
+- **THEN** that section is among the candidates the model receives, and a `found` choice names it as its source
+
+#### Scenario: The knowledge base cannot search
+- **WHEN** `set-kb` reports that search does not work in the asking project
+- **THEN** the decision is made from the fixed locations alone and the log records that the knowledge base was not used
 
 #### Scenario: The model call times out
 - **WHEN** the headless call does not answer within its bound

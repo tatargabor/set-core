@@ -26,7 +26,8 @@ approves the agent's own outward steps in the operator's name.
   as the relay's `question_relay.command`; the operator's real outbound moves to
   `auto_answer.forward_command`. No hook changes: the relay already hands every blocking point to
   "the command" and takes the first answer file that appears.
-- **The decider looks it up, then decides.** One headless model call per question, run in the
+- **The decider looks it up, then decides.** The project knowledge-base search (`set-kb`) runs first
+  and hands its best sections to one headless model call per question, run in the
   asking session's working directory with read-only tools, is pointed at where decisions live: the
   project and user instruction files, the project's rules, the session's newest handoff, the open
   OpenSpec changes, the bug register and the project's memory directory. It returns one choice with

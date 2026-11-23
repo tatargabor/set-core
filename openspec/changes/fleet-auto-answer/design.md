@@ -18,6 +18,8 @@ A headless model call already exists for the wait detector and the continuation 
 **Goals:**
 - Answer on the operator's behalf when the answer is an earlier decision, is written down, or is
   the operator's likely choice — through the existing relay contract, without touching its hooks.
+- Find an answer that is written anywhere in the project's indexed knowledge, not only in the
+  places named in advance.
 - Make every automatic answer visible before it acts, attributable to a source, and overridable.
 - Never approve an outward or irreversible step, and never answer a permission prompt.
 
@@ -92,6 +94,17 @@ changes under `openspec/changes/`, `openspec/bugs/README.md` when present, the p
 directory — and any `auto_answer.extra_paths`. These are framework and runtime conventions, not a
 project's domain, so the core layer stays domain-free. The output is one JSON object; anything
 else is "no decision".
+
+### D8a — The knowledge base runs first, and the decider runs it, not the model
+The fixed locations in D8 find what we already know the place of. *"It is in the information, it
+only has to be looked up"* is the case they miss: a decision in a meeting note, a design paragraph,
+a client document the project indexes. `set-kb search --json` searches the project's whole indexed
+knowledge at section level with a stable output contract, and a project can configure roots and
+channels for exactly this. The decider runs it in the asking tree with the question and options
+and passes the top sections to the model as candidates; the model may open them in full with its
+read tools. The decider, not the model, runs the search, so the model keeps read-only tools and
+needs no shell. A project where `set-kb doctor` reports search as not working is not blocked: the
+fixed locations still apply, and the log says the knowledge base was not used.
 
 ### D9 — What is stored, and where
 A pending record per call (`<state>/auto-answer/<id>.json`: option, tier, source paths and
