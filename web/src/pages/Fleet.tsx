@@ -41,6 +41,7 @@ import FleetWirePanel from '../components/FleetWirePanel'
 import type { ChannelsPayload } from '../lib/fleetWireLayout'
 import FleetUsageStrip from '../components/FleetUsageStrip'
 import FleetWaves from '../components/FleetWaves'
+import FleetMap from '../components/FleetMap'
 import FleetRelay from '../components/FleetRelay'
 import FleetIdleClose from '../components/FleetIdleClose'
 import FleetSplitter from '../components/FleetSplitter'
@@ -3995,6 +3996,12 @@ export default function Fleet() {
             blocked and unreadable counts ride on the closed chip, and the list
             it opens floats under the header and pushes nothing. */}
         <FleetWaves selected={latestOn ? null : active?.name ?? null} onSelectProject={selectProject} />
+
+        {/* Who exists for what, and who is asking whom. The closed control
+            carries the count of agents with no mandate and of requests that
+            are waiting or failed; the map it opens floats over the screen and
+            moves nothing on it. */}
+        <FleetMap />
 
         {/* The account quota, pushed right on the header's own line. Bars only at
             rest — asked for by the user on the built screen, and the same

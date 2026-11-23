@@ -61,8 +61,12 @@ export const UNMEASURED_TITLE =
 
 export const NO_GOAL_NOTE =
   'no goal — this agent will have no mandate. One can be declared later from its tile.'
+export const GOAL_NOTE =
+  'recorded with the start. The agent is told this at every session start, clear and compaction.'
 
-function describe(m: FleetMandate): string {
+/** The mandate as lines a detail can list: goal, scope, closing condition,
+    who asked (as the claim it is), whether the agent was told, and the rule. */
+export function mandateDescription(m: FleetMandate): string[] {
   const lines = [`${m.kind}: ${m.goal}`]
   const paths = (m.scope?.paths ?? []).filter(Boolean)
   if (paths.length) lines.push(`scope: ${paths.join(', ')}`)
@@ -75,8 +79,10 @@ function describe(m: FleetMandate): string {
       ? 'Declared after the start. The agent has NOT been told yet — it reads this at its next session start, clear or compaction, if the framework started it.'
       : 'The agent has not been told yet — its session-start hook has not read this record.')
   lines.push(m.kind === 'desk' ? DESK_RULE_NOTE : WORK_RULE_NOTE)
-  return lines.join('\n')
+  return lines
 }
+
+const describe = (m: FleetMandate): string => mandateDescription(m).join('\n')
 
 export function mandateStanding(
   agent: Pick<FleetAgent, 'mandate' | 'mandate_absent' | 'terminal_label' | 'session_id'>,

@@ -24,6 +24,14 @@ ANS_TS = "2026-11-23T19:12:22.005+01:00"
 MARKER = "ZZ-BODY-MARKER-ZZ"
 
 
+@pytest.fixture(autouse=True)
+def _no_listing_carried_between_tests():
+    """The map's inventory cache is module state; a test must not read another test's fleet."""
+    fm._MAP_LISTING[:] = []
+    yield
+    fm._MAP_LISTING[:] = []
+
+
 @pytest.fixture
 def env(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
@@ -452,3 +460,44 @@ def test_a_map_with_no_inventory_says_so(env, monkeypatch):
     monkeypatch.setattr(fleet_api, "fleet_agents", boom)
     out = fm.fleet_map()
     assert out["sources"]["inventory"] is False and out["projects"] == []
+
+
+def test_the_map_reuses_one_inventory_read_for_a_few_seconds_and_no_longer(env, monkeypatch):
+    reads = []
+    clock = [100.0]
+
+    def listing(include_oneshot=False):
+        reads.append(1)
+        return _listing(_row(len(reads), project="alpha", label=f"alpha-{len(reads)}"))
+
+    monkeypatch.setattr(fleet_api, "fleet_agents", listing)
+    monkeypatch.setattr(fm.time, "monotonic", lambda: clock[0])
+    first = fm.fleet_map()
+    clock[0] += fm.MAP_LISTING_MAX_AGE - 1
+    again = fm.fleet_map()
+    assert len(reads) == 1
+    assert again["projects"][0]["agents"][0]["label"] == first["projects"][0]["agents"][0]["label"] == "alpha-1"
+    clock[0] += 2
+    assert fm.fleet_map()["projects"][0]["agents"][0]["label"] == "alpha-2" and len(reads) == 2
+
+
+def test_a_failed_inventory_read_is_not_kept_as_the_map_s_answer(env, monkeypatch):
+    def boom(include_oneshot=False):
+        raise RuntimeError("no inventory")
+
+    monkeypatch.setattr(fleet_api, "fleet_agents", boom)
+    assert fm.fleet_map()["sources"]["inventory"] is False
+    monkeypatch.setattr(fleet_api, "fleet_agents",
+                        lambda include_oneshot=False: _listing(_row(7, project="alpha", label="alpha-1200")))
+    out = fm.fleet_map()
+    assert out["sources"]["inventory"] is True and out["projects"][0]["name"] == "alpha"
+
+
+def test_a_decision_never_reads_the_map_s_cached_inventory(env, monkeypatch):
+    """Declaring, resolving and sweeping act on the fleet as it is NOW."""
+    monkeypatch.setattr(fleet_api, "fleet_agents",
+                        lambda include_oneshot=False: _listing(_row(7, project="alpha", label="old")))
+    fm.fleet_map()
+    monkeypatch.setattr(fleet_api, "fleet_agents",
+                        lambda include_oneshot=False: _listing(_row(8, project="alpha", label="new")))
+    assert [r["terminal_label"] for r in fm._live_rows()] == ["new"]

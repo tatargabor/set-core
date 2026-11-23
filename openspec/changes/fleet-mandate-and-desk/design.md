@@ -201,6 +201,23 @@ already carries a node-graph library, so the view adds no dependency.
 Two markers are not optional: an agent with no mandate, and an engagement that is waiting or
 failed. Their counts sit on the view's opener, so a collapsed map cannot hide them.
 
+**As built (2026-11-23), three things the first drawing got wrong and the screen showed:**
+
+- *Where the view lives.* The existing dock store is per project; the map is machine-wide. So
+  the map is a floating panel opened from the fleet header that can be held against the right
+  edge, the bottom edge or the whole area (the choice is remembered per browser). It takes no
+  room from the fleet under it — measured.
+- *How an edge runs.* Curves from box to box crossed the projects between them, lay on each
+  other, and their labels sat on agent names. Edges now run only in the gaps — the gutter
+  beside a column, the corridor between two rows — shifted by a lane, with a test asserting no
+  route crosses a box it does not end in.
+- *What is folded.* Idle projects are one node; a declared flow between two idle projects is
+  counted in a notice, not drawn.
+
+The map reads the whole inventory, measured at about three seconds of server time per read, so
+the closed control asks once a minute, the open map every fifteen seconds, and the route reuses
+one inventory read for ten seconds. Decisions (declare, resolve, sweep) never use that cache.
+
 ### D13 — Flows adopt the shape an existing project map already uses
 
 A project map maintained by hand in one of the operator's repositories describes each relation

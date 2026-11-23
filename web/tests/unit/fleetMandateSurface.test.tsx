@@ -88,8 +88,10 @@ describe('the start form', () => {
     const calls = stubFleet()
     const form = await openStartForm()
     fireEvent.change(await found('[data-fleet-mandate-goal]'), { target: { value: ' ship the importer ' } })
-    // The note about "no mandate" is gone the moment there is a goal.
+    // The note about "no mandate" is replaced the moment there is a goal — replaced, not
+    // removed: a sentence that leaves takes its height with it, and the form jumps.
     await waitFor(() => expect(document.querySelector('[data-fleet-start="no-mandate"]')).toBeNull())
+    expect((await found('[data-fleet-start="mandate-set"]')).textContent).toContain('every session start')
     fireEvent.click(await found('[data-fleet-mandate-more]'))
     const extras = await found('[data-fleet-mandate-extras]')
     fireEvent.change(extras.querySelector('[aria-label="paths this agent is confined to"]')!,

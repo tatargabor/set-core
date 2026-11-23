@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import {
-  EMPTY_DRAFT, NO_GOAL_NOTE,
+  EMPTY_DRAFT, GOAL_NOTE, NO_GOAL_NOTE,
   declareOutcome, mandateFields, mandateStanding,
   type MandateDraft,
 } from '../lib/fleetMandate'
@@ -99,13 +99,23 @@ export function MandateFieldset({ draft, onChange, autoFocus = false }: {
   )
 }
 
-/** The one sentence under the goal fields of the start form. */
+/**
+ * The one sentence under the goal fields of the start form.
+ *
+ * It ALWAYS renders, at a fixed two-line height. The first build showed it only
+ * while the goal was empty, and on the screen the whole dialog jumped twenty
+ * pixels at the first keystroke — the fields moved out from under the cursor
+ * because a sentence left. The space is reserved; only the sentence changes.
+ */
 export function StartMandateNote({ draft }: { draft: MandateDraft }) {
   const fields = mandateFields(draft)
-  if (fields.kind === 'mandate') return null
-  return fields.kind === 'problem'
-    ? <span data-fleet-start="mandate-problem" className="text-xs text-red-400">{fields.message}</span>
-    : <span data-fleet-start="no-mandate" className="text-xs text-fg-ghost">{NO_GOAL_NOTE}</span>
+  const reserve = 'block min-h-8 text-xs'
+  if (fields.kind === 'problem') {
+    return <span data-fleet-start="mandate-problem" className={`${reserve} text-red-400`}>{fields.message}</span>
+  }
+  return fields.kind === 'mandate'
+    ? <span data-fleet-start="mandate-set" className={`${reserve} text-fg-ghost`}>{GOAL_NOTE}</span>
+    : <span data-fleet-start="no-mandate" className={`${reserve} text-fg-ghost`}>{NO_GOAL_NOTE}</span>
 }
 
 function DeclareDialog({ agent, onClose }: { agent: FleetAgent; onClose: () => void }) {

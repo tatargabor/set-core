@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -40,6 +41,22 @@ router = APIRouter()
 
 #: An engagement that failed is shown on the map for this long, then drops off it.
 FAILED_VISIBLE_SECONDS = 3600.0
+
+#: How long one inventory read serves the MAP. A read costs seconds (it is the whole
+#: discovery pass), and the map is a view several readers may hold open at once. Never
+#: used for a decision — declaring, resolving and sweeping always read fresh.
+MAP_LISTING_MAX_AGE = 10.0
+_MAP_LISTING: List[Any] = []
+
+
+def _listing_for_map() -> Dict[str, Any]:
+    """The inventory for the map, reused for a few seconds. Raises what the read raises."""
+    now = time.monotonic()
+    if _MAP_LISTING and now - _MAP_LISTING[0] < MAP_LISTING_MAX_AGE:
+        return _MAP_LISTING[1]
+    listing = fleet_api.fleet_agents(include_oneshot=False)
+    _MAP_LISTING[:] = [now, listing]
+    return listing
 
 
 # --------------------------------------------------------------------------- #
@@ -433,7 +450,7 @@ def fleet_map() -> Dict[str, Any]:
     """
     sources: Dict[str, Any] = {"inventory": True, "mandates": True, "bus": True, "roles": "ok"}
     try:
-        listing = fleet_api.fleet_agents(include_oneshot=False)
+        listing = _listing_for_map()
     except Exception as exc:  # noqa: BLE001
         logger.warning("fleet map: the inventory could not be read (%s)", type(exc).__name__)
         listing = {"projects": []}
@@ -442,7 +459,6 @@ def fleet_map() -> Dict[str, Any]:
     engaged = _engagement_views()
     if not engaged["measured"]:
         sources["bus"] = False
-    import time as _time
     shown = [
         e for e in engaged["engagements"]
         if e["state"] in ("resolving", "open", "unmeasured")
@@ -514,5 +530,5 @@ def fleet_map() -> Dict[str, Any]:
         "relations": relations,
         "counts": {"no_mandate": no_mandate, "waiting": waiting, "failed": failed},
         "sources": sources,
-        "generated_at": _time.time(),
+        "generated_at": time.time(),
     }
