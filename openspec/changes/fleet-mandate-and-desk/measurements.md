@@ -125,3 +125,38 @@ So `set-fleet-ask` names no room: the request lands in one stable room per pair 
 however many desks come and go, and the engagement's pointer is read from the send's answer.
 The bus's machine-readable agent list carries each seat's FULL session id, which is how the
 command finds the asker's own seat.
+
+## M8 — end to end on the live services (task 9.1), 2026-11-23
+
+After the agent-owner restart (20:51, `features` carry `mandate`). Asker: a set-core session's
+own seat. Target: an enrolled framework project with no live session (`sac doctor --json`:
+`session-start` hook present, `live: None`).
+
+```
+21:24:11  set-fleet-ask --question --subject "9.1 live check" --from <set-core seat> <project> "<one-line question>"
+          → "e-0f4b94f72027: sent to <project>'s desk <project>#4415656a (started for this request).
+             The reply arrives on the bus, linked to your request."
+21:24:21  the QUESTION lands in the project pair room `dm-<project>--set-core`, addressed to the desk seat
+21:24:25  GET /api/fleet/map → relations: one `engagement` (state open, age 14 s, subject "9.1 live check")
+          and one `started` (is_claim true) from the asker to the desk; the desk carries kind `desk`
+21:24:36  ANSWER → asker (re: 21:24:21.797) — the reply is LINKED; content correct against the repo
+21:24:41  the asker's `sac wait --once` woke on that ANSWER
+21:25:08  set-fleet-ask --list → `e-0f4b94f72027  answered  …  57 s  9.1 live check`
+```
+
+Time from the command to the linked answer: 25 s, of which ~10 s was the desk getting a seat.
+
+**What was NOT observed, and why.** The desk did not go quiet after answering: the project's
+pair room held three older REQUESTs addressed to the PROJECT (from an earlier set-core session,
+left unread because no session of that project was running), and the desk took them up as its
+next work. That is the desk doing its job — a request addressed to a project is the desk's —
+but it means "the desk stops after the bound" (default quiet bound: 30 minutes, `desk.DEFAULT_QUIET_MINUTES`) could not be seen in
+this run. It is observed when the desk next goes quiet; until then 9.1 stays open on that one
+point.
+
+**A side finding during the run.** set-web was restarted by another session at 21:24:38 and
+answered nothing until 21:25:04: application startup waits on a 15 s Discord connect timeout
+(`[SET] Discord bot timeout — not connected`, then `Application startup complete`). The bus
+path was unaffected — the answer arrived while the dashboard was down — but every fleet
+command that reads the dashboard (`set-fleet-ask --list`, the map) failed with connection
+refused for ~26 s.
