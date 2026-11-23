@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -23,11 +26,37 @@ STAMP = Path(".set/handoff/.reload-wired-at")
 pytestmark = pytest.mark.skipif(not shutil.which("jq"), reason="set-deploy-hooks needs jq")
 
 
-def run(tree, *flags):
+def state_env(state, xdg=True):
+    """HOME/XDG_STATE_HOME in a sandbox: no run of the script may touch the real home."""
+    env = dict(os.environ, HOME=str(state))
+    if xdg:
+        env["XDG_STATE_HOME"] = str(state)
+    else:
+        env.pop("XDG_STATE_HOME", None)
+    return env
+
+
+def run(tree, *flags, state=None, xdg=True):
+    state = Path(state or tempfile.mkdtemp(prefix="deploy-hooks-state-"))
     r = subprocess.run(["bash", str(SCRIPT), "--auto-clear", *flags, str(tree)],
-                       capture_output=True, text=True, timeout=60)
+                       capture_output=True, text=True, timeout=60, env=state_env(state, xdg))
     assert r.returncode == 0, r.stderr
     return r.stdout
+
+
+def backup_root(state, xdg=True):
+    root = Path(state) if xdg else Path(state) / ".local" / "state"
+    return root / "set-core" / "settings-backup"
+
+
+def tree_key(tree):
+    """The backup dir key: absolute TARGET_DIR, every / turned into -, leading - stripped."""
+    return str(tree).replace("/", "-").lstrip("-")
+
+
+def backup_path(out):
+    [line] = [l for l in out.splitlines() if "settings backup:" in l]
+    return Path(line.split("settings backup:", 1)[1].strip())
 
 
 def settings(tree):
@@ -140,3 +169,34 @@ def test_a_dry_run_writes_nothing(tmp_path, seed):
 def test_dry_run_is_refused_outside_auto_clear(tmp_path):
     r = subprocess.run(["bash", str(SCRIPT), "--dry-run", str(tmp_path)], capture_output=True, text=True)
     assert r.returncode != 0 and not (tmp_path / ".claude").exists()
+
+
+def test_a_merge_backs_up_outside_the_tree(tmp_path):
+    """The pre-merge settings survive outside the tree; no settings.json.bak in it."""
+    write(tmp_path, {"Stop": [{"hooks": [{"type": "command", "command": "echo stop"}]}]})
+    pre = (tmp_path / ".claude" / "settings.json").read_bytes()
+    state = Path(tempfile.mkdtemp(prefix="deploy-hooks-state-"))
+    out = run(tmp_path, state=state)
+    assert not list(tmp_path.rglob("*.bak")), "no backup may sit in the project tree"
+    path = backup_path(out)
+    assert path.is_file() and path.read_bytes() == pre, "the backup holds the PRE-merge content"
+    assert path.parent == backup_root(state) / tree_key(tmp_path)
+    assert re.fullmatch(r"settings\.json\.\d{8}T\d{6}Z", path.name), path.name
+
+
+def test_a_dry_run_writes_no_backup(tmp_path):
+    state = Path(tempfile.mkdtemp(prefix="deploy-hooks-state-"))
+    write(tmp_path, {"Stop": [{"hooks": [{"type": "command", "command": "echo stop"}]}]})
+    out = run(tmp_path, "--dry-run", state=state)
+    assert not backup_root(state).exists(), "a dry-run plans, it does not back up"
+    assert "backup" not in out
+
+
+def test_without_xdg_state_home_the_backup_goes_under_home(tmp_path):
+    """The documented default: XDG_STATE_HOME unset → $HOME/.local/state/..."""
+    write(tmp_path, {"Stop": [{"hooks": [{"type": "command", "command": "echo stop"}]}]})
+    state = Path(tempfile.mkdtemp(prefix="deploy-hooks-state-"))
+    out = run(tmp_path, state=state, xdg=False)
+    path = backup_path(out)
+    assert path.parent == backup_root(state, xdg=False) / tree_key(tmp_path)
+    assert path.is_file()

@@ -9,8 +9,11 @@ git-bus MCP tools. Measured 2026-11-23: the fleet reads neither `.set/activity.j
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -28,15 +31,20 @@ def _commands(settings: Path) -> list[str]:
             for e in entries for h in e.get("hooks", [])]
 
 
-def _deploy(proj: Path) -> subprocess.CompletedProcess:
-    return subprocess.run([str(DEPLOY), str(proj)], check=True, capture_output=True, text=True, timeout=60)
+def _deploy(proj: Path, state: Path | None = None) -> subprocess.CompletedProcess:
+    # HOME/XDG_STATE_HOME in a sandbox: no run of the script may touch the real home.
+    state = Path(state or tempfile.mkdtemp(prefix="hook-diet-state-"))
+    env = dict(os.environ, HOME=str(state), XDG_STATE_HOME=str(state))
+    return subprocess.run([str(DEPLOY), str(proj)], check=True, capture_output=True, text=True,
+                          timeout=60, env=env)
 
 
 def test_a_fresh_project_gets_none_of_the_retired_hooks(tmp_path):
-    _deploy(tmp_path)
+    out = _deploy(tmp_path)
     cmds = _commands(tmp_path / ".claude" / "settings.json")
     assert not RETIRED & set(cmds)
     assert "set-hook-waveboard" in cmds and "set-hook-question-relay" in cmds
+    assert "settings backup:" not in out.stdout, "nothing existed to back up"
 
 
 def test_an_old_project_is_stripped_and_keeps_its_own_hooks(tmp_path):
@@ -83,3 +91,21 @@ def test_a_second_run_is_a_no_op(tmp_path):
     before = settings.read_text()
     _deploy(tmp_path)
     assert settings.read_text() == before
+
+
+def test_an_updated_settings_file_is_backed_up_outside_the_tree(tmp_path):
+    """The base branch's backup lands outside the tree and holds the PRE-merge content."""
+    (tmp_path / ".claude").mkdir()
+    settings = tmp_path / ".claude" / "settings.json"
+    pre = json.dumps({"hooks": {"UserPromptSubmit": [{"matcher": "", "hooks": [
+        {"type": "command", "command": "own-prompt-hook"}]}]}})
+    settings.write_text(pre)
+    state = Path(tempfile.mkdtemp(prefix="hook-diet-state-"))
+    out = _deploy(tmp_path, state=state).stdout
+    assert not list(tmp_path.rglob("*.bak")), "no backup may sit in the project tree"
+    [line] = [l for l in out.splitlines() if "settings backup:" in l]
+    path = Path(line.split("settings backup:", 1)[1].strip())
+    assert path.is_file() and path.read_text() == pre, "the backup holds the PRE-merge content"
+    key = str(tmp_path).replace("/", "-").lstrip("-")
+    assert path.parent == state / "set-core" / "settings-backup" / key
+    assert re.fullmatch(r"settings\.json\.\d{8}T\d{6}Z", path.name), path.name

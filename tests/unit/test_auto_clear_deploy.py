@@ -66,7 +66,13 @@ def box(tmp_path):
     log = tmp_path / "systemctl.log"
     (bindir / "systemctl").write_text(f'#!/bin/sh\necho "$*" >> {log}\n')
     (bindir / "systemctl").chmod(0o755)
-    env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}")
+    # HOME/XDG_STATE_HOME in the sandbox too: the hook merge backs settings up under the
+    # state dir, and no test run may touch the real home. (The unit dir uses `home`
+    # explicitly, not env HOME.)
+    state_home = tmp_path / "statehome"
+    state_home.mkdir()
+    env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}",
+               HOME=str(state_home), XDG_STATE_HOME=str(state_home))
     registry = {"set-claude-handoff": {"path": str(pkg)}, "proj": {"path": str(tree)}}
 
     def run(dry_run=False, reg=None):

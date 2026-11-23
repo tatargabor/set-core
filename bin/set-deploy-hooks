@@ -26,7 +26,10 @@
 # --no-memory is accepted and does nothing: its behaviour is now the only behaviour, and
 # rejecting a flag existing callers still pass would break unrelated tooling.
 # Idempotent: skips if the base hooks are present and no memory hook remains.
-# Creates backup before modifying existing settings.
+# Before modifying an existing settings.json it backs the file up OUTSIDE the
+# project tree, under ${XDG_STATE_HOME:-$HOME/.local/state}/set-core/
+# settings-backup/ (see backup_settings) — never a .bak in the tree, and never
+# anything on a --dry-run.
 
 set -e
 
@@ -225,6 +228,28 @@ _merge_hooks_additively() {
     ' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
 }
 
+# Back up settings.json OUTSIDE the project tree, before a merge rewrites it.
+#
+# The old in-tree copy ("$settings_file.bak") left an untracked file in every
+# consumer's git status. The backup lives under the machine's state dir instead,
+# in a directory keyed by the absolute TARGET_DIR with every / turned into -
+# (leading - stripped), so trees map 1:1 to backup dirs without nesting.
+#
+# Printed with plain echo, NOT _info: the init report must name the backup even
+# under --quiet. --dry-run never reaches a call site, so it never backs up.
+backup_settings() {
+    local abs key dir stamp path
+    abs=$(cd "$TARGET_DIR" && pwd)
+    key="${abs//\//-}"
+    key="${key#-}"
+    dir="${XDG_STATE_HOME:-$HOME/.local/state}/set-core/settings-backup/$key"
+    mkdir -p "$dir"
+    stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    path="$dir/settings.json.$stamp"
+    cp "$settings_file" "$path"
+    echo "  settings backup: $path"
+}
+
 # ── --auto-clear: the handoff package's two hooks (auto-clear-default-install D2) ──
 #
 # The strings are exactly what the package's `init --auto-clear` prints (stable, confirmed by
@@ -275,7 +300,7 @@ if $AUTO_CLEAR; then
         $want_arm && echo "  auto-clear hooks: would add arm (PostToolUse Write|Edit|MultiEdit|Bash)"
         exit 0
     fi
-    if [[ -f "$settings_file" ]]; then cp "$settings_file" "$settings_file.bak"; else echo '{}' > "$settings_file"; fi
+    if [[ -f "$settings_file" ]]; then backup_settings; else echo '{}' > "$settings_file"; fi
     _merge_hooks_additively "$settings_file" "$desired" false false
     if $want_reload; then
         mkdir -p "$TARGET_DIR/.set/handoff"
@@ -326,8 +351,8 @@ if [[ -f "$settings_file" ]]; then
         return 0 2>/dev/null || exit 0
     fi
 
-    # Backup before modification
-    cp "$settings_file" "$settings_file.bak"
+    # Backup before modification — outside the tree, see backup_settings
+    backup_settings
 
 
     # One merge, always with BOTH removals on: the legacy individual scripts and every
