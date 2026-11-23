@@ -46,9 +46,14 @@ def sp(env, *args, cwd=None):
 
 
 def untouched(repo: Path) -> None:
-    status = subprocess.run(["git", "-C", str(repo), "status", "--porcelain", "--ignored"], capture_output=True, text=True).stdout
+    """No deploy: nothing tracked or trackable is written. The one machine-local file the
+    relay wiring adds (863a7a18, `relay-wire-on-register`) is `.claude/settings.local.json`,
+    kept out of git via `.git/info/exclude` — allowed, and nothing else under `.claude/`."""
+    status = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True).stdout
     assert status == "", f"nothing may be written into the repository:\n{status}"
-    assert not (repo / ".claude").exists()
+    claude = repo / ".claude"
+    extra = sorted(str(f.relative_to(repo)) for f in claude.rglob("*") if f.is_file()) if claude.exists() else []
+    assert extra in ([], [".claude/settings.local.json"]), f"only the machine-local relay file may appear: {extra}"
 
 
 def test_register_adds_a_no_deploy_entry_and_writes_nothing_into_the_repo(env, tmp_path):
@@ -128,3 +133,48 @@ def test_install_redeploy_loop_skips_no_deploy_entries(tmp_path):
     }}))
     out = subprocess.run(["jq", "-r", m.group(1), str(sample)], capture_output=True, text=True, check=True).stdout.split()
     assert out == ["/x/app", "/x/legacy"]
+
+
+# B-194: git reports the RESOLVED path, the registry may hold a symlink spelling.
+
+def linked(tmp_path, repo: Path, name="link") -> Path:
+    link = tmp_path / name
+    link.symlink_to(repo, target_is_directory=True)
+    return link
+
+
+def test_init_dry_run_in_a_repo_registered_through_a_symlink_proceeds(env, tmp_path):
+    repo = data_repo(tmp_path, "real")
+    link = linked(tmp_path, repo, "app")
+    reg = registry(env)
+    reg["projects"]["app"] = {"path": str(link), "addedAt": "2026-11-23T00:00:00Z"}
+    (Path(env["SET_CONFIG_DIR"]) / "projects.json").write_text(json.dumps(reg))
+    r = sp(env, "init", "--name", "app", "--dry-run", cwd=link)
+    out = r.stdout + r.stderr
+    assert "already used for" not in out, out
+    assert r.returncode == 0, out
+    assert set(registry(env)["projects"]) == {"app"}
+
+
+def test_init_refuses_a_no_deploy_repo_registered_through_a_symlink(env, tmp_path):
+    repo = data_repo(tmp_path, "real")
+    link = linked(tmp_path, repo, "corpus")
+    assert sp(env, "register", "--name", "corpus", "--path", str(link)).returncode == 0
+    # register resolves via git, so force the symlink spelling into the entry
+    reg = registry(env)
+    reg["projects"]["corpus"]["path"] = str(link)
+    (Path(env["SET_CONFIG_DIR"]) / "projects.json").write_text(json.dumps(reg))
+    r = sp(env, "init", "--name", "other-name", cwd=repo)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "no deploy" in r.stdout + r.stderr
+    untouched(repo)
+
+
+def test_register_through_the_other_spelling_is_idempotent(env, tmp_path):
+    repo = data_repo(tmp_path, "real")
+    link = linked(tmp_path, repo, "corpus")
+    reg = registry(env)
+    reg["projects"]["corpus"] = {"path": str(link), "addedAt": "2026-11-23T00:00:00Z", "deploy": False}
+    (Path(env["SET_CONFIG_DIR"]) / "projects.json").write_text(json.dumps(reg))
+    r = sp(env, "register", "--name", "corpus", "--path", str(repo))
+    assert r.returncode == 0 and "nothing to do" in r.stdout + r.stderr, r.stdout + r.stderr

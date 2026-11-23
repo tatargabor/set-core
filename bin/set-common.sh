@@ -250,6 +250,26 @@ get_project_path() {
     json_get "$CONFIG_FILE" ".projects.\"$name\".path"
 }
 
+# True when two paths name the same directory. The registry may hold a symlink
+# spelling while git reports the resolved one (B-194), so a string compare is wrong.
+same_dir() {
+    [[ -n "$1" && -n "$2" ]] || return 1
+    [[ "$1" == "$2" ]] && return 0
+    [[ "$(realpath -m -- "$1" 2>/dev/null)" == "$(realpath -m -- "$2" 2>/dev/null)" ]]
+}
+
+# Name of the registry entry with deploy == false whose path is the same directory
+# as $1, or nothing. Compared with same_dir, so a symlink spelling still matches.
+no_deploy_entry_for() {
+    local dir="$1" n p
+    ensure_config
+    while IFS=$'\t' read -r n p; do
+        [[ -n "$n" ]] || continue
+        if same_dir "$p" "$dir"; then echo "$n"; return 0; fi
+    done < <(jq -r '.projects // {} | to_entries[] | select(.value.deploy == false) | [.key, .value.path] | @tsv' "$CONFIG_FILE")
+    return 0
+}
+
 # Get default project name
 get_default_project() {
     ensure_config

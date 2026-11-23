@@ -962,9 +962,7 @@ cmd_init() {
     # A repository registered with `set-project register` is a data repository: refuse to
     # deploy into it, matched by PATH so a different --name cannot slip past.
     local no_deploy_name
-    no_deploy_name=$(jq -r --arg p "$git_root" \
-        '[.projects // {} | to_entries[] | select(.value.path == $p and .value.deploy == false) | .key][0] // empty' \
-        "$CONFIG_FILE")
+    no_deploy_name=$(no_deploy_entry_for "$git_root")
     if [[ -n "$no_deploy_name" ]]; then
         error "This repository is registered as '$no_deploy_name' with no deploy (set-project register): init would write set-core's files into it."
         echo "If it should now get set-core, run: set-project remove $no_deploy_name && set-project init"
@@ -975,7 +973,7 @@ cmd_init() {
     local existing_path
     existing_path=$(get_project_path "$name")
     if [[ -n "$existing_path" ]]; then
-        if [[ "$existing_path" == "$git_root" ]]; then
+        if same_dir "$existing_path" "$git_root"; then
             if $in_worktree; then
                 info "Project '$name' already registered. Updating set-core deployment..."
                 echo "  Main repo: $git_root"
@@ -1285,7 +1283,7 @@ cmd_register() {
     local existing
     existing=$(get_project_path "$name")
     if [[ -n "$existing" ]]; then
-        if [[ "$existing" == "$root" ]]; then
+        if same_dir "$existing" "$root"; then
             if [[ "$(jq -r --arg n "$name" '.projects[$n].deploy' "$CONFIG_FILE")" == "false" ]]; then
                 info "Project '$name' is already registered at $root (no deploy) — nothing to do"
                 return 0
