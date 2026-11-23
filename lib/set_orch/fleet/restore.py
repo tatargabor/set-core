@@ -119,6 +119,21 @@ def _outcome(entry: Dict[str, Any], status: str, reason: Optional[str] = None,
     }
 
 
+def _mandate_for_session(mandates: Any, session_id: str) -> Optional[Dict[str, Any]]:
+    from . import mandate as _mandate
+
+    return _mandate.for_session(mandates.all(), session_id)
+
+
+def _owner_knows_mandates(client: Any) -> bool:
+    """An owner older than the mandate parameter would drop it silently; then send none."""
+    probe = getattr(client, "has_feature", None)
+    try:
+        return bool(probe("mandate")) if callable(probe) else False
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def restore(
     project: str,
     *,
@@ -126,8 +141,15 @@ def restore(
     known_roots: Optional[Set[str]] = None,
     client: Optional[Any] = None,
     roster_path: Optional[str] = None,
+    mandates: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Attempt the selected recorded entries for one project, or all of them.
+
+    `mandates` is the mandate store, passed by the caller that owns it. With it, a restored
+    agent continues the mandate its recorded session held: the id goes back into the
+    process's environment and the record is re-pointed at the restored label. Without it
+    nothing about mandates is read or written — the fleet layer does not open a store on
+    its own initiative.
 
     **`keys` absent, empty and populated are three different requests.** `None`
     means no selection was made and the whole record is attempted — the
@@ -245,6 +267,19 @@ def restore(
         # stored label there is nothing to continue, and `None` says so rather
         # than pointing at a unit that means something else.
         provider_unit = scopes.unit_name(str(recorded)) if recorded else None
+        # The mandate this session held, looked up WITHOUT reopening it: the record is
+        # re-pointed only after the resume succeeded, so a refused restore leaves no
+        # mandate claiming an agent that never came back.
+        mandate_id = None
+        if mandates is not None:
+            try:
+                held_mandate = _mandate_for_session(mandates, str(session_id))
+                if held_mandate is not None and _owner_knows_mandates(client):
+                    mandate_id = held_mandate["id"]
+            except Exception as exc:  # noqa: BLE001 — a mandate must not block a restore
+                logger.warning("fleet restore: the mandate of %s could not be read (%s)",
+                               label, type(exc).__name__)
+        extra = {"mandate_id": mandate_id} if mandate_id else {}
         try:
             agent = client.recover(
                 unit=scopes.unit_name(label),
@@ -254,6 +289,7 @@ def restore(
                 provider_unit=provider_unit,
                 # No resume_argv: the owner's own default is used, so this cannot
                 # drift from the argv a bare interactive session gets.
+                **extra,
             )
         except OwnerUnavailable:
             # The owner went away mid-restore. Everything after this would fail
@@ -264,6 +300,12 @@ def restore(
             logger.warning("fleet restore: %s (%s) refused: %s", label, session_id, exc)
             continue
         held.add(label)
+        if mandate_id:
+            try:
+                mandates.resume(str(session_id), label=label, unit=agent.get("unit"))
+            except Exception as exc:  # noqa: BLE001 — the agent IS running
+                logger.warning("fleet restore: %s resumed, but its mandate %s was not re-pointed (%s)",
+                               label, mandate_id, type(exc).__name__)
         # 7.7. `provider_recorded: false` is a GAP, not a default: an entry
         # restored before the record existed, or one started by something that
         # named no provider, resumes on whatever the ambient environment
@@ -277,7 +319,8 @@ def restore(
                                 name_source=name_source,
                                 provider_recorded=resumed_provider is not None,
                                 provider=resumed_provider,
-                                model=agent.get("model")))
+                                model=agent.get("model"),
+                                **({"mandate_id": mandate_id} if mandate_id else {})))
         logger.info("fleet restore: %s resumed session %s as %s (pid %s)",
                     project, session_id, label, agent.get("pid"))
 

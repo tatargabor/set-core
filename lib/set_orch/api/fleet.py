@@ -50,6 +50,7 @@ from ..fleet.discovery import (
 )
 from ..fleet import scopes as fleet_scopes
 from ..fleet import tmux_view as fleet_tmux_view
+from ..fleet import mandate as fleet_mandate
 from ..fleet import instruct as fleet_instruct
 from ..fleet import channels as fleet_channels_mod
 from ..fleet import purpose as fleet_purpose
@@ -168,6 +169,52 @@ def _cache_payload(agent) -> Dict[str, Any]:
     }}
 
 
+#: "The caller did not ask about mandates" — distinct from None, which means the
+#: store was asked and could not be read. A payload built without the question
+#: carries neither a mandate nor a reason for its absence.
+_MANDATES_NOT_ASKED = object()
+
+
+def _mandates_for_listing() -> Optional[Dict[str, Dict[str, Any]]]:
+    """Every mandate record, read once per listing — or None when the store is unreadable."""
+    try:
+        return fleet_mandate.MandateStore().all()
+    except fleet_mandate.MandateStoreUnreadable:
+        return None
+    except OSError as exc:
+        logger.warning("fleet api: the mandate store could not be read (%s)", type(exc).__name__)
+        return None
+
+
+def _settle_mandates(grouped: List[Dict[str, Any]],
+                     mandates: Optional[Dict[str, Dict[str, Any]]]) -> None:
+    """The two writes a listing owes the mandate store, made only when something changed.
+
+    A session id the record does not list yet is appended, and a started mandate whose
+    agent is no longer in the listing is ended. Both are decided from the records already
+    in memory, so an unchanged fleet costs the store nothing — this route is polled.
+    """
+    if mandates is None:
+        return
+    alive: Dict[str, Optional[str]] = {}
+    for group in grouped:
+        for row in group.get("agents") or []:
+            held = row.get("mandate")
+            if held:
+                alive[held["id"]] = row.get("session_id")
+    try:
+        store = fleet_mandate.MandateStore()
+        for mandate_id, session_id in alive.items():
+            if session_id and session_id not in mandates[mandate_id]["session_ids"]:
+                store.observe_session(mandate_id, session_id)
+        gone = [r for r in mandates.values()
+                if r["ended"] is None and r["source"] == "start" and r["id"] not in alive]
+        if gone:
+            store.end_missing(alive.keys())
+    except Exception as exc:  # noqa: BLE001 — a listing must not fail on its bookkeeping
+        logger.warning("fleet api: the mandate store was not updated (%s)", type(exc).__name__)
+
+
 def _terminal_population(
     pid: int, owned: Optional[Dict[int, Dict[str, Any]]],
 ) -> tuple:
@@ -252,7 +299,8 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
                    seats: Optional[Dict[str, Any]] = None,
                    purposes: Optional[List[Any]] = None,
                    descendants: Optional[Dict[str, List[int]]] = None,
-                   declared: Optional[tuple] = None) -> Dict[str, Any]:
+                   declared: Optional[tuple] = None,
+                   mandates: Any = _MANDATES_NOT_ASKED) -> Dict[str, Any]:
     population, terminal_label, scope, tmux_row = _terminal_population(agent.pid, owned)
 
     held = (owned or {}).get(agent.pid, {})
@@ -273,6 +321,21 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         {"seat": requested_by, "source": "recorded"} if requested_by
         else parent_seat(agent.pid)
     )
+    # WHY this agent exists — the mandate record, joined to the running process.
+    # `mandates` is None when the store could not be read, and that is reported
+    # as `unmeasured`: an unreadable store is not evidence that nobody declared
+    # a goal. Nothing is derived from the label, the transcript or the focus.
+    mandate_row = fleet_mandate.payload_for(
+        None if mandates is _MANDATES_NOT_ASKED else mandates,
+        pid=agent.pid, unit=held.get("unit") or scope,
+        session_id=agent.session_id, started_here=population == "started-here",
+    ) if mandates is not _MANDATES_NOT_ASKED else {"mandate": None, "absent": None, "record": None}
+    mandate_record = mandate_row["record"]
+    # The owner forgets who asked when it restarts; the mandate does not. Read
+    # from the record only when the owner has nothing — and still a CLAIM: the
+    # framework never verified it.
+    if not requested_by and mandate_record and mandate_record.get("requested_by"):
+        parent = {"seat": mandate_record["requested_by"], "source": "recorded"}
     return {
         "pid": agent.pid,
         "provider": provider_row,
@@ -403,6 +466,11 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # surface can mark the recorded one as a claim and the ancestry one as
         # measured; they answer different questions and can disagree.
         "parent": parent,
+        # The mandate, or the reason there is none (`not-started-here`,
+        # `not-declared`, `unmeasured`). Never both, and never a goal that was
+        # not recorded as one.
+        "mandate": mandate_row["mandate"],
+        "mandate_absent": mandate_row["absent"],
         # Task 4.4 — whether this agent can be addressed at all, and WHY NOT
         # when it cannot. The reason travels with the row so the surface can put
         # it where the input would be, rather than dropping the agent (which
@@ -738,6 +806,8 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     # Asked once for the whole listing, not once per agent: it is one socket
     # round trip and the answer is the same for every row.
     owned = _owned_by_pid()
+    # Read once for the whole listing, like `owned`: one file, one answer.
+    mandates = _mandates_for_listing()
     # After `owned`, and deliberately: the record stores the name the FRAMEWORK
     # holds, so it cannot be written before the framework has been asked what it
     # holds. The same answer serves both, rather than a second round trip.
@@ -798,7 +868,8 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
             "archived": project.archived,
             "agents": [_disambiguate(
                            _agent_payload(a, states[a.pid], owned, seats, purposes,
-                                          descendants, declared=declared),
+                                          descendants, declared=declared,
+                                          mandates=mandates),
                            held_labels)
                        for a in members],
             # Task 7.14. What is waiting for a HUMAN here, independent of who is
@@ -825,6 +896,8 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
             # `files.py:_DENIED` exists to refuse.
             "checkouts": _servable_checkouts(project.root, known),
         })
+
+    _settle_mandates(grouped, mandates)
 
     tally = _state_tally(states)
     working, unknown, waiting = tally["working"], tally["unknown"], tally["waiting"]
@@ -968,6 +1041,24 @@ def fleet_agent_log(pid: int, limit: int = Query(60, ge=1, le=500)) -> Dict[str,
 # Starting and stopping — through the owner, never from this process (task 5.8)
 # --------------------------------------------------------------------------- #
 
+class MandateBody(BaseModel):
+    """Why the agent is being started. Typed, like everything else on this route.
+
+    The goal is the only required part. It is written into the mandate record by
+    this process and reaches the agent through the session-start hook — it never
+    travels to the owner, and never becomes part of a command line.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    goal: Optional[str] = None
+    #: Paths the work is expected to stay within, and an optional change name.
+    paths: List[str] = []
+    change: Optional[str] = None
+    #: What closes it, in the requester's words.
+    done_when: Optional[str] = None
+
+
 class StartAgentBody(BaseModel):
     """What the screen may ask for.
 
@@ -1005,6 +1096,10 @@ class StartAgentBody(BaseModel):
     #: record still said the provider's name — a false value about who pays.
     provider: Optional[str] = None
     model: Optional[str] = None
+    #: Why this agent is being started. Required when `requested_by` names an
+    #: agent; a start by the person at the screen may leave it out, and the agent
+    #: then has no mandate — recorded as such, never filled with a placeholder.
+    mandate: Optional[MandateBody] = None
 
 
 def _safe_registry() -> List[Dict[str, Any]]:
@@ -1426,16 +1521,78 @@ def fleet_start_agent(body: StartAgentBody) -> Dict[str, Any]:
     if not allowed:
         logger.info("fleet api: refused a start in %s (%s)", cwd, why)
         raise HTTPException(status_code=400, detail=_START_REFUSALS[why].format(cwd=cwd))
+
+    goal = ((body.mandate.goal if body.mandate else None) or "").strip()
+    # An agent starts a peer FOR something, and that something is exactly what
+    # was being lost. A person may want only a terminal; making them type a goal
+    # would produce a placeholder, and a placeholder goal is a false value.
+    if body.requested_by and not goal:
+        logger.info("fleet api: refused a start requested by an agent with no goal (%s)", body.label)
+        raise HTTPException(
+            status_code=400,
+            detail="a start requested by an agent needs a goal: send `mandate.goal` "
+                   "saying what the new agent is for")
+    # A desk's label is its address; only desk resolution may take it.
+    reserved = fleet_mandate.reserved_desk_project(
+        body.label, [p.get("name") for p in _safe_registry() if p.get("name")])
+    if reserved:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{body.label} is the label of {reserved}'s desk and cannot be used for another agent")
+
+    project = _project_for(cwd)
+    # An owner older than the mandate parameter would drop it silently. With a
+    # goal that is a refusal (the agent would never be told); without one the
+    # start goes ahead exactly as it did before, with no carrier.
+    try:
+        carrier = _owner_carries_mandates()
+    except OwnerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if goal and not carrier:
+        raise HTTPException(
+            status_code=503,
+            detail="the agent owner service is older than this request and cannot carry a "
+                   "mandate; restart it (systemctl --user restart set-agent-owner) and try again")
+
+    # EVERY framework start gets an id, goal or not: a mandate declared later
+    # takes that id and is found by the agent's own session-start hook.
+    mandate_id = fleet_mandate.new_id() if carrier else None
+    record = None
+    store = fleet_mandate.MandateStore()
+    if goal:
+        try:
+            record = store.create(
+                mandate_id=mandate_id, kind="work", goal=goal,
+                scope={"paths": list(body.mandate.paths), "change": body.mandate.change},
+                done_when=body.mandate.done_when, requested_by=body.requested_by,
+                project=project, cwd=cwd, label=body.label, source="start", carrier=True,
+            )
+        except (fleet_mandate.MandateStoreUnreadable, OSError) as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"the mandate store could not be written ({type(exc).__name__}); "
+                       "the agent was not started") from exc
     try:
         agent = OwnerClient().start(
             label=body.label, cwd=cwd, rows=body.rows, cols=body.cols,
             requested_by=body.requested_by,
             provider=body.provider, model=body.model,
-            project=_project_for(cwd),
+            project=project,
+            # Sent only when there is something to send: a start without a
+            # carrier is byte-for-byte the request it was before mandates existed.
+            **({"mandate_id": mandate_id, "mandate_kind": "work"} if mandate_id else {}),
         )
-    except OwnerUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except OwnerClientError as exc:
+    except (OwnerUnavailable, OwnerClientError) as exc:
+        # The start did not happen, so neither did the mandate: a record left
+        # behind would claim an agent that never ran.
+        if record is not None:
+            try:
+                store.remove(record["id"])
+            except Exception as gone:  # noqa: BLE001
+                logger.warning("fleet api: mandate %s of a refused start was not removed (%s)",
+                               record["id"], type(gone).__name__)
+        if isinstance(exc, OwnerUnavailable):
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         # The owner refused — a label already held, a scope already running. A
         # refusal is the caller's answer, not a server fault. The one exception
         # is a command the child cannot execute: nothing is held and retrying
@@ -1444,10 +1601,19 @@ def fleet_start_agent(body: StartAgentBody) -> Dict[str, Any]:
         if kind in _KIND_STATUS:
             raise HTTPException(status_code=_KIND_STATUS[kind], detail=str(exc)) from exc
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if record is not None and agent.get("unit"):
+        try:
+            store.update(record["id"], unit=agent["unit"])
+        except Exception as exc:  # noqa: BLE001 — the agent IS running
+            logger.warning("fleet api: mandate %s has no unit recorded (%s)",
+                           record["id"], type(exc).__name__)
     logger.info(
-        "fleet api: started agent %s in %s (%s, pid %s)",
+        "fleet api: started agent %s in %s (%s, pid %s, mandate %s)",
         agent["label"], cwd, why, agent.get("pid"),
+        record["id"] if record else ("none declared" if mandate_id else "no carrier"),
     )
+    agent["mandate"] = fleet_mandate.public(record)
+    agent["mandate_absent"] = None if record else {"reason": fleet_mandate.ABSENT_NOT_DECLARED}
     return agent
 
 
@@ -1516,6 +1682,35 @@ def fleet_tmux_view_start(pid: int, body: Optional[TmuxViewBody] = None) -> Dict
     return {"label": label, "pid": pid, "pane": pane.pane, "started": True}
 
 
+def _owner_carries_mandates() -> bool:
+    """Whether the owner on the other end understands the mandate parameter.
+
+    A client that cannot be asked at all is treated as one that cannot carry it: the
+    start then goes out exactly as it always did. An owner that is DOWN is not that
+    case and is raised, because the start is about to fail for the same reason.
+    """
+    ask = getattr(OwnerClient(), "has_feature", None)
+    if not callable(ask):
+        return False
+    try:
+        return bool(ask("mandate"))
+    except OwnerUnavailable:
+        raise
+    except OwnerClientError:
+        return False
+
+
+def _end_mandate_of(label: str, reason: str) -> None:
+    """End the open mandate recorded under a label. Never fails the act that called it."""
+    try:
+        store = fleet_mandate.MandateStore()
+        held = fleet_mandate.open_by_label(store.all(), label)
+        if held is not None:
+            store.end(held["id"], reason)
+    except Exception as exc:  # noqa: BLE001 — the agent IS stopped
+        logger.warning("fleet api: the mandate of %s was not ended (%s)", label, type(exc).__name__)
+
+
 @router.post("/api/fleet/agents/{label}/stop")
 def fleet_stop_agent(label: str) -> Dict[str, Any]:
     """Stop an agent the framework started. Never a consequence of closing a view.
@@ -1553,6 +1748,7 @@ def fleet_stop_agent(label: str) -> Dict[str, Any]:
         "fleet api: stopped agent %s (%s, gone=%s)",
         label, result.get("population"), result.get("gone"),
     )
+    _end_mandate_of(label, "stopped")
     return result
 
 
@@ -1616,6 +1812,24 @@ def fleet_rename_agent(label: str, body: RenameAgentBody) -> Dict[str, Any]:
     HAS been renamed at that point, and answering with an error would tell the
     reader the opposite of what is true. They are reported instead.
     """
+    # A desk's label is its address on the bus and the invariant that keeps a
+    # project to one desk. So a desk is not renamed, and nothing else may take a
+    # registered project's desk label.
+    held_mandate = None
+    try:
+        held_mandate = fleet_mandate.open_by_label(fleet_mandate.MandateStore().all(), label)
+    except Exception as exc:  # noqa: BLE001 — an unreadable store must not block a rename
+        logger.warning("fleet api: rename %s: the mandate store could not be read (%s)",
+                       label, type(exc).__name__)
+    if held_mandate is not None and held_mandate["kind"] == "desk":
+        raise HTTPException(status_code=400,
+                            detail=f"{label} is a project's desk; its label is its address and cannot be changed")
+    reserved = fleet_mandate.reserved_desk_project(
+        body.new_label, [p.get("name") for p in _safe_registry() if p.get("name")])
+    if reserved:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{body.new_label} is the label of {reserved}'s desk and cannot be given to another agent")
     try:
         agent = OwnerClient().rename(label, body.new_label)
     except OwnerUnavailable as exc:
@@ -1627,6 +1841,13 @@ def fleet_rename_agent(label: str, body: RenameAgentBody) -> Dict[str, Any]:
 
     new_label = str(agent.get("label") or body.new_label)
     carried: Dict[str, Any] = {"record": 0, "docked": 0, "splits": 0}
+    if held_mandate is not None:
+        try:
+            fleet_mandate.MandateStore().update(held_mandate["id"], label=new_label)
+            carried["mandate"] = 1
+        except Exception as exc:  # noqa: BLE001 — never fail a done rename
+            logger.warning("fleet api: rename %s -> %s: the mandate keeps the old label (%s)",
+                           label, new_label, type(exc).__name__)
     session_id, project = None, None
     try:
         pid = agent.get("pid")
@@ -1816,7 +2037,8 @@ def fleet_roster_restore(project: str, body: Optional[RestoreBody] = None) -> Di
     try:
         return fleet_restore.restore(project,
                                      keys=body.keys if body is not None else None,
-                                     known_roots=_known_roots())
+                                     known_roots=_known_roots(),
+                                     mandates=fleet_mandate.MandateStore())
     except OwnerUnavailable as exc:
         # Nothing was attempted, so this is one answer about the request rather
         # than N answers about N entries.

@@ -668,3 +668,82 @@ def test_the_peek_route_holds_no_module_level_store():
     body = source.split('"""')[-1]
     for forbidden in ("lru_cache", "cache", "_PEEK", "global "):
         assert forbidden not in body, f"the peek must hold nothing: found {forbidden!r}"
+
+
+# --------------------------------------------------------------------------- #
+# a restored agent continues the mandate its session held (fleet-mandate-and-desk 2.4)
+# --------------------------------------------------------------------------- #
+
+class _MandateOwner(FakeOwner):
+    def __init__(self, features=("mandate",), **kw):
+        super().__init__(**kw)
+        self.features = set(features)
+
+    def has_feature(self, name):
+        return name in self.features
+
+    def recover(self, *, mandate_id=None, **kw):
+        out = super().recover(**kw)
+        self.recovered[-1]["mandate_id"] = mandate_id
+        return out
+
+
+def _mandate_store(tmp_path):
+    from set_orch.fleet.mandate import MandateStore
+    return MandateStore(str(tmp_path / "state" / "fleet-mandates.json"))
+
+
+def test_a_restored_agent_continues_its_mandate(tmp_path):
+    path, _logs, cwd = _seed(tmp_path, ["S1", "S2"])
+    store = _mandate_store(tmp_path)
+    made = store.create(kind="work", goal="ship the importer", project="proj", cwd=cwd,
+                        label="proj-s1", unit="set-agent-proj-s1.scope", session_id="S1")
+    store.end(made["id"], "ended")  # the reboot: the process went away
+    owner = _MandateOwner()
+    out = restore_mod.restore("proj", client=owner, roster_path=path,
+                              known_roots={os.path.realpath(cwd)}, mandates=store)
+    by_session = {r["session_id"]: r for r in owner.recovered}
+    # The id goes back to the owner, so the resumed process carries it again.
+    assert by_session["S1"]["mandate_id"] == made["id"]
+    # A session that never had a mandate gets none invented.
+    assert by_session["S2"]["mandate_id"] is None
+    after = store.get(made["id"])
+    assert after["ended"] is None and after["goal"] == "ship the importer"
+    started = {o["session_id"]: o for o in out["started"]}
+    assert started["S1"]["mandate_id"] == made["id"]
+    assert "mandate_id" not in started["S2"]
+
+
+def test_a_refused_restore_leaves_the_mandate_ended(tmp_path):
+    path, _logs, cwd = _seed(tmp_path, ["S1"])
+    store = _mandate_store(tmp_path)
+    made = store.create(kind="work", goal="g", project="proj", cwd=cwd, label="proj-s1",
+                        session_id="S1")
+    store.end(made["id"], "ended")
+    owner = _MandateOwner(refuse={"S1": "the scope would not stop"})
+    restore_mod.restore("proj", client=owner, roster_path=path,
+                        known_roots={os.path.realpath(cwd)}, mandates=store)
+    # Reopening it would claim an agent that never came back.
+    assert store.get(made["id"])["ended"]["reason"] == "ended"
+
+
+def test_an_old_owner_is_not_sent_a_mandate_it_would_drop(tmp_path):
+    path, _logs, cwd = _seed(tmp_path, ["S1"])
+    store = _mandate_store(tmp_path)
+    made = store.create(kind="work", goal="g", project="proj", cwd=cwd, label="proj-s1",
+                        session_id="S1")
+    store.end(made["id"], "ended")
+    owner = _MandateOwner(features=())
+    restore_mod.restore("proj", client=owner, roster_path=path,
+                        known_roots={os.path.realpath(cwd)}, mandates=store)
+    assert owner.recovered[0]["mandate_id"] is None
+    # Not re-pointed either: the agent came back without the carrier, so the record would lie.
+    assert store.get(made["id"])["ended"] is not None
+
+
+def test_a_restore_without_a_mandate_store_asks_the_owner_exactly_what_it_did_before(tmp_path):
+    path, _logs, cwd = _seed(tmp_path, ["S1"])
+    owner = FakeOwner()  # its recover() has no mandate parameter at all
+    out = restore_mod.restore("proj", client=owner, roster_path=path,
+                              known_roots={os.path.realpath(cwd)})
+    assert len(out["started"]) == 1

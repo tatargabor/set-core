@@ -46,6 +46,8 @@ END_REASONS = ("stopped", "ended", "desk-quiet")
 #: `not-declared`: the framework started it and nobody gave it a goal.
 ABSENT_NOT_STARTED_HERE = "not-started-here"
 ABSENT_NOT_DECLARED = "not-declared"
+#: The store could not be read. Not the same as having none: the agent may well have one.
+ABSENT_UNMEASURED = "unmeasured"
 
 #: The variables the owner sets on the child, and the only identity a running process
 #: carries that the framework can MEASURE from outside after the owner restarted.
@@ -59,7 +61,8 @@ VERSION = 1
 
 __all__ = [
     "KINDS", "SOURCES", "END_REASONS", "ENV_MANDATE", "ENV_LABEL",
-    "ABSENT_NOT_STARTED_HERE", "ABSENT_NOT_DECLARED",
+    "ABSENT_NOT_STARTED_HERE", "ABSENT_NOT_DECLARED", "ABSENT_UNMEASURED",
+    "payload_for", "open_by_label", "for_session", "reserved_desk_project",
     "MandateError", "MandateStoreUnreadable", "MandateStore",
     "default_store_path", "new_id", "desk_label", "mandate_id_of_pid", "join", "absence", "public",
     "atomic_write_json", "file_lock",
@@ -453,4 +456,49 @@ def join(
         matches = [r for r in open_records if session_id in r["session_ids"]]
         if matches:
             return max(matches, key=lambda r: r["declared_at"] or 0)
+    return None
+
+
+def payload_for(
+    records: Optional[Dict[str, Dict[str, Any]]],
+    *,
+    pid: Optional[int],
+    unit: Optional[str],
+    session_id: Optional[str],
+    started_here: bool,
+) -> Dict[str, Any]:
+    """What the inventory says about one agent's mandate.
+
+    `{"mandate": <public record> | None, "absent": {"reason": …} | None, "record": <record>}`.
+    `records` is None when the store could not be read — then the answer is `unmeasured`,
+    never "none": an unreadable store is not evidence that nobody declared a goal.
+    """
+    if records is None:
+        return {"mandate": None, "absent": {"reason": ABSENT_UNMEASURED}, "record": None}
+    record = join(records, pid=pid, unit=unit, session_id=session_id)
+    if record is None:
+        return {"mandate": None, "absent": absence(started_here=started_here), "record": None}
+    return {"mandate": public(record), "absent": None, "record": record}
+
+
+def for_session(records: Dict[str, Dict[str, Any]], session_id: str) -> Optional[Dict[str, Any]]:
+    """The newest mandate that lists a session id — ended or not. Read-only."""
+    held = [r for r in records.values() if session_id and session_id in r["session_ids"]]
+    return max(held, key=lambda r: r["declared_at"] or 0) if held else None
+
+
+def open_by_label(records: Dict[str, Dict[str, Any]], label: str) -> Optional[Dict[str, Any]]:
+    """The open mandate recorded under a fleet label, newest first. None when there is none."""
+    held = [r for r in records.values() if r["ended"] is None and r["label"] == label]
+    return max(held, key=lambda r: r["declared_at"] or 0) if held else None
+
+
+def reserved_desk_project(label: str, project_names: Iterable[str]) -> Optional[str]:
+    """The registered project whose desk label this is, or None.
+
+    A desk's label is its address: nothing that is not that project's desk may take it.
+    """
+    for name in project_names:
+        if label == desk_label(name):
+            return name
     return None
