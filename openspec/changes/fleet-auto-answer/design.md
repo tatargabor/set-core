@@ -158,8 +158,9 @@ confidence.
 - [The fork repeats the agent's own recommendation] → the prompt asks for the operator's words, the
   references are checked, and the replay (task 0.4) measures the fork against the recommended-option
   baseline before anything is written.
-- [Cost of a fork: it re-reads the session's context] → the shared prefix is mostly cached; only
-  while the switch is on; measured in task 2.6.
+- [Cost of a fork: it re-reads the session's context, on the session's own model] → accepted by the
+  user for Opus sessions (2026-11-23: *„opusokat lehet forkolni azzal nem lesz gond"*); the shared
+  prefix is mostly cached; only while the switch is on; measured in task 2.6.
 - [A `likely` answer is wrong] → it is proposed with its tier before it is written; the window,
   the bar and the switch are the operator's; outward steps are excluded regardless.
 - [The pattern check misses a phrasing of an outward step] → the model's flag is the second check;
