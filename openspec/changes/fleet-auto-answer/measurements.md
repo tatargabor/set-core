@@ -79,3 +79,38 @@ What this says, at this model and this retrieval:
   were right every time (open changes, CLAUDE.md) are rare.
 - Not separated yet: how much is the model and how much is missing information. The same 116
   replayed with a stronger model separates the two.
+
+## S3 — the conversation as a source, and a stronger model (task 0.4), 2026-11-23
+
+Same 130-question sample and seed as S2; same time cut. New arms: the asking session's
+conversation up to the question (operator turns, agent text, earlier answers in the session; last
+100 000 characters; nothing after the question), alone or together with the S2 sources. The prompt
+asks for the operator's answer from the operator's own words, not the agent's recommendation.
+Reference checking (design D8) was NOT applied in this replay — every tier below is still the
+model's own claim.
+
+| arm | n | correct | answer was an option: correct | allowed at the bar | allowed, answer was an option | tier `decided` | abstained on free-text answers |
+|---|---|---|---|---|---|---|---|
+| baseline: recommended option | 116 | 59 (51 %) | — | — | — | — | — |
+| A sources, GLM (S2) | 116 | 64 (55 %) | 62/87 | 23/37 (62 %) | 23/29 | 13/21 | 2/29 |
+| B conversation, GLM | 116 | 60 (52 %) | 60/87 | 33/60 (55 %) | 33/46 | 16/32 | 0/29 |
+| C conversation + sources, GLM | 114 | 68 (60 %) | 67/85 | 38/51 (75 %) | 38/44 | 18/26 | 1/29 |
+| **C conversation + sources, Opus** | 116 | **75 (65 %)** | **73/87 (84 %)** | 13/17 (76 %) | 13/15 | 6/7 | 2/29 |
+
+(Two C-GLM calls returned nothing parseable, hence 114.)
+
+What this says:
+
+- **The conversation plus a stronger model is the best arm**, and it is clearly above the
+  baseline: 65 % against 51 %, and **84 % on the questions whose real answer was one of the
+  options.** Opus was also the most cautious: it put most decisions in `likely` below 0.8, so the
+  allowed set is small (17 of 116) and 76 % right; `decided` was right 6 times of 7.
+- **The conversation alone does not help a small model** (B, 52 %); with the sources it does (C,
+  60 %), and the model matters more than either.
+- **The dominant error is not a wrong option, it is a missing abstention.** A quarter of the real
+  answers (29 of 116) were free text — the operator redirected or added something — and every arm
+  picked an option anyway on 27–29 of them. In the Opus arm 27 of the 41 errors are these. A
+  decider that cannot tell "the operator would write something else" will be wrong about one time
+  in four on questions like these, whatever its accuracy on the options.
+- Not yet measured: the effect of the verbatim reference check (D8) on the tier, and of a prompt
+  that rewards abstaining. Both act exactly on the two weaknesses above.
