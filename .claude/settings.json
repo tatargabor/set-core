@@ -51,6 +51,15 @@
             "timeout": 3600
           }
         ]
+      },
+      {
+        "matcher": "Monitor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "S=\"$(command -v sac || echo \"$HOME/.local/bin/sac\")\"; [ -x \"$S\" ] && SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board \"$S\" hook watch-guard || true"
+          }
+        ]
       }
     ],
     "Notification": [
@@ -72,6 +81,14 @@
           {
             "type": "command",
             "command": "set-hook-checkout-guard PostToolUse"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "S=\"$(command -v sac || echo \"$HOME/.local/bin/sac\")\"; [ -x \"$S\" ] && SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board \"$S\" hook heartbeat || true"
           }
         ]
       }
@@ -102,6 +119,14 @@
             "asyncRewake": true
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "S=\"$(command -v sac || echo \"$HOME/.local/bin/sac\")\"; [ -x \"$S\" ] && SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board \"$S\" hook stop || true"
+          }
+        ]
       }
     ],
     "PermissionRequest": [
@@ -112,6 +137,16 @@
             "type": "command",
             "command": "set-hook-permission-relay",
             "timeout": 3700
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "S=\"$(command -v sac || echo \"$HOME/.local/bin/sac\")\"; if [ -x \"$S\" ]; then SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board \"$S\" hook session-start; else echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"[set-agent-comm] ⚠ `sac` is not installed on this machine (not on PATH, not in ~/.local/bin), so this project is OFF the bus here: no wake-ups, no unread-mail check, no heartbeat. Fix: run `bin/sac.mjs setup` from a set-agent-comm checkout on this machine, then restart the session.\"}}'; fi"
           }
         ]
       }

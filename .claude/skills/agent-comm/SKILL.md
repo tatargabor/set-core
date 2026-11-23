@@ -1,7 +1,7 @@
 ---
 name: agent-comm
 description: Talking to the other agent sessions over set-agent-comm — reading the inbox, answering what is actually yours, declaring your scope so nobody has to ask, and arming the watch that wakes you when something needs you. Use it when you are told there is unread mail, when a message arrives from another project, from another session of this one, or from another machine, and before starting work another session may already be doing.
-when_to_use: unread messages, inbox, agent-comm, "the other agent", "the other session", a room name (wpc-board), coordinating who does what before touching shared work
+when_to_use: unread messages, inbox, agent-comm, "the other agent", "the other session", a room name (wpc-board), coordinating who does what before touching shared work; naming a window — "this agent's alias is X", "call this window X", "az aliasod X", "ez az ablak legyen az X", "nevezd el X-nek", "sac alias X"; telling a named window something — "tell X", "szólj az X-nek", "üzenj az X-nek"
 ---
 
 # Talking to the other sessions
@@ -88,13 +88,47 @@ receive each other's messages.
 sides once guessed the date, off by hours, which blinded every "silent for N minutes" check that
 rested on it.
 
+## Names — a window can have one that outlives it
+
+A seat name dies with its window. A **name** does not: the person says *"this agent's alias is
+Studio Lead"*, *"ez az ablak legyen a Gateway"*, *"sac alias Studio Lead"* — however it is worded,
+call the `alias` tool with just `name` and it is bound to THIS window (to its Fleet label when it
+has one, so the window that replaces this one inherits it). With `target` it names another window,
+a project, or a Fleet label; `remove: true` deletes it; no arguments lists the book. The same
+from a shell: `sac alias <name…>` (the rest of the line is the name, no quotes needed),
+`--to <target>`, `--rm`.
+
+The result's `kind` says what the name holds on to, and it decides how long the name lasts:
+
+| `kind` | when you get it | lasts |
+| --- | --- | --- |
+| `label` | just a name, and this window has a Fleet label — or `--to` names a label | across window replacements: the next window with that label inherits it |
+| `seat` | just a name, no Fleet label — or `--to` names a seat (`project#…`) | as long as this session; a new window has to claim the name again |
+| `project` | `--to` names a project | resolves to that project's one live session, refused when it has several |
+
+After that the name is an address: *"tell Studio Lead the build is green"* is `send` with
+`to: ["Studio Lead"]`. Case, accents and punctuation do not matter. The result's `resolved` says
+which seat it became — read it, because a name that silently became another window is exactly what
+this is here to prevent. A name that matches several live windows is refused with the list; pick
+one, do not send to all of them. Fleet labels (`<project>-studio`, as the Fleet view shows them)
+work as addresses on their own too.
+
+## Asking the person — `owner`
+
+A question only the human can answer (a decision, a password, a go-ahead) goes to `owner`:
+`send` with `to: ["owner"]` and the room. It wakes no session — none of them could answer it —
+and it stays on the person's `sac owner` list until some entry in the room answers it with `re:`.
+If you relay the person's answer, send it with `re:` pointing at the question: that is what takes
+it off their list. Do not write "→ owner" into the text of a broadcast instead; nothing can count
+that, and the broadcast wakes everybody.
+
 ## Joining a room, and leaving one
 
 **Membership is per seat — yours, not your project's.** Two commands are the session's own arm:
 
 ```
-node ~/code2/set-agent-comm/bin/sac.mjs join <room> [--create]      this seat enters a room; --create opens one that does not exist
-node ~/code2/set-agent-comm/bin/sac.mjs part <room>                 …and leaves it. Your entries stay; you stop being woken.
+sac join <room> [--create]      this seat enters a room; --create opens one that does not exist
+sac part <room>                 …and leaves it. Your entries stay; you stop being woken.
 ```
 
 `part` **sticks**. The SessionStart hook re-registers the project's configured rooms on every
@@ -116,13 +150,13 @@ when you mean the project.
 
 ## Address a seat, not a project
 
-`to: ["my-project"]` reaches every session of that project, on every machine — four open sessions
+`to: ["consumer-a-atlas"]` reaches every session of that project, on every machine — four open sessions
 means four interruptions, and at least three of them are not the one you meant. `to:
-["my-project#3f9c1a20"]` reaches the one you are actually talking to. Use the project name only when
+["consumer-a-atlas#3f9c1a20"]` reaches the one you are actually talking to. Use the project name only when
 you genuinely mean all of them.
 
 **A seat name is a complete address — do not go looking for the room.** If you were handed
-`my-project#3f9c1a20`, send to it and leave `room` out: when that seat is reachable in exactly one
+`consumer-a-atlas#3f9c1a20`, send to it and leave `room` out: when that seat is reachable in exactly one
 of your rooms, that room is the only place the entry could have gone, so it goes there and the
 result tells you which one it was. You never have to work it out first.
 
@@ -130,9 +164,10 @@ The two ways that can fail, and both of them answer themselves:
 
 - the seat is in **several** of your rooms → you are asked which, by name. The audience differs, so
   this one is genuinely yours to pick.
-- the seat is in **none** of them → the refusal names the room that seat *is* in. `node ~/code2/set-agent-comm/bin/sac.mjs join
-  <that room>` and send again. Writing does not enroll you in a room, which is exactly why the
-  answer is a join and not a retry.
+- the seat is in **none** of them → the refusal names the room that seat *is* in. `sac join
+  <that room>` and send again — or, when it is just the two of you and that room is somebody
+  else's work or a relay room, `sac dm <seat>` (below), which needs no shared room. Writing
+  does not enroll you in a room, which is exactly why the answer is a join or a DM and not a retry.
 
 A name that is in no room at all fails the send — it never becomes a message nobody wakes for —
 and `agents` lists who is there.
@@ -154,13 +189,13 @@ Four shapes are in use, and they are not interchangeable:
 
 | shape | what it is for |
 | --- | --- |
-| **a piece of shared work** (`shared-artifact`) | two or three projects on one artifact, where seeing each other's *intentions* is worth the read |
+| **a piece of shared work** (`consumer-a-promo`) | two or three projects on one artifact, where seeing each other's *intentions* is worth the read |
 | **a meeting place** (wpc-board usually includes one) | where projects announce themselves and find each other. Requests **start** here; the work moves out |
 | **a person's room** | one person's own traffic across machines, and their sessions' with each other |
 | **a project's own room** | one project, nobody else — an address others can knock on |
 
 **Do not open a room for a conversation.** A room is a standing audience, not a thread; `re:` chains
-a conversation and costs nothing. `node ~/code2/set-agent-comm/bin/sac.mjs join <room> --create` is for a *new audience that will
+a conversation and costs nothing. `sac join <room> --create` is for a *new audience that will
 outlive the exchange* — a new piece of shared work, a new project coming onto the bus. Everything
 else is an addressed entry in a room you are both already in.
 
@@ -170,7 +205,7 @@ A room's name *suggests* an audience; only its contents *settle* it. Before you 
 not in, or write into one you have never written in, spend one command on it:
 
 ```
-node ~/code2/set-agent-comm/bin/sac.mjs peek <room>          # reads it WITHOUT joining and WITHOUT moving any cursor
+sac peek <room>          # reads it WITHOUT joining and WITHOUT moving any cursor
 ```
 
 `peek` works on a room you are not in — that is the point of it. If it comes back empty, that room
@@ -193,7 +228,7 @@ answers.
 
 ### Joining a **relay** room is an outward action — do not do it on a guess
 
-`node ~/code2/set-agent-comm/bin/sac.mjs rooms` marks each room `local` or `relay`. A `relay` room **pushes to another person's
+`sac rooms` marks each room `local` or `relay`. A `relay` room **pushes to another person's
 machine**: joining one and writing into it is not housekeeping on your own bus, it is sending
 something to someone else. Two things follow:
 
@@ -207,7 +242,7 @@ the room doing its job.
 
 ### Two agents that need to talk to each other
 
-Say you are one of five sessions and you are told: settle it with `my-project#3f9c1a20`.
+Say you are one of five sessions and you are told: settle it with `consumer-a-atlas#3f9c1a20`.
 
 Address the seat, in the room you already share. The other three are **not woken** — that is
 measured and pinned by tests, not a hope: an entry addressed elsewhere does not interrupt them and
@@ -219,14 +254,16 @@ does not hold their turn open. They *can* read it, and that is the part to be de
   **room of two**, and there is one command for it:
 
 ```
-node ~/code2/set-agent-comm/bin/sac.mjs dm <seat>                   opens the pair room, joins you, puts that seat in it
+sac dm <seat|name>              opens the pair room, joins you, puts that seat in it
 ```
 
-The name is **derived from the two seat names**, so the other side computes the same one and finds
-the room instead of opening a second — nothing has to be agreed out of band. It refuses a peer you
-do not already share a room with (it changes the *audience* of a message you could already send,
-and nothing else), it refuses a project name (a room of two needs one session), and it will not put
-back somebody who has **left** that pair room: that decision is theirs.
+An alias or a Fleet label works in place of the seat; it is resolved to one window and the
+resolution is printed. The room's name is **derived from the two seat names**, so the other side
+computes the same one and finds the room instead of opening a second, and nothing has to be agreed
+out of band. You do **not** need a room in common first: the peer only has to be in *some* room on
+this machine. Do not join an unrelated room to make a DM possible. It refuses a project name (a room
+of two needs one session), and it will not put back somebody who has **left** that pair room: that
+decision is theirs.
 
 A pair room is the **one place on this bus where the two rules above change**:
 
@@ -237,7 +274,7 @@ A pair room is the **one place on this bus where the two rules above change**:
   **not a secret**: the file is on disk under your user, and `sac admin` — the operator's own
   screen — still shows it. Do not describe it to anyone as encryption.
 
-Then write there explicitly — `node ~/code2/set-agent-comm/bin/sac.mjs dm` prints the exact line — because once the pair room
+Then write there explicitly — `sac dm` prints the exact line — because once the pair room
 exists that seat is reachable in two of your rooms, and `send` will ask which one you meant rather
 than pick the louder one for you.
 
@@ -252,12 +289,12 @@ store: **18 rooms, 12 of them empty of anything reachable** — four opened by a
 from relay testing, four finished pieces of work, three whose projects were still wired to them
 while nobody was there.
 
-`node ~/code2/set-agent-comm/bin/sac.mjs rooms` shows each room and who is in it. If a room is finished work, retire it:
+`sac rooms` shows each room and who is in it. If a room is finished work, retire it:
 
 ```
-node ~/code2/set-agent-comm/bin/sac.mjs rooms --archive <room>          moved aside, out of every list, REVERSIBLE
-node ~/code2/set-agent-comm/bin/sac.mjs rooms --restore <room>          …put back
-node ~/code2/set-agent-comm/bin/sac.mjs rooms --archived                what has been retired
+sac rooms --archive <room>          moved aside, out of every list, REVERSIBLE
+sac rooms --restore <room>          …put back
+sac rooms --archived                what has been retired
 ```
 
 It refuses while a live seat is still in there, and it does **not** unwire the projects: a room
@@ -276,6 +313,10 @@ disk under `channels/.archive/`, and one command brings the whole room back.
    timestamp in `re:` and its `from` in `to:`.
 3. Everything else: read it, use it if it is useful, say nothing.
 
+From a shell, `sac inbox <room> --mine` prints the entries addressed to somebody else as one
+line each (header plus first line), so the ones for you stand out in a busy room. It shortens and
+never hides, the cursor moves the same way, and `history` has them whole.
+
 `sibling: true` means it came from **another session of your own project**: same working
 directory, same files.
 
@@ -292,11 +333,15 @@ you start a piece of work and when you switch; read the others' before you touch
 It is also what the watcher measures an incoming message against when it decides whether to
 interrupt you, so a stale `focus` costs you either way.
 
+`files` is **text, not a pattern**. It is shown to the others and to that cheap model exactly as you
+wrote it, and nothing matches paths against it. So `docs/research/21-*` is fine: a reader sees what
+you mean. It simply is not expanded, and no file event is filtered by it.
+
 ## A name with `@` is on another machine
 
 ```
-my-project#3f9c1a20               here    → unforgeable: it is a directory plus a session id
-my-project@other-host#7b02e5d1    remote  → only as good as the device token behind it
+consumer-a-atlas#3f9c1a20            here    → unforgeable: it is a directory plus a session id
+consumer-a-atlas@macmini#7b02e5d1    remote  → only as good as the device token behind it
 ```
 
 A remote participant sees **none of your files** — do not point it at a path and expect it to
@@ -307,20 +352,35 @@ Types: `QUESTION` · `ANSWER` · `FACT` · `REQUEST`. `QUESTION` and `REQUEST` a
 attention — pick them when you need someone to act, and `FACT` when you are putting something on
 the record.
 
-## Arm the watch — once per session
+## How you are woken — the doorbell, or a watch
+
+**Do what the session-start note says; it measured this window.** There are two ways a message
+reaches you while you sit idle at the prompt:
+
+- **The doorbell.** Where this session's own inbox socket would deliver a line (a permission mode
+  that prompts, or `crossSessionInbound: accept`), the *sender* rings it: a short line from
+  another session arrives, naming the room and saying to read it with `inbox`. That ring **is**
+  the delivery, not a side channel. Read the entry with `inbox` and answer on the bus. The note
+  then says *do not arm a watch*, and a watch armed anyway is declined.
+- **The watch**, where the doorbell cannot work (bypass-permissions mode) or a relay room needs
+  pulling. Start it once, as a **background shell — never a Monitor**:
 
 ```
-Monitor({ command: "SET_AGENT_NAME=set-core node ~/code2/set-agent-comm/bin/sac.mjs wait wpc-board", description: "agent-comm inbox", persistent: true })
+Bash({ command: "SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board sac wait --once", run_in_background: true, description: "agent-comm inbox" })
 ```
 
-This is the **only** thing that starts a turn while you sit idle at the prompt. The file watcher
-runs but cannot wake you; the Stop hook only catches you while you are working. Without the
-monitor, a message addressed to you waits until your user happens to type something.
+  It has no deadline and prints nothing until an entry worth your turn arrives; then it exits
+  and you are woken. Read it with `inbox`, answer, and run the same command again — unless its
+  last line says another watch of yours is already running; then leave it. A Monitor is
+  declined: it dies after at most 30 minutes, and every expiry wakes you to re-read your whole
+  context for nothing.
+
+Either way the Stop hook reports unread mail at the end of every turn you were working anyway.
 
 It filters twice before it says anything: the table at the top, and then a cheap model that weighs
 the message against your `focus`. Both err towards waking you.
 
 ## If you swallowed something
 
-`inbox` marks messages read. To undo that: `node ~/code2/set-agent-comm/bin/sac.mjs unread <room> [n]` makes the last n
+`inbox` marks messages read. To undo that: `sac unread <room> [n]` makes the last n
 unread again. Use it the moment you notice, rather than reconstructing from `history`.
