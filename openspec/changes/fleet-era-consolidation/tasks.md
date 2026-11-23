@@ -45,7 +45,7 @@
 ## 6. Public/private split and roadmap
 
 - [x] 6.1 Inventory operator-specific code and config currently in the public repository and list, per item, whether it moves to the private package or becomes a generic seam [REQ: operator-specific-integrations-live-behind-plugin-seams]
-- [ ] 6.2 Verify the public core runs without the private package: start set-web and run the public CLIs, and expect no error and no WARNING naming it [REQ: operator-specific-integrations-live-behind-plugin-seams]
+- [ ] 6.2 Verify the public core runs without the private package: start set-web and run the public CLIs, and expect no error and no WARNING naming it [REQ: operator-specific-integrations-live-behind-plugin-seams] — **2026-11-23, not measurable yet:** the private package does not exist; it is created by the follow-up `operator-plugin-split` (design.md), whose own precondition is this check. Measured meanwhile on a set-web restart: 1 WARNING (`discord.py not installed`, a public optional dependency) and 6 errors from the terminal websocket on shutdown, fixed in `1d00fcd6`.
 - [x] 6.3 Rewrite the README positioning and `.claude/rules/capability-guide.md` to describe the fleet and tooling layer first, and mark the orchestration commands as being retired [REQ: operator-specific-integrations-live-behind-plugin-seams]
 - [x] 6.4 Create the stage 3–6 follow-up changes as proposals only (`hook-diet`, `retire-orchestration-cli`, `retire-orchestration-engine`, `profile-layer-decision`), each with the precondition named in design.md [REQ: operator-specific-integrations-live-behind-plugin-seams]
 
