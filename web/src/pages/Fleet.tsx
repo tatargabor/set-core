@@ -43,6 +43,7 @@ import FleetUsageStrip from '../components/FleetUsageStrip'
 import FleetWaves from '../components/FleetWaves'
 import FleetMap from '../components/FleetMap'
 import FleetRelay from '../components/FleetRelay'
+import FleetAutoAnswer, { FleetAutoAnswerMark } from '../components/FleetAutoAnswer'
 import FleetIdleClose from '../components/FleetIdleClose'
 import FleetSplitter from '../components/FleetSplitter'
 import { useFileListings } from '../hooks/useFileListings'
@@ -1561,6 +1562,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           )}
         </span>
         <StateLine agent={agent} humanShown={latest} />
+        <FleetAutoAnswerMark sessionId={agent.session_id} />
         {latest && (
           recencyOf(agent) === null
             ? <span className="text-xs text-fg-ghost whitespace-nowrap" data-fleet-latest-recency="none"
@@ -3900,6 +3902,9 @@ export default function Fleet() {
             channel. Beside the PM switch because both are machine-wide modes; the count
             of questions waiting on the channel rides on it, closed. */}
         <FleetRelay />
+        {/* Automatic answers (fleet-auto-answer): on/off and the count of proposals that
+            will be written unless somebody answers; the panel floats like the map's. */}
+        <FleetAutoAnswer />
         {/* B-185 — jump to the agent asking you, for reading at the machine. The
             pulsing dot is the asking state's colour everywhere else on this screen,
             so the chip borrows it rather than inventing a second mark. Absent while

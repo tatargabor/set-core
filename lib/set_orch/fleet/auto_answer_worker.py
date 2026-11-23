@@ -186,6 +186,52 @@ def read_log(limit: int = 50, path: Optional[Path] = None) -> List[Dict[str, Any
 
 
 # --------------------------------------------------------------------------- #
+# what the fleet reads (task 4.1)
+# --------------------------------------------------------------------------- #
+
+def set_enabled(enabled: bool) -> None:
+    local_config.set_value(aa.KEY_ENABLED, bool(enabled))
+    logger.info("auto answer: switch %s", "on" if enabled else "off")
+
+
+def wired(get: Getter = local_config.get) -> bool:
+    """Whether the relay's outbound IS this decider — without it the switch does nothing."""
+    command = aa._text(get(qr.KEY_COMMAND))
+    first = command.split()[0] if command else ""
+    return os.path.basename(first) == "set-auto-answer"
+
+
+def pending_view(now: float, base: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """The live proposals: what will be written, when, from which checked sources."""
+    out = []
+    for rec in list_pending(base):
+        if rec.get("state") != "proposed" or rec.get("cancelled"):
+            continue
+        write_at = rec.get("write_at")
+        for q in rec.get("questions") or []:
+            if q.get("outcome") != aa.OUTCOME_ALLOWED:
+                continue
+            out.append({
+                "id": rec.get("id"), "key": q.get("key"), "session_id": rec.get("session_id"),
+                "agent": rec.get("source"), "project": rec.get("project"), "kind": rec.get("kind"),
+                "question": q.get("question"), "choice": q.get("choice"), "tier": q.get("tier"),
+                "confidence": q.get("confidence"),
+                "references": [r for r in q.get("references") or [] if r.get("checked")],
+                "seconds_left": max(0.0, write_at - now) if isinstance(write_at, (int, float)) else None,
+            })
+    return out
+
+
+def status(get: Getter = local_config.get, base: Optional[Path] = None,
+           now: Optional[float] = None) -> Dict[str, Any]:
+    now = time.time() if now is None else now
+    pending = pending_view(now, base)
+    return {"enabled": aa.enabled(get), "wired": wired(get), "forward": bool(aa.forward_command(get)),
+            "window_s": aa.window_s(get), "likely_min": aa.likely_min(get),
+            "pending": pending, "pending_count": len(pending)}
+
+
+# --------------------------------------------------------------------------- #
 # the proposal, as the operator reads it
 # --------------------------------------------------------------------------- #
 

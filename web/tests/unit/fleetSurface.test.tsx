@@ -93,6 +93,12 @@ function installFetch(answers: (() => Promise<unknown>)[], layout: unknown = { v
       const contract = { configured: true, commands: [], onDemand: [] }
       return Promise.resolve({ ok: true, json: () => Promise.resolve(contract) } as Response)
     }
+    // The automatic-answers control asks on its own schedule too (fleet-auto-answer);
+    // outside the queue for the same reason, measured when it landed: six failures
+    // here, all from the shifted queue. An answer it cannot parse keeps it "unread".
+    if (String(url).includes('/api/fleet/auto-answer')) {
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) } as Response)
+    }
     const next = answers[Math.min(i, answers.length - 1)]
     i += 1
     return next() as Promise<Response>

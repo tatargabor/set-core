@@ -2894,6 +2894,14 @@ def _relay_payload() -> Dict[str, Any]:
     state = qr.readiness()
     now = time.time()
     waiting = []
+    proposals: Dict[Any, Dict[str, Any]] = {}
+    try:
+        from ..fleet import auto_answer_worker as aw
+        for p in aw.pending_view(now):
+            proposals.setdefault(p["id"], {"choice": p["choice"], "tier": p["tier"],
+                                           "seconds_left": p["seconds_left"]})
+    except Exception as exc:  # a broken pending store must not hide the waiting list
+        logger.warning("fleet api: auto-answer pending read failed: %s", type(exc).__name__)
     for rec in qr.list_waiting():
         started = rec.get("started")
         waiting.append({
@@ -2906,6 +2914,8 @@ def _relay_payload() -> Dict[str, Any]:
             "target": rec.get("target"),
             "seconds": (now - started) if isinstance(started, (int, float)) else None,
             "release_requested": bool(rec.get("release_requested")),
+            # fleet-auto-answer: the proposal that will be written unless a human answers.
+            "auto_answer": proposals.get(rec.get("id")),
         })
     try:
         unwired = qr.unwired_projects()
@@ -2951,6 +2961,52 @@ def fleet_question_relay_release(session_id: str) -> Dict[str, Any]:
     if not qr.request_release(session_id):
         raise HTTPException(status_code=404, detail="no question is waiting for that session")
     return _relay_payload()
+
+
+# --------------------------------------------------------------------------- #
+# Automatic answers — the switch, the pending proposals, the decision log
+# --------------------------------------------------------------------------- #
+
+class AutoAnswerToggleBody(BaseModel):
+    enabled: bool
+
+
+@router.get("/api/fleet/auto-answer")
+def fleet_auto_answer() -> Dict[str, Any]:
+    """The switch, whether the relay is wired to the decider, and the live proposals."""
+    from ..fleet import auto_answer_worker as aw
+
+    return aw.status()
+
+
+@router.post("/api/fleet/auto-answer")
+def fleet_auto_answer_toggle(body: AutoAnswerToggleBody) -> Dict[str, Any]:
+    """Turn automatic answering on or off (machine-local config, read by every decision)."""
+    from ..fleet import auto_answer_worker as aw
+
+    aw.set_enabled(body.enabled)
+    logger.info("fleet api: auto answer %s", "on" if body.enabled else "off")
+    return aw.status()
+
+
+@router.get("/api/fleet/auto-answer/decisions")
+def fleet_auto_answer_decisions(limit: int = 30) -> Dict[str, Any]:
+    """The newest decision-log records, newest first. Read on request, never cached (D13)."""
+    from ..fleet import auto_answer_worker as aw
+
+    limit = max(1, min(int(limit), 200))
+    return {"decisions": aw.read_log(limit)}
+
+
+@router.post("/api/fleet/auto-answer/{call_id}/cancel")
+def fleet_auto_answer_cancel(call_id: str) -> Dict[str, Any]:
+    """Cancel a pending proposal. The question keeps waiting for a human answer; the
+    worker re-reads the record before it writes and logs the outcome `cancelled`."""
+    from ..fleet import auto_answer_worker as aw
+
+    if not aw.cancel(call_id):
+        raise HTTPException(status_code=404, detail="no pending automatic answer with that id")
+    return aw.status()
 
 
 # --------------------------------------------------------------------------- #
