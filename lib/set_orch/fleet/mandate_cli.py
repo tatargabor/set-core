@@ -22,7 +22,7 @@ import sys
 import urllib.parse
 import urllib.error
 import urllib.request
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from . import mandate, mandate_delivery
 
@@ -68,22 +68,42 @@ def _show(args: argparse.Namespace) -> int:
     return 0
 
 
-def _declare(args: argparse.Namespace) -> int:
-    body = {"goal": args.goal, "kind": "work"}
+def declare_body(args: argparse.Namespace, environ: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:
+    """The body of a declaration, in the declare route's own field names — or None.
+
+    None means there is nobody to name: no label, no session, and no session of our own.
+
+    This is a function so a test can hold it against the route's model. The first
+    version built the body inline, with `kind` and a nested `scope`, while the route
+    takes neither — it forbids unknown fields — so every declaration from the command
+    line was refused with a 422. Each side had its own tests and both were green; the
+    command had simply never been run against the route.
+    """
+    env = os.environ if environ is None else environ
+    body: Dict[str, Any] = {"goal": args.goal}
     if args.label:
         body["label"] = args.label
     if args.session:
         body["session_id"] = args.session
     if not args.label and not args.session:
-        own = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        own = env.get("CLAUDE_CODE_SESSION_ID")
         if not own:
-            print("name the agent: --label <label> or --session <session id>", file=sys.stderr)
-            return 2
+            return None
         body["session_id"] = own
     if args.done_when:
         body["done_when"] = args.done_when
     if args.path:
-        body["scope"] = {"paths": list(args.path)}
+        body["paths"] = list(args.path)
+    if getattr(args, "change", None):
+        body["change"] = args.change
+    return body
+
+
+def _declare(args: argparse.Namespace) -> int:
+    body = declare_body(args)
+    if body is None:
+        print("name the agent: --label <label> or --session <session id>", file=sys.stderr)
+        return 2
     request = urllib.request.Request(
         _api_base() + "/api/fleet/mandates", method="POST",
         data=json.dumps(body).encode("utf-8"), headers={"Content-Type": "application/json"},
@@ -208,7 +228,7 @@ def _done(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="set-fleet-mandate", description="Why an agent was started: read it, declare it.")
     sub = parser.add_subparsers(dest="command")
@@ -227,12 +247,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     d.add_argument("--session", help="the agent's session id (default: this session)")
     d.add_argument("--done-when", dest="done_when")
     d.add_argument("--path", action="append", help="a path in scope (repeatable)")
+    d.add_argument("--change", help="the change this agent works on")
     d.set_defaults(func=_declare)
 
     f = sub.add_parser("done", help="end this agent's work mandate: tell the requester, end, stop")
     f.add_argument("line", help="one line: what was done")
     f.set_defaults(func=_done)
+    return parser
 
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
         parser.print_help()
