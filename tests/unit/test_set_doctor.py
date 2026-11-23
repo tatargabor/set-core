@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from set_doctor.checks import (
-    Check, Context, check_checkout, check_install, check_project, check_tools, deployed_version,
+    Check, Context, archived_check, archived_entries, check_checkout, check_install, check_project, check_tools, deployed_version,
     installer_commands, mcp_registration,
 )
 from set_doctor.cli import exit_code
@@ -321,3 +321,41 @@ def test_an_old_node_fails_with_its_reason(machine):
     ctx.env["PATH"] = f"{bindir}:{ctx.env['PATH']}"
     c = by(check_tools(ctx), "node")
     assert c.status == "fail" and "v12.22.9" in c.detail and "Claude Code needs 18" in c.detail
+
+
+# ── archived registry entries (fleet-era-consolidation) ──────────────────────
+
+
+def test_archived_entries_are_left_out_of_a_full_run():
+    reg = {"a": {"path": "/x"}, "b": {"path": "/y", "archived": True}, "c": {"path": "/z", "archived": True},
+           "d": {"path": "/w", "archived": False}}
+    names, archived = archived_entries(reg, sorted(reg), None)
+    assert names == ["a", "d"] and archived == ["b", "c"]
+    c = archived_check(archived)
+    assert c.status == "skip" and c.detail.startswith("2 archived projects skipped")
+
+
+def test_three_archived_entries_make_one_summary_line():
+    c = archived_check(["x", "y", "z"])
+    assert c.name == "archived" and c.detail.startswith("3 archived projects skipped") and c.project is None
+
+
+def test_an_archived_project_asked_for_by_name_is_checked():
+    reg = {"old": {"path": "/x", "archived": True}}
+    names, archived = archived_entries(reg, ["old"], "old")
+    assert names == ["old"] and archived == []
+
+
+def test_end_to_end_an_archived_entry_is_not_checked(machine):
+    env = sandbox_env(machine)
+    ctx, tmp = machine
+    cfg = Path(ctx.env["SET_CONFIG_DIR"])
+    reg = json.loads((cfg / "projects.json").read_text())
+    reg["projects"]["shelved"] = {"path": str(project_repo(tmp, "shelved")), "archived": True}
+    (cfg / "projects.json").write_text(json.dumps(reg))
+    d = json.loads(run_doctor(env, "--json").stdout)
+    assert not [c for c in d["checks"] if c.get("project") == "shelved"]
+    [a] = [c for c in d["checks"] if c["name"] == "archived"]
+    assert a["status"] == "skip" and a["detail"].startswith("1 archived project skipped")
+    d = json.loads(run_doctor(env, "--json", "--project", "shelved").stdout)
+    assert [c for c in d["checks"] if c.get("project") == "shelved"], "asked for by name, it is checked"

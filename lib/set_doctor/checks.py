@@ -489,6 +489,25 @@ def stale_entries(registry: dict, names: list) -> tuple:
     return [n for n in names if n not in stale], stale
 
 
+def archived_entries(registry: dict, names: list, project_glob: Optional[str]) -> tuple:
+    """(names to check, archived names left out). An archived entry means "do not develop"
+    (fleet-era-consolidation): the full run leaves it out, but asking for it by name with
+    `--project` checks it like any other."""
+    if project_glob:
+        return names, []
+    archived = [n for n in names if registry[n].get("archived") is True]
+    return [n for n in names if n not in archived], archived
+
+
+def archived_check(archived: list) -> Check:
+    """One summary line for the archived entries the run left out."""
+    logger.debug("archived registry entries skipped: %s", archived)
+    n = len(archived)
+    return Check("project", "archived", "skip",
+                 f"{n} archived project{'' if n == 1 else 's'} skipped — "
+                 "`set-doctor --project <name>` checks one")
+
+
 def stale_check(stale: dict) -> Check:
     """One record for every stale registry entry (design D5): bookkeeping, not a broken system,
     so it does not set the exit code — but each name and its reason stay visible."""
@@ -679,6 +698,9 @@ def run_all(ctx: Context, workers: int = 8) -> list:
     else:
         checks.append(Check("project", "registry", "ok", f"{len(registry)} project(s) in {reg_path}"))
     names = [n for n in sorted(registry) if not ctx.project_glob or fnmatch.fnmatch(n, ctx.project_glob)]
+    names, archived = archived_entries(registry, names, ctx.project_glob)
+    if archived:
+        checks.append(archived_check(archived))
     names, gone = stale_entries(registry, names)
     if gone:
         checks.append(stale_check(gone))
@@ -690,7 +712,7 @@ def run_all(ctx: Context, workers: int = 8) -> list:
         else:
             checks.append(m.not_installed(kb_decl))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        alive = {n: e for n, e in registry.items() if n not in gone}
+        alive = {n: e for n, e in registry.items() if n not in gone and n not in archived}
         mod_future = pool.submit(run_modules, ctx, decls, alive, workers) if decls and not ctx.child else None
         for cs in pool.map(lambda n: check_project(ctx, n, registry[n], claude_projects, sac_by_path,
                                                    kb_command, module_skip), names):

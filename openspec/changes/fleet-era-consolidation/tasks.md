@@ -19,8 +19,8 @@
 
 ## 3. Archived projects
 
-- [ ] 3.1 The doctor skips archived registry entries and prints one summary line with their count; `--project <name>` still checks an archived one (`lib/set_doctor/cli.py`, `checks.py`) [REQ: archived-projects-are-not-checked]
-- [ ] 3.2 Tests for both doctor scenarios [REQ: archived-projects-are-not-checked]
+- [x] 3.1 The doctor skips archived registry entries and prints one summary line with their count; `--project <name>` still checks an archived one (`lib/set_doctor/cli.py`, `checks.py`) [REQ: archived-projects-are-not-checked]
+- [x] 3.2 Tests for both doctor scenarios [REQ: archived-projects-are-not-checked]
 - [ ] 3.3 `set-project archive` and unarchive regenerate the project's role rule, so the notice appears and disappears with the flag [REQ: an-archived-project-tells-the-agent-not-to-develop-it]
 
 ## 4. Project role rules
@@ -72,6 +72,8 @@
   one (files gitignored there): removed 25, kept 0; outside the retired paths only `.set-version`,
   the ledger and a first deploy of `set:blueprint` changed. Where the files are tracked, init leaves
   the deletions in the working tree for the project to commit.
+- 3.1/3.2 — four tests; with the filter mutated away two of them fail (restore verified with
+  `cmp`). On this machine's registry: "24 archived projects skipped", the registry holds 24.
 
 ## Acceptance Criteria (from spec scenarios)
 
@@ -92,8 +94,8 @@
 - [ ] AC-12: WHEN a demoted message is reverted to WARNING THEN its test fails [REQ: a-sweep-is-measured-before-and-after, scenario: reverting-a-demotion]
 
 ### machine-doctor
-- [ ] AC-13: WHEN the registry holds three archived entries THEN none is checked and one line says "3 archived projects skipped" [REQ: archived-projects-are-not-checked, scenario: an-archived-entry-in-the-registry]
-- [ ] AC-14: WHEN `--project` names an archived entry THEN it is checked [REQ: archived-projects-are-not-checked, scenario: asking-for-an-archived-project-by-name]
+- [x] AC-13: WHEN the registry holds three archived entries THEN none is checked and one line says "3 archived projects skipped" [REQ: archived-projects-are-not-checked, scenario: an-archived-entry-in-the-registry]
+- [x] AC-14: WHEN `--project` names an archived entry THEN it is checked [REQ: archived-projects-are-not-checked, scenario: asking-for-an-archived-project-by-name]
 - [ ] AC-15: WHEN the role file changed after a rule was generated THEN the role check warns with `set-project roles` as the fix [REQ: the-project-role-rule-is-checked, scenario: a-stale-role-rule]
 
 ### project-init-deploy
