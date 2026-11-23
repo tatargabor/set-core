@@ -56,6 +56,24 @@ export interface AttentionAgent {
    * the calm ones.
    */
   input_wait_seconds?: number | null
+  /** The declared hand-over of a finished turn — see `isAskingYou`. */
+  handover?: string | null
+}
+
+/** The agent ended its turn on a `NEED INPUT:` line — `fleet-handover-marker`. */
+export const HANDOVER_NEED_INPUT = 'need_input'
+
+/**
+ * Is this agent asking the reader something — an open question tool, OR a
+ * finished turn that declared `NEED INPUT:`?
+ *
+ * The two are one fact said two ways: the agent cannot go on, and the answer
+ * is a sentence only the reader can write. Reported 2026-11-23 from the live
+ * screen: a turn ending `NEED INPUT: …` rendered as an ordinary finished one,
+ * green and "ready to read" — the calm direction B-168 closed for the tool.
+ */
+export function isAskingYou(agent: Pick<AttentionAgent, 'state' | 'handover'>): boolean {
+  return agent.state === ASKING || agent.handover === HANDOVER_NEED_INPUT
 }
 
 /**
@@ -379,7 +397,7 @@ export function tally(
       if (typeof a.attention === 'string' && a.attention !== '') attentionReported = true
       const asleep = isParked(a, thresholds)
       if (asleep) parked += 1
-      if (a.state === ASKING && !asleep) askingNow += 1
+      if (isAskingYou(a) && !asleep) askingNow += 1
       // `background` is counted BOTH as a waiter and as a background marker:
       // the wait is what the reader acts on, the background command is why the
       // session may look busy. Two facts, and dropping either one loses a

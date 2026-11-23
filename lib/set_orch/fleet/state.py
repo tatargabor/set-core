@@ -44,6 +44,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass, field, replace
@@ -90,6 +91,26 @@ ASKING = "asking"
 #: A tool joins this set when its outstanding call means a person is being
 #: asked, never because its name sounds like it might be.
 QUESTION_TOOLS = frozenset({"AskUserQuestion", "ExitPlanMode"})
+
+#: The hand-over an agent DECLARES at the end of a turn, in its own words.
+#:
+#: Not invented here: it is the consumer family's existing convention, adopted
+#: rather than paralleled. Their keep-going hook tells an agent to stop only
+#: when it needs a concrete decision from the person — *"put it on its own line
+#: starting with `NEED INPUT:`"* — or when everything is finished — *"start a
+#: line with `ALL DONE:`"*; `set-agent-comm`'s stop hook honours the same two
+#: lines. Reported 2026-11-23 from the live screen: a session ended its turn on
+#: `NEED INPUT: …` and the fleet rendered it as an ordinary finished turn —
+#: green, "ready to read" — which is the calm direction B-168 already closed for
+#: an open `AskUserQuestion`.
+#:
+#: The pattern is the hook's own: anchored at a LINE start, allowing only
+#: whitespace, a quote mark and markdown emphasis before the word, so a turn
+#: that merely MENTIONS the marker mid-sentence is not read as one — the
+#: prose-read-as-fact class this module refuses elsewhere.
+HANDOVER_NEED_INPUT = "need_input"
+HANDOVER_ALL_DONE = "all_done"
+_HANDOVER_RE = re.compile(r"^[\s>*_`-]*(NEED INPUT|ALL DONE)\s*\**\s*:", re.IGNORECASE | re.MULTILINE)
 
 
 # --------------------------------------------------------------------------- #
@@ -357,6 +378,10 @@ class AgentState:
     #: from a person* — still not neglect, and the surface must not render it
     #: as a long silence.
     last_human_input_age: Optional[float] = None
+    #: The hand-over the agent declared at the end of its finished turn —
+    #: `need_input`, `all_done`, or None. See `_HANDOVER_RE`. Only the class
+    #: crosses the API; the line itself is session content and is never logged.
+    handover: Optional[str] = None
 
 
 def _tail(path: str, limit: int = TAIL_BYTES) -> Optional[List[str]]:
@@ -434,6 +459,66 @@ def _last_text(lines: List[str], limit: int = EXCERPT_CHARS) -> tuple[Optional[s
                 text = text[: limit - 1].rstrip() + "\u2026"
             return text, ("agent" if role == "assistant" else "user")
     return None, None
+
+
+def _last_handover(lines: List[str]) -> Optional[str]:
+    """The hand-over marker of the turn that ended last, or None.
+
+    Reads the agent's text AFTER its last tool traffic — the closing message of
+    the turn, which may span several text blocks or entries — and matches
+    `_HANDOVER_RE` against it unflattened, because the marker is a LINE start.
+
+    None when the last thing said was said by a PERSON: an answer typed after
+    the marker is the request being met, and keeping the mark would hold a
+    question open that the reader already closed.
+    """
+    texts: List[str] = []
+    for line in reversed(lines):
+        line = line.strip()
+        if not line or not line.startswith("{"):
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        message = entry.get("message")
+        if not isinstance(message, dict):
+            continue
+        # The entry's own `type` stands in when the message carries no role.
+        role = message.get("role") or entry.get("type")
+        content = message.get("content")
+        blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
+        if not isinstance(blocks, list):
+            continue
+        if role == "user":
+            said = any(
+                isinstance(b, dict) and b.get("type") == "text"
+                and isinstance(b.get("text"), str) and b["text"].strip()
+                for b in blocks
+            )
+            if said and not texts:
+                return None
+            # A tool result or a person's message ends the closing stretch.
+            break
+        if role != "assistant":
+            continue
+        stop = False
+        for block in reversed(blocks):
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use":
+                stop = True
+                break
+            if block.get("type") == "text" and isinstance(block.get("text"), str):
+                texts.append(block["text"])
+        if stop:
+            break
+    for text in texts:
+        match = _HANDOVER_RE.search(text)
+        if match:
+            word = match.group(1).upper()
+            return HANDOVER_NEED_INPUT if word == "NEED INPUT" else HANDOVER_ALL_DONE
+    return None
 
 
 def _human_entry_epoch(line: str) -> Optional[float]:
@@ -895,6 +980,15 @@ def _compose_attention(
         wait = None
     else:
         attention = attention_of(record)
+        if (
+            state.handover == HANDOVER_NEED_INPUT
+            and attention in (ATTENTION_INPUT, ATTENTION_BACKGROUND)
+        ):
+            # The agent DECLARED it cannot go on without the person — the same
+            # fact as an open question tool, said in prose with the family's
+            # marker. Raised only from a class that already means the turn
+            # ended: a record saying `busy` has moved past the marker.
+            attention = ATTENTION_PROMPT
         # Every waiting class gets a duration, `background` included. For it the
         # stamp is the moment the turn ended and the command went to the
         # background, which is exactly when the person started being needed.
@@ -1056,6 +1150,9 @@ def read_state(
                     last_human_input_age=human_age,
                     excerpt=excerpt,
                     excerpt_from=excerpt_from,
+                    # Only a finished turn can hand over — a running one has
+                    # not reached its last line yet.
+                    handover=_last_handover(lines),
                 ),
                 record,
             )

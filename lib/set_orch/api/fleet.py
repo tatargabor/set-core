@@ -428,6 +428,10 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # go*. `null` means the bounded tail held no human entry — NOT "never",
         # and the surface must not render it as neglect.
         "last_human_input_seconds": state.last_human_input_age,
+        # The hand-over the agent declared at the end of its finished turn —
+        # `need_input` (which also raised `attention` to `prompt`), `all_done`,
+        # or null. The class only; the line stays session content.
+        "handover": state.handover,
         # The last thing said in this session — task 7.3, so the tile answers
         # "what is going on" without being opened.
         #
@@ -2162,6 +2166,7 @@ def fleet_agent_state(pid: int) -> Dict[str, Any]:
         "runtime_status": state.runtime_status,
         "background_running": state.background_running,
         "last_human_input_seconds": state.last_human_input_age,
+        "handover": state.handover,
         # Repeated from the listing on purpose: a caller polling this endpoint
         # alone would otherwise have no way to learn that a quiet agent may be
         # mid-turn, and would present `quiet` as "nothing is happening".

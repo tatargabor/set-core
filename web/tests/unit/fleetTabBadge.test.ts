@@ -154,3 +154,17 @@ describe('the per-browser preference', () => {
     expect(() => saveTabBadge(true, fakeStorage({}, true))).not.toThrow()
   })
 })
+
+describe('a NEED INPUT hand-over counts as asking you — fleet-handover-marker', () => {
+  it('raises the question mark and the warning, not the green', () => {
+    const t = tally([A({ attention: 'prompt', handover: 'need_input', input_wait_seconds: 5 })])
+    expect(askingYou(t)).toBe(1)
+    expect(needsPerson(t)).toBe(1)
+    expect(readyToRead(t)).toBe(0)
+  })
+  it('ALL DONE stays ready to read', () => {
+    const t = tally([A({ attention: 'input', handover: 'all_done', input_wait_seconds: 5 })])
+    expect(askingYou(t)).toBe(0)
+    expect(readyToRead(t)).toBe(1)
+  })
+})

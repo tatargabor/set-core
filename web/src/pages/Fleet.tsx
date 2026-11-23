@@ -84,7 +84,7 @@ import { offerWithRemembered, rememberTerminalLabels, terminalOffer } from '../l
 import type { LabelMemory } from '../lib/fleetTerminal'
 import { buildActs, speakerLabel, speakerOf } from '../lib/fleetConversation'
 import { OWNERSHIP_NOTE, cardClasses, ownershipOf } from '../lib/fleetCardStyle'
-import { ATT_BACKGROUND, ATT_INPUT, ATT_PROMPT, ATT_WORKING, inputWaitTone, tally } from '../lib/fleetAttention'
+import { ATT_BACKGROUND, ATT_INPUT, ATT_PROMPT, ATT_WORKING, HANDOVER_NEED_INPUT, inputWaitTone, isAskingYou, tally } from '../lib/fleetAttention'
 import { WaitThresholdsContext, useWaitThresholds } from '../lib/fleetWaitThresholds'
 import {
   defaultLocation, fetchStartLocations, locationLabel, offerable, selectorWorthShowing,
@@ -179,6 +179,36 @@ function WaitFor({ seconds }: { seconds: number | null | undefined }) {
  *  mode), so the parked line must not say it a second time. */
 function StateLine({ agent, humanShown = false }: { agent: FleetAgent; humanShown?: boolean }) {
   const thresholds = useWaitThresholds()
+  // The turn ended on a `NEED INPUT:` line — the agent declared it cannot go on
+  // without the reader (`fleet-handover-marker`). Rendered like an open question,
+  // because it is one: the server already raised the class to `prompt`, so the
+  // finished-turn branches below would not match and the fall-through would
+  // call a measured wait "unmeasured".
+  if (agent.state === 'quiet' && agent.handover === HANDOVER_NEED_INPUT) {
+    const parked = inputWaitTone(agent.input_wait_seconds, thresholds) === 'parked'
+    return (
+      <span
+        className={`inline-flex items-center gap-1.5 text-xs whitespace-nowrap ${
+          parked ? 'text-fg-ghost' : 'text-sky-300 font-semibold'}`}
+        data-fleet-attention={ATT_PROMPT}
+        data-fleet-handover={HANDOVER_NEED_INPUT}
+        data-fleet-parked={parked ? 'true' : undefined}
+        title="The agent ended its turn on a line starting “NEED INPUT:” — it cannot go on without your answer. Read from its last message, the family's hand-over marker."
+      >
+        <span className={`shrink-0 ${parked
+          ? 'w-1.5 h-1.5 rotate-45 border border-fg-ghost'
+          : 'w-1.5 h-1.5 rounded-full bg-sky-300 animate-pulse'}`} />
+        {parked ? 'parked' : 'needs your input'}
+        <WaitFor seconds={agent.input_wait_seconds} />
+        {agent.background_running && (
+          <span className="text-fg-ghost font-normal" title="a command this agent launched is still running">
+            · bg command
+          </span>
+        )}
+        <Queues queued={false} />
+      </span>
+    )
+  }
   // Waiting for a person, with a command the agent launched still running.
   //
   // It renders as a WAIT with a background note, not as its own calm state.
@@ -3397,7 +3427,7 @@ export default function Fleet() {
   const askers = useMemo(() => {
     const found: { project: string; agent: FleetAgent }[] = []
     for (const p of projects) {
-      for (const a of p.agents) if (a.state === 'asking') found.push({ project: p.name, agent: a })
+      for (const a of p.agents) if (isAskingYou(a)) found.push({ project: p.name, agent: a })
     }
     return found
   }, [projects])

@@ -148,6 +148,12 @@ export interface FleetAgent {
    * Still not "a long silence": render it as *no message from you found*.
    */
   last_human_input_seconds?: number | null
+  /**
+   * The hand-over the agent DECLARED at the end of its finished turn:
+   * `need_input` (a line starting `NEED INPUT:` — the server has already raised
+   * `attention` to `prompt`), `all_done`, or null. Absent on an older server.
+   */
+  handover?: string | null
   /** See `Population`. Absent on an older server, which is `unknown`, not `foreign`. */
   population?: Population | string | null
   /** The framework scope, present only for `orphaned` — what `recover` stops. */

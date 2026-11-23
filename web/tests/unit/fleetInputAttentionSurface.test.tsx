@@ -370,6 +370,41 @@ describe('an open question on the project column — B-168', () => {
   })
 })
 
+describe('a finished turn that declared NEED INPUT — fleet-handover-marker', () => {
+  // Reported 2026-11-23 with a screenshot: the turn ended on a line starting
+  // `NEED INPUT:` and the fleet showed an ordinary finished turn.
+  const needsInput = (seconds: number) => agent(1, 'n', {
+    state: 'quiet', attention: 'prompt', handover: 'need_input',
+    runtime_status: 'idle', input_wait_seconds: seconds,
+  })
+
+  it('marks and tints the row as a question from the first second', async () => {
+    const el = await column(fleet([project('visible', [needsInput(5)])]))
+    await waitFor(() => expect(el.querySelector('[data-fleet-asking="1"]')).toBeTruthy())
+    expect(el.querySelector('[data-fleet-row-tone="asking"]')).toBeTruthy()
+  })
+
+  it('an ALL DONE turn stays a finished turn', async () => {
+    const el = await column(fleet([project('visible', [
+      agent(1, 'd', { attention: 'input', handover: 'all_done', input_wait_seconds: 5 }),
+    ])]))
+    await waitFor(() => expect(el.querySelector('[data-fleet-input-wait]')).toBeTruthy())
+    expect(el.querySelector('[data-fleet-asking]')).toBeNull()
+  })
+
+  it('the tile says it needs your input, not "wait unmeasured"', async () => {
+    install(fleet([project('visible', [needsInput(20)])]))
+    const { container } = render(<Fleet />)
+    const line = await waitFor(() => {
+      const el = container.querySelector('[data-fleet-handover="need_input"]')
+      expect(el).toBeTruthy()
+      return el as HTMLElement
+    })
+    expect(line.textContent).toContain('needs your input')
+    expect(container.textContent).not.toContain('wait unmeasured')
+  })
+})
+
 describe('the agent tile says what would happen if you typed', () => {
   async function tileFor(over: Json): Promise<HTMLElement> {
     install(fleet([project('visible', [agent(1, 'a', over)])]))
