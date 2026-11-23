@@ -36,7 +36,7 @@ When a project has no live desk, resolution SHALL start one in the project's roo
 - **THEN** exactly one desk is started and both requests resolve to it
 
 ### Requirement: A request that cannot have a desk is refused with the reason
-Resolution SHALL refuse, start nothing, and name the reason when the project is not registered, is archived, fails the start-location check, or is not enrolled on the bus. When a started desk does not obtain a bus seat within the bound, the request SHALL fail with a class that says so.
+Resolution SHALL refuse, start nothing, and name the reason when the project is not registered, is archived, fails the start-location check, is not enrolled on the bus, or is a folder the runtime has never been trusted in. When enrolment or trust cannot be measured, the request SHALL be refused as unmeasured rather than started. When a started desk does not obtain a bus seat within the bound, the request SHALL fail with a class that says so.
 
 #### Scenario: An archived project
 - **WHEN** a request is resolved for an archived project
@@ -45,6 +45,10 @@ Resolution SHALL refuse, start nothing, and name the reason when the project is 
 #### Scenario: A project that is not on the bus
 - **WHEN** a request is resolved for a project with no bus hooks installed
 - **THEN** it is refused with the reason `not-on-bus`, naming enrolment as the fix, and no agent is started
+
+#### Scenario: A folder the runtime was never trusted in
+- **WHEN** a request is resolved for a project whose folder has no recorded trust decision
+- **THEN** it is refused with the reason `not-trusted` and no agent is started
 
 #### Scenario: A desk that never becomes reachable
 - **WHEN** a started desk has no bus seat when the bound elapses

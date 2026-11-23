@@ -93,10 +93,9 @@ agent, leaves the project tree byte-identical, and **merges per key — hook lis
 so the project's own hooks still fire. And a `SessionStart` hook fires again after a clear and a
 compaction, which is the property a sentence in an opening prompt cannot have.
 
-What is NOT yet measured, and is therefore group 1 of the tasks rather than an assumption: that
-`SessionStart` supplied this way fires on each of start, clear, compaction and resume; that the
-hook subprocess sees the two variables; that a project's own `SessionStart` hooks still fire
-beside it.
+Measured 2026-11-23 (`measurements.md` M1, M2): `SessionStart` supplied this way fired on start,
+clear, compaction and resume; the hook subprocess saw both variables each time; the project's
+own `SessionStart` hook fired beside it; and the agent repeated a token planted in the context.
 
 The owner's contract grows by one typed field (`mandate_id`). It still persists nothing and
 still takes no free-form argv or environment from a caller.
