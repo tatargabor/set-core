@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-201 — `set-leakscan` cached a remote's visibility FOR EVER, so a repository made public after its first scan stayed "private" and the gate passed private names into it on every push
+- **state:** closed 2026-11-23 in the commit that adds this line: a cached verdict now carries a timestamp and is asked again after a day (`VIS_TTL`); a legacy bare-string entry counts as expired; a re-ask that fails yields unknown, which blocks. New test (expired + legacy) fails with the TTL condition mutated to `True` (restore verified with `cmp`); the whole leakscan suite passes (108).
+- **reported:** 2026-11-23 by the family umbrella session: a generated project role rule said "Visibility: private" for a repository that is public.
+- **measured:** `~/.cache/set-core/leakscan-visibility.json` held `"private"` for that origin URL; `gh repo view` answered `PUBLIC`. `remote_visibility` returned any cached value without re-asking (`if url in cache: verdicts.append(cache[url])`).
+- **fail direction:** PASS — the expensive one. A private→public switch is exactly when the gate must start blocking, and the cache kept it silent.
+- **fixed when:** an expired or legacy "private" entry is re-asked, and a public repository's scan blocks a deny-term again (both in the test).
+
 ### B-200 — `set_orch.project_registry` hard-codes the registry at `Path.home()/.config/set-core/projects.json`, so `set-project archive|unarchive|prune` ignore `SET_CONFIG_DIR` / `SET_CORE_REGISTRY` while every other reader honours them
 - **state:** open — same class as B-175 (one resolver for the config dir, `set_kb.lifecycle.registry_path`).
 - **reported:** 2026-11-23 by this session, sandbox-testing `fleet-era-consolidation` 3.3.

@@ -628,6 +628,7 @@ def unknown_note(unknown, deny_terms):
 ALWAYS_ENFORCED = ("secret:", "ignored-but-tracked")
 
 VIS_CACHE = os.path.join(HOME, ".cache", "set-core", "leakscan-visibility.json")
+VIS_TTL = 86400               # a cached remote verdict is asked again after a day
 
 
 def remote_visibility(cwd):
@@ -651,15 +652,27 @@ def remote_visibility(cwd):
                    if "://" in u or "@" in u})
     if not urls:
         return "unknown"
+    import time
     try:
         cache = json.load(open(VIS_CACHE, encoding="utf-8"))
+        if not isinstance(cache, dict):
+            cache = {}
     except (OSError, ValueError):
         cache = {}
 
+    # A verdict is a measurement with a timestamp, re-asked after VIS_TTL. It used to be
+    # cached for ever, and the expensive direction is private → public: measured
+    # 2026-11-23, a repository made public after its first scan was still "private" here,
+    # so the gate let private names through on every push to it. A legacy entry (a bare
+    # string, no timestamp) counts as expired. A re-ask that fails yields "unknown", which
+    # the caller treats as public — the direction that blocks.
+    now = time.time()
     verdicts, dirty = [], False
     for url in urls:
-        if url in cache:
-            verdicts.append(cache[url])
+        ent = cache.get(url)
+        if isinstance(ent, dict) and now - float(ent.get("t", 0)) < VIS_TTL \
+                and ent.get("v") in ("public", "private", "unknown"):
+            verdicts.append(ent["v"])
             continue
         v = "unknown"
         if "github.com" in url:
@@ -668,7 +681,7 @@ def remote_visibility(cwd):
                       "-q", ".visibility"]).strip().lower()
             if out in ("public", "private", "internal"):
                 v = "public" if out == "public" else "private"
-        cache[url] = v
+        cache[url] = {"v": v, "t": now}
         verdicts.append(v)
         dirty = True
 

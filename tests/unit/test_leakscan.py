@@ -858,9 +858,12 @@ def _gate_home(tmp_path, *, deny=None, allow=None, projects=None, vis=None):
     if allow is not None:
         (cfg / "leakscan-allow.txt").write_text(allow, encoding="utf-8")
     if vis is not None:
+        import time
         cache = home / ".cache" / "set-core"
         cache.mkdir(parents=True, exist_ok=True)
-        (cache / "leakscan-visibility.json").write_text(json.dumps(vis))
+        # a bare verdict means "measured just now"; a dict is written as given
+        fresh = {u: (v if isinstance(v, dict) else {"v": v, "t": time.time()}) for u, v in vis.items()}
+        (cache / "leakscan-visibility.json").write_text(json.dumps(fresh))
     return home
 
 
@@ -970,6 +973,23 @@ class TestPublicOnlyCategoriesRespectVisibility:
         r = _scan(repo, home, "--tree")
         assert r.returncode == 0, r.stderr
         assert "advisory" in r.stderr
+
+    @pytest.mark.parametrize("stale", [{"v": "private", "t": 0}, "private"], ids=["expired", "legacy"])
+    def test_a_stale_private_verdict_is_asked_again(self, repo, tmp_path, stale):
+        """2026-11-23: a repository made public after its first scan stayed "private" in the
+        cache for ever, so the gate passed private names into it. An expired or legacy
+        verdict is re-asked; a fictional repository cannot be confirmed private, so the
+        re-ask yields unknown, which blocks."""
+        home = _gate_home(tmp_path, deny=f"{DENY_A}\n")
+        cache = home / ".cache" / "set-core"
+        cache.mkdir(parents=True, exist_ok=True)
+        (cache / "leakscan-visibility.json").write_text(json.dumps({PRIVATE_URL: stale}))
+        _set_remote(repo, PRIVATE_URL)
+        commit(repo, "notes.md", f"see {DENY_A}\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+        written = json.loads((cache / "leakscan-visibility.json").read_text())[PRIVATE_URL]
+        assert isinstance(written, dict) and written["t"] > 0
 
     def test_a_public_remote_blocks(self, repo, tmp_path):
         home = _gate_home(tmp_path, deny=f"{DENY_A}\n", vis={PUBLIC_URL: "public"})
