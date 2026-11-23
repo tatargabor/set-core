@@ -132,3 +132,10 @@
   errors, baseline 78 / 21; the only difference is one test failing in the baseline and passing
   here (`test_paths.py::TestResolveProjectName::test_resolve_with_explicit_path`) — no regression.
   The working tree also carried other sessions' uncommitted files at the time.
+- 2026-11-23 ~21:50, package 98590a6 rolled out to the running watchers: the auto-clear step
+  (`python -m set_orch.auto_clear_deploy`, dry-run first) upgraded the six package templates in
+  five trees (profiles kept as locally modified, units byte-identical), then each unit was
+  restarted; all five `active` with no error line a minute later. Not rolled out: one flagship
+  consumer whose own reinject is wired and whose unit pins `--background-work-blocks false` (the
+  step would add the arm hook — its owner's call), one unit whose project is not in the registry,
+  and set-agent-comm (restarted 21:26, templates current).
