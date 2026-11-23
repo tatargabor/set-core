@@ -56,6 +56,15 @@ class DiscordBot:
         except ImportError:
             logger.warning("discord.py not installed — run: pip install 'set-core[discord]'")
             return
+        # A `discord` that imports but is not discord.py (a namespace directory of the same
+        # name on sys.path) used to crash the dashboard's startup with a traceback on every
+        # restart: `module 'discord' has no attribute 'Intents'`. It is the same state as
+        # "not installed", so it gets the same one line.
+        if not hasattr(discord, "Intents"):
+            logger.warning("discord.py not installed (`discord` resolves to %s, not discord.py) — "
+                           "run: pip install 'set-core[discord]'",
+                           getattr(discord, "__file__", None) or list(getattr(discord, "__path__", []))[:1])
+            return
 
         token = os.environ.get("SET_DISCORD_TOKEN", "")
         if not token:

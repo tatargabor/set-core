@@ -85,6 +85,16 @@
   The sandbox needed `HOME` overridden as well as `SET_CONFIG_DIR`: B-200.
 - 4.9 stays open: it needs the owner's role content (and, proposed to the family umbrella, the
   umbrella owns the family's entries).
+- 5.x so far (2026-11-23) — set-web: 92 551 WARNING in the last 24 h, 92 538 of them the
+  worktree-list line B-198 already fixed; 0 WARNING in the 17 min after its restart. The other
+  repeat item was a startup traceback from the chat-bot integration (`import discord` resolved to
+  set-core's own `set_orch/discord` package — `lib/set_orch` is on the service's `sys.path` — so
+  the "not installed" branch never ran): now one WARNING line, test fails with the guard removed.
+  set-agent-owner: 1 WARNING/day (an agent scope ignoring SIGTERM — actionable, stays).
+  NOT yet measured: the hooks (they log to no journal); 5.4's 24-hour re-measure.
+- 4.1 addendum — `set-project roles --check` validates the role file (keys, types, registry
+  names, self-dependency) and writes nothing; a second writer (the family umbrella) writes its
+  entries against it.
 
 ## Acceptance Criteria (from spec scenarios)
 

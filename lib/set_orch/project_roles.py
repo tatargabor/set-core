@@ -76,6 +76,53 @@ def load_roles(path: Path) -> Optional[dict]:
     return {str(k): (v if isinstance(v, dict) else {}) for k, v in projects.items()}
 
 
+ALLOWED_KEYS = {"role": "one line, text", "owns": "list of text", "depends_on": "list of registry names",
+                "replaced_by": "one registry name"}
+
+
+def validate(path: Path, registry: dict) -> list:
+    """Problems in the role file, as sentences; empty when it is valid. Writes nothing."""
+    import yaml
+
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as e:
+        return [f"unreadable: {e}"]
+    if not isinstance(data, dict):
+        return ["the top level must be a mapping with `version: 1` and `projects:`"]
+    problems = []
+    if data.get("version") != 1:
+        problems.append(f"version must be 1, found {data.get('version')!r}")
+    projects = data.get("projects")
+    if not isinstance(projects, dict):
+        return problems + ["`projects:` must be a mapping of registry name → entry"]
+    for name, entry in projects.items():
+        where = f"projects.{name}"
+        if name not in registry:
+            problems.append(f"{where}: not a registry name (`set-project list`)")
+        if not isinstance(entry, dict):
+            problems.append(f"{where}: must be a mapping")
+            continue
+        for k in entry:
+            if k not in ALLOWED_KEYS:
+                problems.append(f"{where}.{k}: unknown key (allowed: {', '.join(ALLOWED_KEYS)})")
+        if "role" in entry and not isinstance(entry["role"], str):
+            problems.append(f"{where}.role: must be text")
+        for k in ("owns", "depends_on"):
+            v = entry.get(k)
+            if v is not None and not (isinstance(v, list) and all(isinstance(x, str) for x in v)):
+                problems.append(f"{where}.{k}: must be a list of text")
+        for dep in _as_list(entry.get("depends_on")):
+            if dep == name:
+                problems.append(f"{where}.depends_on: names the project itself")
+            elif dep not in registry:
+                problems.append(f"{where}.depends_on: {dep} is not a registry name")
+        rb = entry.get("replaced_by")
+        if rb is not None and (not isinstance(rb, str) or rb not in registry):
+            problems.append(f"{where}.replaced_by: must be one registry name, found {rb!r}")
+    return problems
+
+
 def _leakscan_visibility() -> Visibility:
     """`set-leakscan`'s own remote_visibility — one definition of "public" on the machine."""
     script = Path(__file__).resolve().parents[2] / "bin" / "set-leakscan"
@@ -237,6 +284,7 @@ def main(argv: Optional[list] = None) -> int:
                                  description="Write the machine-local project role rule into every registered project.")
     ap.add_argument("names", nargs="*", metavar="NAME", help="only these registry entries")
     ap.add_argument("--dry-run", action="store_true", help="report only; writes nothing")
+    ap.add_argument("--check", action="store_true", help="validate the role file against the registry; writes nothing")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
@@ -251,6 +299,12 @@ def main(argv: Optional[list] = None) -> int:
     except (OSError, ValueError) as e:
         print(f"registry unreadable: {registry_file()}: {e}", file=sys.stderr)
         return 1
+    if args.check:
+        problems = validate(rf, registry)
+        for line in problems:
+            print(f"  {line}")
+        print(f"role file {rf}: " + (f"{len(problems)} problem(s)" if problems else "valid"))
+        return 1 if problems else 0
     unknown = [n for n in args.names if n not in registry]
     for n in unknown:
         print(f"not registered: {n}", file=sys.stderr)

@@ -175,3 +175,18 @@ def test_end_to_end_set_project_roles(tmp_path):
     text = (a / pr.RULE_REL).read_text()
     assert text.startswith(pr.MARKER) and "1 private project" in text and "beta" not in text
     assert status(a) == "" and status(b) == ""
+
+
+def test_check_names_every_problem_and_passes_a_valid_file(tmp_path):
+    reg = {"a": {}, "b": {}}
+    good = tmp_path / "good.yaml"
+    good.write_text("version: 1\nprojects:\n  a: {role: A., owns: [x], depends_on: [b]}\n  b: {replaced_by: a}\n")
+    assert pr.validate(good, reg) == []
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("version: 2\nprojects:\n  a: {rol: typo, depends_on: [a, zz], owns: x}\n  ghost: {role: G.}\n"
+                   "  b: {replaced_by: [a]}\n")
+    problems = "\n".join(pr.validate(bad, reg))
+    for expected in ("version must be 1", "projects.a.rol: unknown key", "names the project itself",
+                     "zz is not a registry name", "projects.a.owns: must be a list", "projects.ghost: not a registry name",
+                     "projects.b.replaced_by"):
+        assert expected in problems, expected
