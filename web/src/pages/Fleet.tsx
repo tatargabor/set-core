@@ -106,6 +106,8 @@ import { plainExcerpt } from '../lib/excerptText'
 import FleetAgentLog, { SayRow, WorkRow } from '../components/FleetAgentLog'
 import type { LogResponse } from '../components/FleetAgentLog'
 import { descendantStanding, parentClaim } from '../lib/fleetLineage'
+import FleetMandateLine, { MandateFieldset, StartMandateNote } from '../components/FleetMandate'
+import { EMPTY_DRAFT, mandateFields, type MandateDraft } from '../lib/fleetMandate'
 import { currentSelection, tileClickCollapses, tileClickOpens } from '../lib/fleetTileClick'
 import type { Speaker } from '../lib/fleetConversation'
 
@@ -577,12 +579,17 @@ const GRID_COLS: Record<number, string> = {
  * Who started this agent — task 7.8.
  *
  * Two sources, shown as two different claims rather than as one "parent",
- * because they answer different questions: the OWNER's note says who asked for
- * the start (a record, and the only thing that can answer for a
- * framework-started agent at all — those have the owner process as their
- * ancestor); the ancestry walk says who is above it in the process tree
- * (measured, and it survives when nothing was recorded). They can disagree, and
- * a screen that picked one silently would report the disagreement as a fact.
+ * because they answer different questions: the recorded requester says who the
+ * START REQUEST named as asking (a claim nobody verified — and the only thing
+ * that can answer for a framework-started agent at all, since those have the
+ * owner process as their ancestor); the ancestry walk says who is above it in
+ * the process tree (measured, and it survives when nothing was recorded). They
+ * can disagree, and a screen that picked one silently would report the
+ * disagreement as a fact.
+ *
+ * The words carry the difference, not a colour: a claim is not a warning, and
+ * amber on this screen means "look at this". Most framework-started agents
+ * have a recorded requester, so an amber claim would light up every tile.
  */
 function Lineage({ agent, canJumpSeat, onJumpSeat }: {
   agent: FleetAgent
@@ -601,14 +608,14 @@ function Lineage({ agent, canJumpSeat, onJumpSeat }: {
   const body = (
     <>
       ← {claim.label}
-      <span className={claim.measured ? 'ml-1 text-fg-ghost' : 'ml-1 text-amber-400/70'}>
-        {claim.measured ? 'recorded' : 'from the process tree'}
+      <span className={claim.measured ? 'ml-1 text-fg-ghost' : 'ml-1 text-fg-ghost italic'}>
+        {claim.measured ? 'from the process tree' : 'said to have asked'}
       </span>
     </>
   )
   return reachable ? (
     <button
-      data-fleet-parent={claim.measured ? 'recorded' : 'ancestry'}
+      data-fleet-parent={claim.measured ? 'ancestry' : 'recorded'}
       data-fleet-parent-jump={claim.seat}
       onClick={() => onJumpSeat?.(claim.seat as string)}
       className="text-xs text-fg-ghost shrink-0 hover:text-fg-strong underline-offset-2 hover:underline"
@@ -618,7 +625,7 @@ function Lineage({ agent, canJumpSeat, onJumpSeat }: {
     </button>
   ) : (
     <span
-      data-fleet-parent={claim.measured ? 'recorded' : 'ancestry'}
+      data-fleet-parent={claim.measured ? 'ancestry' : 'recorded'}
       className="text-xs text-fg-ghost shrink-0"
       title={claim.note}
     >
@@ -1629,6 +1636,9 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
       </div>
 
       <Purpose agent={agent} />
+      {/* Why this agent was started — the mandate record, or which of the three
+          absences it is. One line; the rest rides in its title. */}
+      <FleetMandateLine agent={agent} />
       <Declared
         standing={standing}
         full={enlarged || focused}
@@ -1738,6 +1748,9 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
   const [locations, setLocations] = useState<StartLocation[] | null>(null)
   const [locationsFailed, setLocationsFailed] = useState(false)
   const [cwd, setCwd] = useState(project.root)
+  // The goal the agent is started with. Empty is allowed for a person's start —
+  // the form says so — and a scope without a goal is refused before the click.
+  const [mandate, setMandate] = useState<MandateDraft>(EMPTY_DRAFT)
   // `null` here means COULD NOT ASK, never "no providers declared" — the same
   // distinction the locations above draw, and for the same reason.
   const [catalogue, setCatalogue] = useState<ProviderCatalogue | null>(null)
@@ -1833,7 +1846,7 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
          `files` before it became a glyph. */
       <button
         data-fleet-start="offer"
-        onClick={() => { setLabel(suggest()); setOpen(true); setError(null) }}
+        onClick={() => { setLabel(suggest()); setMandate(EMPTY_DRAFT); setOpen(true); setError(null) }}
         aria-label="start an agent"
         className="p-1 rounded border border-transparent text-sky-300 hover:text-sky-200 hover:border-surface-line shrink-0"
         title="Start an agent here — the framework starts it and holds it, and this one will have a terminal in the browser."
@@ -1884,7 +1897,8 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
           onSubmit={e => {
             e.preventDefault()
             const name = label.trim()
-            if (!name || busy) return
+            const goal = mandateFields(mandate)
+            if (!name || busy || goal.kind === 'problem') return
             setBusy(true)
             setError(null)
             fetch('/api/fleet/agents', {
@@ -1898,6 +1912,7 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
                 cwd: cwd || project.root,
                 ...(provider ? { provider } : {}),
                 ...(model ? { model } : {}),
+                ...(goal.kind === 'mandate' ? { mandate: goal.mandate } : {}),
               }),
             })
               .then(async r => {
@@ -1923,6 +1938,10 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
             placeholder="agent name"
             className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong w-full"
           />
+          {/* The goal: recorded with the start, and what the agent is told at
+              every session start. The scope fields float from here. */}
+          <MandateFieldset draft={mandate} onChange={setMandate} />
+          <StartMandateNote draft={mandate} />
           {locations && selectorWorthShowing(locations) && (
             <select
               data-fleet-start="location"
@@ -2020,7 +2039,7 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
           <div className="flex items-center gap-2 pt-0.5">
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || mandateFields(mandate).kind === 'problem'}
               className="px-2 py-0.5 rounded border border-sky-500/50 text-xs text-sky-300
                          hover:bg-sky-500/10 disabled:opacity-50"
             >

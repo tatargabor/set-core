@@ -23,14 +23,26 @@ import {
 } from '../../src/lib/fleetLineage'
 
 describe('who started this agent — two sources, two claims', () => {
-  it('marks the owner’s record as a record', () => {
+  it('marks the recorded requester as a claim', () => {
     const c = parentClaim({ parent: { seat: 'set-core#f1afe440', source: 'recorded' } })
-    expect(c).toMatchObject({ kind: 'parent', label: 'set-core#f1afe440', measured: true, note: RECORDED_NOTE })
+    expect(c).toMatchObject({ kind: 'parent', label: 'set-core#f1afe440', measured: false, note: RECORDED_NOTE })
+    expect(RECORDED_NOTE).toContain('claim')
   })
 
-  it('marks the process-tree walk as the inference it is', () => {
+  it('marks the process-tree walk as the measurement it is', () => {
     const c = parentClaim({ parent: { seat: 'other#123', source: 'ancestry' } })
-    expect(c).toMatchObject({ kind: 'parent', measured: false, note: ANCESTRY_NOTE })
+    expect(c).toMatchObject({ kind: 'parent', measured: true, note: ANCESTRY_NOTE })
+  })
+
+  /**
+   * The wrong marking, held here so it cannot come back: until 2026-11-23 the
+   * record was `measured: true` and its note read "a record, not an inference".
+   * A requester is a string the caller of the start route supplied.
+   */
+  it('never calls a recorded requester measured, in the flag or in the words', () => {
+    const rec = parentClaim({ parent: { seat: 'a', source: 'recorded' } })
+    expect(rec.kind === 'parent' && rec.measured).toBe(false)
+    expect(RECORDED_NOTE).not.toMatch(/not an inference|measured/)
   })
 
   /**
@@ -41,8 +53,8 @@ describe('who started this agent — two sources, two claims', () => {
     const rec = parentClaim({ parent: { seat: 'a', source: 'recorded' } })
     const anc = parentClaim({ parent: { seat: 'a', source: 'ancestry' } })
     expect(rec.kind === 'parent' && anc.kind === 'parent' && rec.note === anc.note).toBe(false)
-    expect(rec.kind === 'parent' && rec.measured).toBe(true)
-    expect(anc.kind === 'parent' && anc.measured).toBe(false)
+    expect(rec.kind === 'parent' && rec.measured).toBe(false)
+    expect(anc.kind === 'parent' && anc.measured).toBe(true)
   })
 
   /**

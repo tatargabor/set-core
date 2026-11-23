@@ -6,12 +6,19 @@
  * to it) and differ in what they are allowed to CLAIM, which is the whole
  * content of this file:
  *
- * **Upwards, two sources are two claims.** `recorded` is the owner's own note
- * of who asked for the start; `ancestry` is a walk up the process tree. They
+ * **Upwards, two sources are two claims.** `recorded` is what the START REQUEST
+ * said about who was asking; `ancestry` is a walk up the process tree. They
  * answer different questions, they can disagree, and a screen that picked one
- * silently would report the disagreement as a fact. The measurement and the
- * inference therefore never get the same weight — the screen is the last place
- * where they can still be told apart.
+ * silently would report the disagreement as a fact.
+ *
+ * **Which of the two is measured — corrected 2026-11-23.** This file had it
+ * reversed: it called the record "measured" and the tree walk an inference. The
+ * record is a string the caller of the start route supplied; nothing verified
+ * it, and any caller can name any seat. The tree walk is read from the process
+ * table. So the recorded requester is a CLAIM and the ancestor is the
+ * measurement — which is also what the inventory and the mandate record say
+ * (`requester_is_claim`). The screen is the last place the two can still be
+ * told apart, and it was telling them apart the wrong way round.
  *
  * **Downwards, the count is bounded and says so.** `live_only` is carried by
  * the producer and it is always true today: the count comes from RECORDED
@@ -34,14 +41,17 @@ export type ParentClaim =
       /** What to show: the seat name, or the bare pid when there is no seat. */
       label: string
       seat: string | null
-      /** True for the owner's record, false for the process-tree walk. */
+      /**
+       * True for the process-tree walk, false for the recorded requester — a
+       * requester is what the start request SAID, and nobody checked it.
+       */
       measured: boolean
       /** The sentence that says which KIND of claim this is. */
       note: string
     }
 
 export const RECORDED_NOTE =
-  'the owner wrote down who asked for this agent to be started — a record, not an inference'
+  'who the start request said was asking — written down when the agent was started, and a claim: nothing verified it'
 export const ANCESTRY_NOTE =
   'measured from the process tree: the nearest agent ancestor. Not the same as who asked — the two can disagree'
 
@@ -53,13 +63,13 @@ export function parentClaim(agent: Pick<FleetAgent, 'parent'>): ParentClaim {
   // missing, so the pid stands in for it.
   const label = p.seat ?? (p.pid_without_seat != null ? `pid ${p.pid_without_seat}` : null)
   if (!label) return { kind: 'none' }
-  const measured = p.source === 'recorded'
+  const measured = p.source === 'ancestry'
   return {
     kind: 'parent',
     label,
     seat: p.seat ?? null,
     measured,
-    note: measured ? RECORDED_NOTE : ANCESTRY_NOTE,
+    note: measured ? ANCESTRY_NOTE : RECORDED_NOTE,
   }
 }
 

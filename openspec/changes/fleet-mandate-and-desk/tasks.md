@@ -73,10 +73,10 @@ Every test written for a fix or a guard is proven with the fix stashed (see the
 
 ## 7. The start form, the tile and the corrected claim (WEB)
 
-- [ ] 7.1 WEB — The start form gains a goal field (and scope, closing condition behind a disclosure that floats, not pushes); an empty goal is allowed and the form says the agent will have no mandate. [REQ: an-agent-requested-start-without-a-goal-is-refused]
-- [ ] 7.2 WEB — The agent tile shows the mandate's kind and goal in one line, or "no mandate" with its reason and a control to declare one; after a declaration it says whether the agent was told. [REQ: a-mandate-can-be-declared-later-and-says-whether-the-agent-was-told]
-- [ ] 7.3 WEB — `web/src/lib/fleetLineage.ts`: a recorded requester is a claim and a process ancestor is measured; update the notes and the tests that assert the reversed marking, in the same commit. [REQ: the-mandate-carries-who-asked-and-marks-it-as-a-claim]
-- [ ] 7.4 WEB — Wherever the screen describes how an agent treats outside requests, it says "instructed to decline", never "blocked". [REQ: the-standing-rule-for-outside-requests-is-an-instruction-and-is-reported-as-one]
+- [x] 7.1 WEB — The start form gains a goal field (and scope, closing condition behind a disclosure that floats, not pushes); an empty goal is allowed and the form says the agent will have no mandate. [REQ: an-agent-requested-start-without-a-goal-is-refused]
+- [x] 7.2 WEB — The agent tile shows the mandate's kind and goal in one line, or "no mandate" with its reason and a control to declare one; after a declaration it says whether the agent was told. [REQ: a-mandate-can-be-declared-later-and-says-whether-the-agent-was-told]
+- [x] 7.3 WEB — `web/src/lib/fleetLineage.ts`: a recorded requester is a claim and a process ancestor is measured; update the notes and the tests that assert the reversed marking, in the same commit. [REQ: the-mandate-carries-who-asked-and-marks-it-as-a-claim]
+- [x] 7.4 WEB — Wherever the screen describes how an agent treats outside requests, it says "instructed to decline", never "blocked". [REQ: the-standing-rule-for-outside-requests-is-an-instruction-and-is-reported-as-one]
 
 ## 8. The map (API, WEB)
 

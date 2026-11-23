@@ -34,8 +34,46 @@ import type { CapabilityReport } from './fleetInstall'
 
 import type { CacheState } from './fleetCacheHeat'
 
+/**
+ * Why an agent was started — the mandate record, as the inventory carries it.
+ *
+ * `requested_by` is what the start request SAID; `requester_is_claim` is always
+ * true and is carried so no surface has to remember that. `delivered` is whether
+ * the agent's own session-start hook has read the record: false does not mean
+ * the agent ignores it, it means nothing has told it yet.
+ */
+export interface FleetMandate {
+  id: string
+  kind: 'work' | 'desk' | string
+  goal: string
+  scope?: { paths?: string[] | null; change?: string | null } | null
+  done_when?: string | null
+  requested_by?: string | null
+  requester_is_claim?: boolean
+  project?: string | null
+  label?: string | null
+  source?: 'start' | 'declared' | string
+  delivered?: boolean
+  declared_at?: number | string | null
+  ended?: { reason?: string } | null
+}
+
+/**
+ * Why there is no mandate — a REASON, never a goal guessed from a label.
+ *
+ * `unmeasured` is the store that could not be read: it is not "no mandate", and
+ * a surface that drew it as one would report an outage as a missing purpose.
+ */
+export interface FleetMandateAbsent {
+  reason: 'not-started-here' | 'not-declared' | 'unmeasured' | string
+}
+
 export interface FleetAgent {
   pid: number
+  /** The agent's mandate, or null with `mandate_absent` saying why. Both absent
+      on a payload from a build that predates mandates — which says nothing. */
+  mandate?: FleetMandate | null
+  mandate_absent?: FleetMandateAbsent | null
   name: string | null
   project: string | null
   branch: string | null
