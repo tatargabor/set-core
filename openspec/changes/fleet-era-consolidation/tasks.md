@@ -1,0 +1,87 @@
+## 1. Stage 1 — dead code, no behaviour change
+
+- [ ] 1.1 Record the before-state: `python -c "import set_orch.server"` module count, an import probe of every `lib/set_orch/*.py`, and a regression baseline (regression-baseline skill) [REQ: ikp-config-loading]
+- [ ] 1.2 Remove `lib/set_orch/_api_old.py` and `tests/unit/test_api_old_deprecated.py`; re-grep importers including tests and conftest first [REQ: none — dead-code removal, design D1]
+- [ ] 1.3 Remove the bridge's lazy call sites in `lib/set_orch/planner.py` and `lib/set_orch/dispatcher.py`, and any reference in `verifier.py` and `templates.py`, so each path behaves as "no bridge configured" did [REQ: planner-assigns-ikp-packs-per-change]
+- [ ] 1.4 Remove `lib/set_orch/ikp_bridge.py`, `tests/test_ikp_bridge.py`, `tests/test_ikp_decomposer_dispatch.py`, and the bridge's entry in `tests/unit/test_model_touch_point_coverage.py` [REQ: ikp-config-loading]
+- [ ] 1.5 Grep lib, bin, modules, templates and web/src for the stopped design-tool integration and remove what remains, keeping any consumer-facing design rule that is still generic [REQ: rule-file-injection]
+- [ ] 1.6 After-state: the same import probe and module count, and a set diff against the 1.1 baseline that shows no new failure; restart set-web and confirm it serves the fleet view [REQ: graceful-degradation]
+
+## 2. Stage 2 — stop deploying unused consumer artifacts
+
+- [ ] 2.1 Re-measure before deleting: `/set:*` slash and Skill invocations across transcripts (30 days), and whether any consumer's own skill or command references a `/set:*` name [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+- [ ] 2.2 Add a `retired` list to the deploy, holding the zero-use `/set:*` commands, `skills/set` entries, and the git-bus messaging commands (keep `set:inbox` only if 2.1 finds a live caller) [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+- [ ] 2.3 In `lib/project/deploy.sh` and the ledger (`lib/set_orch/deploy_ledger.py`): skip retired sources; remove a deployed copy whose hash matches the ledger record; keep and report one that differs [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+- [ ] 2.4 Make `set-project init --dry-run` list each planned retirement, and write nothing [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+- [ ] 2.5 Tests: an unchanged retired copy is removed, an edited one is kept, and the dry-run lists both and writes nothing — each test fails with the change stashed [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+- [ ] 2.6 Remove the retired command and skill sources from set-core's own `.claude/` once no deploy path reads them [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+- [ ] 2.7 Run the dry-run on two real consumers and read the plan; after the real run, diff their hand-authored `.claude/` files, hook config and gate scripts — an empty diff is the pass [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed]
+
+## 3. Archived projects
+
+- [ ] 3.1 The doctor skips archived registry entries and prints one summary line with their count; `--project <name>` still checks an archived one (`lib/set_doctor/cli.py`, `checks.py`) [REQ: archived-projects-are-not-checked]
+- [ ] 3.2 Tests for both doctor scenarios [REQ: archived-projects-are-not-checked]
+- [ ] 3.3 `set-project archive` and unarchive regenerate the project's role rule, so the notice appears and disappears with the flag [REQ: an-archived-project-tells-the-agent-not-to-develop-it]
+
+## 4. Project role rules
+
+- [ ] 4.1 Define the role file schema (role, owns, depends on, depended on by, replaced by) and ship an empty example under `templates/`; the real file lives in the user's set-core config directory [REQ: roles-come-from-a-private-machine-local-file]
+- [ ] 4.2 Implement `set-project roles`: read the registry and the role file, write `.claude/rules/project-role.md` with a generated-by marker into each existing project, and skip a file without the marker [REQ: one-generated-rule-per-registered-project]
+- [ ] 4.3 Add the rule's path to `.git/info/exclude` when writing it [REQ: the-rule-never-enters-a-commit]
+- [ ] 4.4 Reuse the leak scan's visibility decision (and its cache); for a public project, name only public relations and count the private ones; undecidable counts as private [REQ: a-public-repository-names-only-public-siblings]
+- [ ] 4.5 Open the rule with the archived notice for an archived entry, naming the replacement when the role file gives one [REQ: an-archived-project-tells-the-agent-not-to-develop-it]
+- [ ] 4.6 `set-project init` regenerates the rule for the project it deploys into [REQ: one-generated-rule-per-registered-project]
+- [ ] 4.7 The doctor's role check: missing or older than the role file is `warn` with `set-project roles` as the fix; no role file is `skip` with the reason [REQ: the-project-role-rule-is-checked]
+- [ ] 4.8 Tests for every scenario in the project-role-rule spec, each failing with the change stashed [REQ: one-generated-rule-per-registered-project]
+- [ ] 4.9 Operator step, local only: fill the role file from the private project map and run `set-project roles`; open one public and one archived project and read the generated rule [REQ: roles-come-from-a-private-machine-local-file]
+
+## 5. Log hygiene sweep
+
+- [ ] 5.1 Measure WARNING lines per day and the top 10 messages for set-web, set-agent-owner and each set-core hook from the journal; record the table in the change's notes (no consumer names) [REQ: a-sweep-is-measured-before-and-after]
+- [ ] 5.2 For each top message: an operator-actionable one stays, an expected outcome moves to debug, a repeating one is logged once per state change [REQ: a-normal-answer-is-not-a-warning]
+- [ ] 5.3 A test per demoted message that fails when its level is reverted [REQ: a-sweep-is-measured-before-and-after]
+- [ ] 5.4 Restart the services (the agent owner only when no agent it holds is working) and re-measure after 24 hours; record before → after [REQ: a-sweep-is-measured-before-and-after]
+
+## 6. Public/private split and roadmap
+
+- [ ] 6.1 Inventory operator-specific code and config currently in the public repository and list, per item, whether it moves to the private package or becomes a generic seam [REQ: operator-specific-integrations-live-behind-plugin-seams]
+- [ ] 6.2 Verify the public core runs without the private package: start set-web and run the public CLIs, and expect no error and no WARNING naming it [REQ: operator-specific-integrations-live-behind-plugin-seams]
+- [ ] 6.3 Rewrite the README positioning and `.claude/rules/capability-guide.md` to describe the fleet and tooling layer first, and mark the orchestration commands as being retired [REQ: operator-specific-integrations-live-behind-plugin-seams]
+- [ ] 6.4 Create the stage 3–6 follow-up changes as proposals only (`hook-diet`, `retire-orchestration-cli`, `retire-orchestration-engine`, `profile-layer-decision`), each with the precondition named in design.md [REQ: operator-specific-integrations-live-behind-plugin-seams]
+
+## 7. Close
+
+- [ ] 7.1 `openspec validate fleet-era-consolidation --strict`, then `/opsx:verify` with `templates/core/rules/spec-verify-gate.md` [REQ: operator-specific-integrations-live-behind-plugin-seams]
+- [ ] 7.2 Run `set-leakscan` on the range before any push [REQ: operator-specific-integrations-live-behind-plugin-seams]
+
+## Acceptance Criteria (from spec scenarios)
+
+### project-role-rule
+- [ ] AC-1: WHEN the role file does not exist THEN `set-project roles` writes no rule, reports "no role file" with the path and exits 0 [REQ: roles-come-from-a-private-machine-local-file, scenario: no-role-file]
+- [ ] AC-2: WHEN a registered project has no entry THEN its rule carries registry facts only and says the role is not described [REQ: roles-come-from-a-private-machine-local-file, scenario: a-project-without-an-entry]
+- [ ] AC-3: WHEN `project-role.md` exists without the marker THEN it is left unchanged and reported as skipped [REQ: one-generated-rule-per-registered-project, scenario: a-hand-written-file-in-the-way]
+- [ ] AC-4: WHEN `set-project roles` runs twice unchanged THEN the second run changes no byte [REQ: one-generated-rule-per-registered-project, scenario: regeneration-is-idempotent]
+- [ ] AC-5: WHEN the rule is written into a clean repository THEN `git status --porcelain` stays empty [REQ: the-rule-never-enters-a-commit, scenario: written-into-a-clean-repository]
+- [ ] AC-6: WHEN a public project has one public and one private dependent THEN the rule names the public one and counts the private one [REQ: a-public-repository-names-only-public-siblings, scenario: a-public-repository-with-a-private-consumer]
+- [ ] AC-7: WHEN a relation's visibility cannot be decided THEN it is counted as private and not named [REQ: a-public-repository-names-only-public-siblings, scenario: visibility-cannot-be-decided]
+- [ ] AC-8: WHEN an agent starts in an archived project THEN the rule's first lines say it is archived and not to be developed [REQ: an-archived-project-tells-the-agent-not-to-develop-it, scenario: opening-an-archived-project]
+- [ ] AC-9: WHEN the archived flag is cleared and the rule regenerated THEN the notice is gone [REQ: an-archived-project-tells-the-agent-not-to-develop-it, scenario: un-archiving]
+
+### service-log-hygiene
+- [ ] AC-10: WHEN a poll finds an optional resource absent every cycle THEN at most one WARNING is logged, at the state change [REQ: a-normal-answer-is-not-a-warning, scenario: a-polled-resource-is-absent]
+- [ ] AC-11: WHEN a listing returns nothing because there is nothing THEN no WARNING is logged [REQ: a-normal-answer-is-not-a-warning, scenario: an-expected-empty-answer]
+- [ ] AC-12: WHEN a demoted message is reverted to WARNING THEN its test fails [REQ: a-sweep-is-measured-before-and-after, scenario: reverting-a-demotion]
+
+### machine-doctor
+- [ ] AC-13: WHEN the registry holds three archived entries THEN none is checked and one line says "3 archived projects skipped" [REQ: archived-projects-are-not-checked, scenario: an-archived-entry-in-the-registry]
+- [ ] AC-14: WHEN `--project` names an archived entry THEN it is checked [REQ: archived-projects-are-not-checked, scenario: asking-for-an-archived-project-by-name]
+- [ ] AC-15: WHEN the role file changed after a rule was generated THEN the role check warns with `set-project roles` as the fix [REQ: the-project-role-rule-is-checked, scenario: a-stale-role-rule]
+
+### project-init-deploy
+- [ ] AC-16: WHEN a consumer holds an unchanged retired command THEN init removes it and reports it under "retired" [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed, scenario: a-retired-command-deployed-earlier]
+- [ ] AC-17: WHEN the consumer's retired copy differs from the ledger hash THEN it stays and is reported as kept [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed, scenario: a-retired-file-the-consumer-edited]
+- [ ] AC-18: WHEN the dry-run runs in a project holding retired copies THEN it lists each removal and writes nothing [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed, scenario: the-dry-run-shows-the-removal]
+
+### opensource
+- [ ] AC-19: WHEN the public core runs without the private package THEN commands and the dashboard run with no error or WARNING naming it [REQ: operator-specific-integrations-live-behind-plugin-seams, scenario: the-operator-plugin-is-not-installed]
+- [ ] AC-20: WHEN an operator-only feature is proposed THEN it goes into the private package and the public change adds at most a generic seam [REQ: operator-specific-integrations-live-behind-plugin-seams, scenario: a-new-operator-specific-feature]
