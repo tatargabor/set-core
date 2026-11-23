@@ -144,3 +144,19 @@
   figure from 1.1 (0.8–2.3 % of a core per watcher) predicts 0.3–0.9 core for 39 — re-measure
   over a day with `CPUUsageNSec` before calling it acceptable. Not installed: the flagship
   consumer (see above) and the two `deploy: false` data repositories.
+- 2026-11-23 ~22:55, correction and two fixes (reported by the package's session on the bus).
+  (a) "one unit whose project is not in the registry" above was a false absence: that unit watches
+  a registered tree under a different unit name, and init found it BY TREE ("exists, left as is")
+  and upgraded its templates; the lookup that said otherwise went by unit name. (b) The templates
+  written tonight are the package's 98590a6 because init wrote them at 21:43 (file mtime + init
+  log), not because of a cache; the rollout's commit script committed them at 22:09, after the
+  package had moved on. Measured right after: 37 trees at 98590a6, 1 current. (c) Fixed
+  (`60a60570`): the installer ran from the checkout's WORKING TREE while the hash rule read HEAD;
+  it now runs from a `git archive HEAD` export, and the report names the package sha it shipped.
+  (d) Fixed (`a02b3974`): `set-deploy-hooks` no longer leaves `.claude/settings.json.bak` in the
+  tree; the backup goes under `$XDG_STATE_HOME/set-core/settings-backup/<tree-key>/` and init
+  prints its path. The 38 leftover copies were MOVED there (`*.leftover-bak`), one tracked copy
+  was left in its repository. Both fixes were implemented on GLM and reviewed on Opus (new tests
+  fail against the pre-fix code; sandbox run against the real package: upgraded to its HEAD, no
+  `.bak`, backup equals the pre-merge file). Open: re-roll the templates to the fleet once the
+  package's started-after reader lands.
