@@ -139,3 +139,8 @@
   consumer whose own reinject is wired and whose unit pins `--background-work-blocks false` (the
   step would add the arm hook — its owner's call), one unit whose project is not in the registry,
   and set-agent-comm (restarted 21:26, templates current).
+- 2026-11-23 ~21:48, default install reached the fleet through the `hook-diet` init rollout: 39
+  watcher units active (was 8), together holding 112 MB; load average 2.07 right after. The CPU
+  figure from 1.1 (0.8–2.3 % of a core per watcher) predicts 0.3–0.9 core for 39 — re-measure
+  over a day with `CPUUsageNSec` before calling it acceptable. Not installed: the flagship
+  consumer (see above) and the two `deploy: false` data repositories.
