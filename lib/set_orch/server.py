@@ -76,9 +76,21 @@ async def lifespan(app: FastAPI):
         print(f"[SET] Discord bot startup failed: {e}", flush=True)
         traceback.print_exc()
 
+    # The desk sweep: a project's desk with nothing open and no movement is stopped
+    # by the framework, not by its own good intentions.
+    desk_sweep = None
+    try:
+        import asyncio
+        from .api.fleet_mandate import sweep_loop
+        desk_sweep = asyncio.create_task(sweep_loop())
+    except Exception as e:
+        print(f"[SET] Desk sweep startup failed: {e}", flush=True)
+
     yield
 
-    # Shutdown: Discord → service → sessions → watchers
+    # Shutdown: desk sweep → Discord → service → sessions → watchers
+    if desk_sweep is not None:
+        desk_sweep.cancel()
     if discord_bot:
         try:
             await discord_bot.stop()

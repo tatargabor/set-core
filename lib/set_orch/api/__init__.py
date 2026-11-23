@@ -21,6 +21,7 @@ Modules:
 from fastapi import APIRouter
 
 from .fleet import router as fleet_router
+from .fleet_mandate import router as fleet_mandate_router
 from .now import router as now_router
 from .files import router as files_router
 from .desktop import router as desktop_router
@@ -45,6 +46,9 @@ router = APIRouter()
 # registration order, so the `/api/{project}/...` families below would otherwise
 # swallow `/api/fleet/...` and answer it as a project named "fleet".
 router.include_router(fleet_router)
+# `/api/fleet/mandates`, `/desks`, `/engagements`, `/map` — the same family, so the same
+# place in the order (CB-16).
+router.include_router(fleet_mandate_router)
 # `/api/fleet/now...` — the Now card; a `/api/fleet/...` family, so also before
 # the `/api/{project}/...` routers (CB-16).
 router.include_router(now_router)
