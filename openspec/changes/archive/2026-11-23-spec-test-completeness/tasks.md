@@ -24,7 +24,7 @@
 
 ## 5. Documentation
 
-- [ ] 5.1 Expand the "E2E Test Expectations" section in `docs/guide/writing-specs.md`: replace the 15-line example with a comprehensive example showing all 7 sub-concerns (test credentials with named accounts, test data strategy with reset approach, selector contract with registry table, critical flows per feature, mock strategy for external services, error code contract, and **test stories** with 2-3 narrative user journey examples). Add a "Without this" callout explaining consequences (reference: set-designer websocket-server-and-brain exhausted at retry=12 due to missing test infra guidance). [REQ: writing-specs-guide-expanded]
+- [ ] 5.1 Expand the "E2E Test Expectations" section in `docs/guide/writing-specs.md`: replace the 15-line example with a comprehensive example showing all 7 sub-concerns (test credentials with named accounts, test data strategy with reset approach, selector contract with registry table, critical flows per feature, mock strategy for external services, error code contract, and **test stories** with 2-3 narrative user journey examples). Add a "Without this" callout explaining consequences (reference: the design tool websocket-server-and-brain exhausted at retry=12 due to missing test infra guidance). [REQ: writing-specs-guide-expanded]
 
 ## 6. Review Learnings Pipeline Validation
 
@@ -38,11 +38,11 @@
 
 NOTE: Full pipeline trace (JSONL → checklist → input.md → review gate → LLM evaluation) was completed across two investigation sessions (2026-05-10). All 5 stages confirmed working. The review_learnings pipeline is validated end-to-end. Remaining tasks 6.1-6.3 are regression guard unit tests.
 
-## 7. Post-Run Learning: set-designer v2 Analysis
+## 7. Post-Run Learning: the design tool v2 Analysis
 
-- [ ] 7.1 After set-designer v2 run completes: harvest findings via `set-harvest`. Specifically analyze: (a) which changes struggled with test infrastructure (websocket-server-and-brain exhausted at retry=12 — was it test infra related?), (b) what test patterns agents invented that should have been in the spec, (c) whether review learnings influenced agent behavior (compare early vs late change test quality). Document as a findings report. [REQ: e2e-run-validation-of-testing-section-flow]
+- [ ] 7.1 After the design tool v2 run completes: harvest findings via `set-harvest`. Specifically analyze: (a) which changes struggled with test infrastructure (websocket-server-and-brain exhausted at retry=12 — was it test infra related?), (b) what test patterns agents invented that should have been in the spec, (c) whether review learnings influenced agent behavior (compare early vs late change test quality). Document as a findings report. [REQ: e2e-run-validation-of-testing-section-flow]
 
-- [ ] 7.2 Extract test infrastructure patterns from set-designer codebase that agents built organically: scan `tests/e2e/helpers/`, `tools/mock-claude.mjs`, any shared fixtures. Compare against what the spec described vs what agents had to discover. This gap analysis feeds directly into the write-spec prompt_hint content. [REQ: e2e-run-validation-of-testing-section-flow]
+- [ ] 7.2 Extract test infrastructure patterns from the design tool codebase that agents built organically: scan `tests/e2e/helpers/`, `tools/mock-claude.mjs`, any shared fixtures. Compare against what the spec described vs what agents had to discover. This gap analysis feeds directly into the write-spec prompt_hint content. [REQ: e2e-run-validation-of-testing-section-flow]
 
 - [ ] 7.3 Test decompose with enhanced spec: update the micro-web scaffold spec (`tests/e2e/scaffolds/micro-web/docs/spec.md`) with an enhanced testing section covering appropriate sub-concerns for a 5-page app. Run `set-orch-core digest run` + decompose on it and verify: (a) test-infrastructure-setup scope references specific items, (b) SPEC COMPLETENESS WARNINGS appear (or don't, appropriately). No full E2E run needed — just validate planner output. [REQ: e2e-run-validation-of-testing-section-flow]
 
@@ -99,5 +99,5 @@ NOTE: Full pipeline trace (JSONL → checklist → input.md → review gate → 
 - [ ] AC-30: WHEN agent is dispatched for feature change THEN input.md contains testing infrastructure context from spec [REQ: e2e-run-validation-of-testing-section-flow, scenario: agent-receives-testing-context-in-input-md]
 
 ### review-learnings (modified)
-- [x] AC-31: ~~WHEN E2E run completes with 2+ merged changes THEN learnings JSONL exists, checklist returns content, input.md has learnings, review gate has prefix~~ — VALIDATED on set-designer v2 run: 16/16 recognition rate, all pipeline stages working [REQ: review-gate-receives-learnings-checklist, scenario: pipeline-validated-end-to-end-on-real-run]
+- [x] AC-31: ~~WHEN E2E run completes with 2+ merged changes THEN learnings JSONL exists, checklist returns content, input.md has learnings, review gate has prefix~~ — VALIDATED on the design tool v2 run: 16/16 recognition rate, all pipeline stages working [REQ: review-gate-receives-learnings-checklist, scenario: pipeline-validated-end-to-end-on-real-run]
 - [ ] AC-32: WHEN test suite runs THEN at least one test verifies checklist output and one verifies input.md inclusion [REQ: review-gate-receives-learnings-checklist, scenario: unit-tests-guard-pipeline-wiring]

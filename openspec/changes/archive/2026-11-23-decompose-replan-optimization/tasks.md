@@ -126,7 +126,7 @@
 ## 9. Tier C — Diff-update digest
 
 - [ ] 9.1 Add directive `digest_strategy: full | diff_update` (default `full`) in `config.py` [REQ: digest-delegates-to-per-section-pipeline-when-enabled]
-- [ ] 9.2 Implement section identifier resolution: prefer set-spec-capture metadata, fallback to markdown headings, fallback to single-section [REQ: section-identification]
+- [ ] 9.2 Implement section identifier resolution: prefer spec-capture-tool metadata, fallback to markdown headings, fallback to single-section [REQ: section-identification]
 - [ ] 9.3 Implement section content normalization (strip trailing whitespace, normalize newlines to `\n`) and `sha256` hashing [REQ: section-content-hashing]
 - [ ] 9.4 Implement per-section storage at `set/orchestration/digest/sections/<section-id>.json` with schema `{section_id, content_hash, requirements, ambiguities, coverage_hints, gaps}` [REQ: section-storage-co-located-with-digest-cache]
 - [ ] 9.5 Implement per-section Claude call (`render_section_digest_prompt`, default model Sonnet) for changed sections only [REQ: spec-edit-triggers-selective-re-digest]
@@ -204,8 +204,8 @@
 
 ### digest-diff-update
 
-- [ ] AC-34: WHEN the spec was produced by set-spec-capture AND section ids are present THEN the digest uses those ids [REQ: section-identification, scenario: set-spec-capture-segmentation-used]
-- [ ] AC-35: WHEN no set-spec-capture metadata AND the spec contains `##` headings THEN each `##` heading defines a section with kebab-case id deduplicated by suffix [REQ: section-identification, scenario: markdown-heading-fallback]
+- [ ] AC-34: WHEN the spec was produced by spec-capture-tool AND section ids are present THEN the digest uses those ids [REQ: section-identification, scenario: spec-capture-tool-segmentation-used]
+- [ ] AC-35: WHEN no spec-capture-tool metadata AND the spec contains `##` headings THEN each `##` heading defines a section with kebab-case id deduplicated by suffix [REQ: section-identification, scenario: markdown-heading-fallback]
 - [ ] AC-36: WHEN the spec has no metadata and no headings THEN the entire file is one section with id `<filename-stem>` [REQ: section-identification, scenario: single-section-fallback]
 - [ ] AC-37: WHEN a section is digested for the first time THEN `digest/sections/<section-id>.json` contains the schema fields including `content_hash` [REQ: section-content-hashing, scenario: hash-stored-with-section-output]
 - [ ] AC-38: WHEN an existing section file's `content_hash` matches the recomputed hash THEN the system reuses it without invoking Claude and logs INFO reuse line [REQ: section-content-hashing, scenario: hash-matches-reuse]

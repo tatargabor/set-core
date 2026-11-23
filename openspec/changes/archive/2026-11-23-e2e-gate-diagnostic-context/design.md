@@ -1,6 +1,6 @@
 ## Context
 
-Three engine inefficiencies observed in the set-designer v2 run:
+Three engine inefficiencies observed in the the design tool v2 run:
 1. E2E gate retry context says "suite crashed" without the webServer log that explains why
 2. Agents that say "done" without committing anything still consume retry budget
 3. fix-iss agents spend ~1 hour creating openspec artifacts before touching code

@@ -13,7 +13,7 @@ The design-bridge rule deployed to consumer projects SHALL use imperative langua
 
 #### Scenario: Agent with external design source
 - **WHEN** an agent session starts in a worktree that has `v0-export` symlinked to an external design directory
-- **AND** the external directory contains `.set-designer/design-rules/` files
+- **AND** the external directory contains `.design-tool/design-rules/` files
 - **THEN** the agent SHALL follow both the design-bridge rule and the injected design rules
 - **AND** design tokens SHALL come from the auto-extracted `design-system.md` or the external `app/globals.css`
 

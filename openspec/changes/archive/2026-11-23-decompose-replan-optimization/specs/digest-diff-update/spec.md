@@ -4,30 +4,30 @@
 IN SCOPE:
 - Per-section content-hashed digest with reuse on unchanged sections.
 - Deterministic Python reducer that merges per-section outputs into `requirements.json`, `coverage.json`, `triage.md`.
-- Section identification rules (set-spec-capture segmentation when available; markdown heading fallback).
+- Section identification rules (spec-capture-tool segmentation when available; markdown heading fallback).
 - On-disk layout `set/orchestration/digest/sections/<section-id>.json`.
 - Backward compatibility: existing digest output paths remain unchanged.
 
 OUT OF SCOPE:
 - LLM-based merging of section outputs (the reducer is Python only).
 - Cross-document section dedup.
-- Spec authoring tooling (we consume what set-spec-capture or markdown produces).
+- Spec authoring tooling (we consume what spec-capture-tool or markdown produces).
 -->
 
 ### Requirement: Section identification
-The system SHALL identify spec sections in this priority order: (1) `set-spec-capture` segmentation when its output is available; (2) top-level markdown headings (`#`, `##`) with stable kebab-case ids derived from heading text; (3) the entire file as a single section when neither is available.
+The system SHALL identify spec sections in this priority order: (1) `spec-capture-tool` segmentation when its output is available; (2) top-level markdown headings (`#`, `##`) with stable kebab-case ids derived from heading text; (3) the entire file as a single section when neither is available.
 
-#### Scenario: set-spec-capture segmentation used
-- **WHEN** the spec was produced by `set-spec-capture` and section ids are present in its output metadata
+#### Scenario: spec-capture-tool segmentation used
+- **WHEN** the spec was produced by `spec-capture-tool` and section ids are present in its output metadata
 - **THEN** the digest SHALL use those section ids as the section identifiers
 
 #### Scenario: Markdown heading fallback
-- **WHEN** no set-spec-capture metadata is present and the spec contains markdown headings
+- **WHEN** no spec-capture-tool metadata is present and the spec contains markdown headings
 - **THEN** each `##` heading SHALL define a section
 - **AND** the section id SHALL be the heading text lowercased, non-alphanumeric replaced with `-`, deduplicated by suffix `-2`, `-3`, etc.
 
 #### Scenario: Single-section fallback
-- **WHEN** the spec has neither set-spec-capture metadata nor markdown headings
+- **WHEN** the spec has neither spec-capture-tool metadata nor markdown headings
 - **THEN** the entire file SHALL be treated as one section with id `<filename-stem>`
 
 ### Requirement: Section content hashing

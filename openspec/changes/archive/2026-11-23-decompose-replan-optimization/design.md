@@ -182,7 +182,7 @@ Reset on any `CHANGE_MERGED` event.
 
 The digest is decomposed into per-section units. A "section" is identified by:
 
-1. `set-spec-capture` segmentation if available (already produces section IDs).
+1. `spec-capture-tool` segmentation if available (already produces section IDs).
 2. Otherwise, top-level markdown headings (#, ##) with stable kebab-case IDs.
 3. Cross-document references stay flat.
 
@@ -307,6 +307,6 @@ Each tier's changes are independently reversible:
 
 1. **Cache TTL for digest section.** 5-min ephemeral is free if planner+sentinel pings it within window; 1-h costs 2× write. Phase 2 fan-out completes in seconds, so 1-h on planner-rules section is safer; 5-min on digest is the natural fit. Validation: measure cache hit rates on first runs.
 2. **Scoped patch format.** Custom named-op format (D2) vs RFC 6902 JSON Patch. Custom is chosen here; revisit if integration with external tools wants standard JSON Patch.
-3. **Section identification.** Heading levels are not always reliable in arbitrary spec markdown. Falling back to `set-spec-capture` segmentation when present; need a fallback for specs not produced by it.
+3. **Section identification.** Heading levels are not always reliable in arbitrary spec markdown. Falling back to `spec-capture-tool` segmentation when present; need a fallback for specs not produced by it.
 4. **Map-reduce thresholds.** `domain_count > 8` is a heuristic; total token count may be a better predictor. Empirical tuning during Tier B validation.
 5. **Stall counter default.** Should it default to `2` after Tier B validates, or remain `0` (off) and operators opt in? Conservative default: `0` until at least 3 multi-domain runs validate without false positives.

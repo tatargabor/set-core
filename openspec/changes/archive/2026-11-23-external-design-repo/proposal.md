@@ -14,7 +14,7 @@ Some projects keep their design assets (v0-export, design tokens, component libr
 - Adapt `profile.detect_design_source()` to check external path first, then fall back to in-project detection
 - Adapt dispatcher's design symlink logic to mount external design repo into worktrees
 - Extract design tokens from external repo's `globals.css` (CSS custom properties / `@theme` block) into a `design-system.md` for agent consumption
-- Load `.set-designer/design-rules/*.md` from the external repo and inject as agent rules
+- Load `.design-tool/design-rules/*.md` from the external repo and inject as agent rules
 
 ## Capabilities
 

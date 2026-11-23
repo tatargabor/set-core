@@ -21,7 +21,7 @@
 
 ## 5. Design Rule Injection
 
-- [ ] 5.1 Implement `_inject_external_design_rules(external_path, wt_path)` that symlinks `.set-designer/design-rules/*.md` files into `<wt>/.claude/rules/design-<filename>` [REQ: design-rule-injection]
+- [ ] 5.1 Implement `_inject_external_design_rules(external_path, wt_path)` that symlinks `.design-tool/design-rules/*.md` files into `<wt>/.claude/rules/design-<filename>` [REQ: design-rule-injection]
 - [ ] 5.2 Call `_inject_external_design_rules()` from `dispatch_change()` after design source deployment when source is `"v0-external"` [REQ: design-rule-injection]
 
 ## 6. Design Bridge Rule Update
@@ -35,6 +35,6 @@
 - [ ] AC-3: WHEN `design_source_path` not set THEN use existing in-project v0-export logic unchanged [REQ: external-design-directory-mounting, scenario: no-external-path-configured]
 - [ ] AC-4: WHEN `globals.css` contains `:root` and `.dark` blocks with CSS custom properties THEN extract all `--variable: value` pairs grouped by theme [REQ: design-token-extraction, scenario: standard-shadcn-ui-globals-css]
 - [ ] AC-5: WHEN `globals.css` not found in external design directory THEN return empty string with debug log [REQ: design-token-extraction, scenario: globals-css-not-found]
-- [ ] AC-6: WHEN external design repo has `.set-designer/design-rules/` with `.md` files THEN symlink each into `<wt>/.claude/rules/design-<filename>` [REQ: design-rule-injection, scenario: design-rules-directory-exists]
-- [ ] AC-7: WHEN external design repo has no `.set-designer/design-rules/` THEN skip silently with debug log [REQ: design-rule-injection, scenario: design-rules-directory-missing]
+- [ ] AC-6: WHEN external design repo has `.design-tool/design-rules/` with `.md` files THEN symlink each into `<wt>/.claude/rules/design-<filename>` [REQ: design-rule-injection, scenario: design-rules-directory-exists]
+- [ ] AC-7: WHEN external design repo has no `.design-tool/design-rules/` THEN skip silently with debug log [REQ: design-rule-injection, scenario: design-rules-directory-missing]
 - [ ] AC-8: WHEN a design rule file name conflicts with existing rule THEN prefix with `design-` and log warning [REQ: design-rule-injection, scenario: rule-file-name-collision]

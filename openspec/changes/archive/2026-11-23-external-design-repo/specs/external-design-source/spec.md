@@ -4,7 +4,7 @@
 - `design_source_path` directive for external design directory configuration
 - External design directory mounting into worktrees via symlink
 - Design token extraction from external repo's CSS custom properties
-- Design rule injection from external repo's `.set-designer/design-rules/`
+- Design rule injection from external repo's `.design-tool/design-rules/`
 - Fallback to in-project `v0-export/` when external path not configured
 
 ## OUT OF SCOPE
@@ -56,15 +56,15 @@ The system SHALL extract CSS custom properties from the external design repo's `
 - **THEN** the system SHALL extract those values and include in the token output
 
 ### Requirement: Design rule injection
-The system SHALL inject design rules from the external repo's `.set-designer/design-rules/` directory into the worktree's `.claude/rules/` as symlinked files.
+The system SHALL inject design rules from the external repo's `.design-tool/design-rules/` directory into the worktree's `.claude/rules/` as symlinked files.
 
 #### Scenario: Design rules directory exists
-- **WHEN** the external design repo has `.set-designer/design-rules/` with `.md` files
+- **WHEN** the external design repo has `.design-tool/design-rules/` with `.md` files
 - **THEN** the system SHALL symlink each file into `<wt>/.claude/rules/design-<filename>`
 - **AND** SHALL log the number of design rules injected
 
 #### Scenario: Design rules directory missing
-- **WHEN** the external design repo has no `.set-designer/design-rules/`
+- **WHEN** the external design repo has no `.design-tool/design-rules/`
 - **THEN** the system SHALL skip rule injection silently (debug log only)
 
 #### Scenario: Rule file name collision

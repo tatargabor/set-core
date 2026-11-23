@@ -6,7 +6,7 @@ The mature craftbrew spec demonstrates that effective test infrastructure descri
 
 The planner's `_PLANNING_RULES_CORE` already knows to create `test-infrastructure-setup` as the first change, but scopes it generically ("set up Playwright, config, helpers") because the spec doesn't describe what infrastructure is actually needed.
 
-The review_learnings pipeline (`review_learnings_checklist()` → dispatcher input.md → review gate prefix) has been implemented across multiple changes. **Validated on set-designer v2 run (2026-05-10)**: JSONL has 15 entries, input.md files contain `## Review Learnings Checklist` with 30+ scope-filtered learnings, both `[project]` and `[template]` sources appear with count tracking (e.g., "seen 5x"). The pipeline works end-to-end. Remaining question: does the review gate LLM actually *use* the learnings to flag violations, or does it ignore them?
+The review_learnings pipeline (`review_learnings_checklist()` → dispatcher input.md → review gate prefix) has been implemented across multiple changes. **Validated on the design tool v2 run (2026-05-10)**: JSONL has 15 entries, input.md files contain `## Review Learnings Checklist` with 30+ scope-filtered learnings, both `[project]` and `[template]` sources appear with count tracking (e.g., "seen 5x"). The pipeline works end-to-end. Remaining question: does the review gate LLM actually *use* the learnings to flag violations, or does it ignore them?
 
 ## Goals / Non-Goals
 
@@ -95,9 +95,9 @@ This is NOT a full integration test — it verifies the wiring at unit level and
 **[Risk] Spec-driven test-infra scoping depends on spec format** — If the testing section uses unexpected headers or structure, extraction fails.
 → Mitigation: Use fuzzy header matching (case-insensitive, common variants: "E2E Tests", "Testing", "Test Strategy", "Test Infrastructure"). Fall back to generic scope on extraction failure.
 
-## Addendum: Empirical Findings from set-designer v2 Run (2026-05-10)
+## Addendum: Empirical Findings from the design tool v2 Run (2026-05-10)
 
-Investigation of the live set-designer v2 run (phase 3, 4/5 non-fix changes merged) produced these findings that inform implementation:
+Investigation of the live the design tool v2 run (phase 3, 4/5 non-fix changes merged) produced these findings that inform implementation:
 
 ### Review Learnings Pipeline — Confirmed Working
 
@@ -111,7 +111,7 @@ Investigation of the live set-designer v2 run (phase 3, 4/5 non-fix changes merg
 
 **Implication**: The entire pipeline is validated end-to-end. The LLM reviewer actively checks against known patterns. The gap is not in recognition but in fix compliance: 2 learnings marked NOT_FIXED (fix didn't stick or caused regression). This suggests the feedback loop needs a "fix verification" stage, not stronger injection.
 
-### set-designer Spec Testing Coverage (natural, without template)
+### the design tool Spec Testing Coverage (natural, without template)
 
 The v2 spec covers 5/6 sub-concerns naturally, showing that well-written specs already tend toward this structure:
 
@@ -172,7 +172,7 @@ Agents built capable test infrastructure but with significant duplication:
 
 **Choice: Introduce a "Test Stories" sub-concern that describes user journeys at narrative level, alongside the concrete infrastructure sub-concerns.**
 
-The set-designer run revealed that the spec's 57 acceptance criteria (concrete: `data-testid='welcome-screen'` is visible) were effective for structural verification but didn't capture the *behavioral flow* — what happens when you type in the chat, what the brain should return, how the preview should update.
+The the design tool run revealed that the spec's 57 acceptance criteria (concrete: `data-testid='welcome-screen'` is visible) were effective for structural verification but didn't capture the *behavioral flow* — what happens when you type in the chat, what the brain should return, how the preview should update.
 
 A "test story" is a higher-level description of a user journey that the implementing agent elaborates into concrete tests:
 

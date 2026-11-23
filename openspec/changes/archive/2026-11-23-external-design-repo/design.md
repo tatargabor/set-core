@@ -2,7 +2,7 @@
 
 The current design pipeline assumes `v0-export/` lives inside the project root. The dispatcher's `_deploy_v0_export_to_worktree()` (dispatcher.py:472) creates a symlink `<wt>/v0-export → <project>/v0-export`. The profile's `detect_design_source()` also only searches the project directory.
 
-For projects like consumer-app, the design lives in a separate repo (`~/projects/consumer-app-design`) with its own git history, shadcn/ui components, design tokens in `globals.css`, and design rules in `.set-designer/design-rules/`. The code project at `~/code/consumer-app` has no `v0-export/` directory — the design source is external.
+For projects like consumer-app, the design lives in a separate repo (`~/projects/consumer-app-design`) with its own git history, shadcn/ui components, design tokens in `globals.css`, and design rules in `.design-tool/design-rules/`. The code project at `~/code/consumer-app` has no `v0-export/` directory — the design source is external.
 
 The design pipeline in set-core is controlled by:
 - `design_pipeline` directive in orchestration.yaml (auto/none) — config.py:144
@@ -17,7 +17,7 @@ The design pipeline in set-core is controlled by:
 - Support external design directories via `design_source_path` directive in orchestration.yaml
 - Adapt v0-export symlink logic to mount external directories
 - Extract design tokens from external repo's CSS into agent-consumable format
-- Load `.set-designer/design-rules/*.md` from external repo as agent rules
+- Load `.design-tool/design-rules/*.md` from external repo as agent rules
 - Work with existing `has_design_pipeline` / `detect_design_source` pattern
 
 **Non-Goals:**
@@ -65,7 +65,7 @@ Implementation: regex parse `:root { ... }` and `.dark { ... }` blocks. No CSS p
 
 ### D3: Design rules injection
 
-The external repo's `.set-designer/design-rules/*.md` files (8 files: color-tokens, component-library, tailwind-tokens, naming-conventions, form-patterns, layout-presets, accessibility, data-architecture) are injected into the worktree's `.claude/rules/` at dispatch time.
+The external repo's `.design-tool/design-rules/*.md` files (8 files: color-tokens, component-library, tailwind-tokens, naming-conventions, form-patterns, layout-presets, accessibility, data-architecture) are injected into the worktree's `.claude/rules/` at dispatch time.
 
 Method: symlink each rule file from external repo into worktree's `.claude/rules/design-<name>.md`. This is analogous to how `_build_rule_injection()` loads category-matched rules, but these are always injected for design-pipeline projects.
 
@@ -92,7 +92,7 @@ The core `_deploy_v0_export_to_worktree()` in dispatcher.py needs a small change
 
 ### D5: No git operations on external repo
 
-The external design repo is treated as a read-only snapshot. No git pull, no branch detection, no merge. If the design evolves, the user updates it manually (or via set-designer) and the next dispatch picks up the changes via the symlink.
+The external design repo is treated as a read-only snapshot. No git pull, no branch detection, no merge. If the design evolves, the user updates it manually (or via the design tool) and the next dispatch picks up the changes via the symlink.
 
 ## Risks / Trade-offs
 

@@ -6,7 +6,7 @@
 
 ## Why
 
-The set-designer v2 run exposed a pattern where a single change (`websocket-server-and-brain`) implemented 44/45 tasks with 98% test pass rate in 59 minutes, then spent 2+ hours and 24 retries failing to merge because:
+The the design tool v2 run exposed a pattern where a single change (`websocket-server-and-brain`) implemented 44/45 tasks with 98% test pass rate in 59 minutes, then spent 2+ hours and 24 retries failing to merge because:
 1. The E2E gate's retry context said "suite crashed before completing" without the webServer stderr that explained WHY (port conflict, missing module, wrong start command)
 2. The agent retried 12× with identical context, degrading from 15-minute attempts to 3-minute "give up immediately" cycles (learned helplessness)
 3. The fix-iss agent spent ~1 hour creating openspec artifacts (proposal, design, specs, tasks) before touching any code — unnecessary ceremony for a diagnostic fix
