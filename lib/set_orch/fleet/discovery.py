@@ -48,6 +48,13 @@ AGENT_COMM = "claude"
 #: a tile, reported as waiting the moment it finished its last turn.
 NON_INTERACTIVE_FLAGS = ("-p", "--print")
 
+#: Flags that mean the process is not a session at all, though its comm, exe and argv[0]
+#: are the agent binary's. Measured 2026-11-23 on the relation map: a `claude
+#: --chrome-native-host` process (the browser extension's native messaging host, cwd
+#: `~/.claude/chrome`, two days old) was listed as an interactive agent of a project
+#: called `chrome`, with "no mandate" — a tile for something nobody can talk to.
+NOT_A_SESSION_FLAGS = ("--chrome-native-host",)
+
 
 #: Every source the fleet asks about an agent. Named here so `sources_missing`
 #: is the complement of a stated set rather than of whatever a caller passed —
@@ -192,6 +199,8 @@ def _argv_belies_identity(argv: Sequence[str]) -> bool:
     """
     if not argv:
         return False
+    if any(flag in list(argv)[1:] for flag in NOT_A_SESSION_FLAGS):
+        return True
     return os.path.basename(argv[0]) != AGENT_COMM
 
 

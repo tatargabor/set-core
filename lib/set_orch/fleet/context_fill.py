@@ -82,6 +82,10 @@ _MILLION_MARKERS = ("[1m]", "-1m", "_1m", "(1m)")
 #:     `providers.json` for the glm provider.
 #:   - `claude-*` 200 000 — the standard window; the 1M variants are handled
 #:     above by marker rather than by a second row per model.
+#:   - `claude-opus-5-5` 1 000 000 — measured 2026-11-23: the runtime's own status
+#:     line reads `Ctx: 13% (135270/1000k)` for an Opus 5.5 session whose transcript
+#:     records the bare `claude-opus-5-5`, and every live Opus 5.5 agent carried
+#:     241k–366k tokens — past the 200k row, so all of them rendered "unmeasured".
 _WINDOWS: Dict[str, int] = {
     "gpt-6-astra": 272_000,
     "gpt-reserve": 272_000,
@@ -89,6 +93,7 @@ _WINDOWS: Dict[str, int] = {
     "gpt-5.5": 272_000,
     "gpt-5.4": 272_000,
     "glm-": 900_000,
+    "claude-opus-5-5": 1_000_000,
     "claude-": 200_000,
 }
 

@@ -662,3 +662,11 @@ def test_a_project_registered_through_a_symlink_is_one_entry_with_its_agents(tmp
     assert entry.agent_pids == [77]
     assert entry.root == str(link), "the registered spelling must stay the displayed root"
     assert entry.sources == ["registry", "messaging", "process"]
+
+
+def test_the_chrome_native_host_is_not_a_session():
+    # Measured 2026-11-23: listed as an interactive agent of a project called `chrome`.
+    from set_orch.fleet import discovery as D
+    assert D._argv_belies_identity(["/home/u/.local/bin/claude", "--chrome-native-host"])
+    assert not D._argv_belies_identity(["/home/u/.local/bin/claude"])
+    assert not D._argv_belies_identity(["claude", "--resume", "abc"])

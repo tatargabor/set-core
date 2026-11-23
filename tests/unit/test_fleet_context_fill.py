@@ -168,3 +168,12 @@ class TestNormalise:
     def test_blank_is_not_a_model_called_empty_string(self):
         assert normalise_model("   ") is None
         assert normalise_model(None) is None
+
+
+def test_opus_5_5_has_the_million_window_its_status_line_shows():
+    # Measured 2026-11-23: the status line reads `/1000k` for a bare `claude-opus-5-5`.
+    from set_orch.fleet.context_fill import resolve_window, context_payload
+    assert resolve_window("claude-opus-5-5") == 1_000_000
+    assert resolve_window("claude-sonnet-5-5") == 200_000
+    p = context_payload({"tokens": 366_193, "model": "claude-opus-5-5"})
+    assert p["context"]["state"] != "unmeasured", p
