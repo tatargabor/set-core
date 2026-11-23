@@ -19,7 +19,7 @@
 
 - [x] 4.1 CORE `lib/set_orch/fleet/work_close.py`: the decision, with every input that is not measured keeping the agent. API `lib/set_orch/api/fleet_work.py`: the sweep (stop through the owner, then end the mandate as `work-idle` only when the owner found the agent). One call added to `fleet_mandate.sweep_loop`, which is the peer's file; the peer is told on the bus.
 - [x] 4.2 CORE `lib/set_orch/fleet/state.py`: `isMeta` turns and turns whose `origin.kind` is not `human` do not count as human input. Measured on this session's own transcript: 5 entries counted as human before the fix, 3 after (the 3 real messages).
-- [x] 4.3 Tests: `tests/unit/test_fleet_work_agent_done.py`, 24 cases. Four mutations, each caught: the end before the stop, the `isMeta` guard, the quiet-only rule, and the takeover rule. Related fleet suites: 343 passed; the one failure (`test_a_rename_carries_the_record_and_the_layout`) also fails on HEAD.
+- [x] 4.3 Tests: `tests/unit/test_fleet_work_agent_done.py`, 24 cases (28 after the B-207/B-208 fix in `a283e8d1`). Four mutations, each caught: the end before the stop, the `isMeta` guard, the quiet-only rule, and the takeover rule. Related fleet suites: 343 passed; the one failure (`test_a_rename_carries_the_record_and_the_layout`) also fails on HEAD.
 
 ## 5. Verify
 
