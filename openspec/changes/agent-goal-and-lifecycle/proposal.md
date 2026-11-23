@@ -1,3 +1,11 @@
+> **Superseded in part — 2026-11-23.** The goal RECORD moved to the change
+> `fleet-mandate-and-desk`, capability `agent-mandate-record`, where it is called a *mandate*.
+> This change keeps **closure** (`agent-goal-closure`), **rotation** (`agent-session-rotation`)
+> and the window-size correction, and they read that record. `specs/agent-goal-record/` was
+> removed here so the record has one definition, not two. Where this text says *goal record*,
+> read *mandate record*. Two decisions differ there and are argued in its `design.md`: a start
+> by the person may carry no goal (D3), and the kind is `work` or `desk`, not a lane (D2).
+
 ## Why
 
 An agent is started and nothing records **why**. The framework can say what an agent is doing —

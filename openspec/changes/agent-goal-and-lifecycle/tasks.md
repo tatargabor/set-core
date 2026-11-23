@@ -1,4 +1,18 @@
 <!--
+SUPERSEDED IN PART — 2026-11-23. The goal record moved to `fleet-mandate-and-desk`
+(capability `agent-mandate-record`). Do NOT implement here any task tagged with one of:
+  a-framework-started-agent-carries-a-goal-declared-when-it-is-started
+  an-agent-the-framework-did-not-start-has-no-goal-and-no-goal-is-invented-for-it
+  a-goal-s-kind-comes-from-the-lane-vocabulary-and-an-unknown-kind-is-refused
+  a-goal-outlives-the-process-that-recorded-it
+  a-goal-is-readable-while-its-agent-runs-without-reading-the-agent-s-session
+That is all of group 2 and the matching lines of groups 7, 8, 9 and the acceptance criteria.
+They are left in place, unticked, until this change is reconciled with `/opsx:update` — task 9.2
+of `fleet-mandate-and-desk` owns that reconciliation. Groups 3-6 (closure, context reading,
+rotation, window size) stay here and read the mandate record.
+-->
+
+<!--
 Ordered by dependency, and group 1 is not implementation. Design D3 and D5 leave two carriers
 unmeasured — how the context reading arrives, and how "the agent is between turns" is established —
 and groups 4 and 5 are shaped differently depending on the answers. Nothing there is built before it
