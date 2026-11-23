@@ -76,14 +76,14 @@ consumer's name, path, or content.
 - **fixed when:** an agent started with a `task` lifetime (the default when `requested_by` is a seat) closes itself or is closed after its done step, stays resumable from the roster, and idle-close applies a short threshold to an agent-started agent with no owner input. A test starts one, runs the done step and asserts that the label is gone and the roster entry is kept.
 
 ### B-204 — the agent-side leak gate does not match `command git commit`, so that spelling publishes unscanned
-- **state:** open.
+- **state:** closed 2026-11-23 in the commit that adds this line. `PUBLISH_RX` now accepts the following between the separator and `git`, in any order: an env assignment, `command`, `exec`, `nohup`, `time`, `env [-opts]`, `nice [-n N]`, `sudo [-opts [arg]]`, `sh/bash -c '…'`, `eval '…'`, a subshell or substitution opener, a backslash, and a path to the binary. The verb may be followed by `)` or a quote. Prose is still not matched (`grep 'git commit'`, `echo "git push"`, `git commit-tree`), and a regex-level test holds that. The new tests fail against the previous hook (4 failed) and pass with the fix; the whole leakscan suite passes (113). Not covered, and left open: git reached through `xargs`, `find -exec`, an alias, or a script file.
 - **reported:** 2026-11-15 by a peer session on the bus, relaying a downstream security review (H4 (2)). Re-measured 2026-11-23 by this session.
 - **measured:** `PUBLISH_RX` in `bin/set-hook-leakscan` requires `git` directly after a separator or an env assignment. `PUBLISH_RX.search(strip_heredocs("command git commit -m hi"))` → no match, while `git commit -m hi` → match. The same holds for any wrapper word (`command`, `builtin`, `exec`, `nice`, `env`).
 - **fail direction:** pass.
 - **fixed when:** a hook test for `command git commit -m "<consumer name>"` gets exit 2, and plain `git commit` still does.
 
 ### B-203 — `strip_heredocs` drops the rest of a line after a heredoc START, so `cat <<'X' && git commit …` is never checked
-- **state:** open. Related to B-179 (a heredoc commit message is never scanned), but this is a different cut: here the VERB itself is lost.
+- **state:** closed 2026-11-23 in the commit that adds this line. Only the body lines are removed now. The opening line is kept, with each marker blanked to the same length so the verb offset stays valid, and several heredocs on one line are read as several bodies in order. Tests: a push after `&&` on the opening line is blocked, and two bodies on one line with the verb only inside them pass. Both fail against the previous hook. B-179 (the message passed as `-F -` is not scanned) stays open.
 - **reported:** 2026-11-15 by a peer session on the bus, relaying a downstream security review (H4 (1)). Re-measured 2026-11-23 by this session.
 - **measured:** `strip_heredocs` keeps only `line[:m.start()]` of the line that opens a heredoc. `PUBLISH_RX.search(strip_heredocs("cat <<'X' && git commit -m hi\nbody\nX"))` → no match. Everything after the first `<<TAG` on that line (`&& git commit …`, `; git push`) is invisible to the gate.
 - **fail direction:** pass.

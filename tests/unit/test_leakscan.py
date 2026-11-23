@@ -236,6 +236,30 @@ class TestTheHookIsNotTriggeredByTextThatMerelyMentionsPushing:
         r = _hook(dirty, cmd, home)
         assert r.returncode == 2, r.stderr
 
+    def test_a_command_on_the_heredoc_opening_line_still_counts(self, two_repos):
+        """B-203. The opening line is a command line; only the body is text.
+
+        The first version kept only what stood BEFORE `<<TAG`, so the push
+        after `&&` on the same line was never seen — measured 2026-11-23.
+        """
+        dirty, _clean, home = two_repos
+        cmd = "cat > t.txt <<'XEOF' && git " + "push origin main\nx = 1\nXEOF"
+        r = _hook(dirty, cmd, home)
+        assert r.returncode == 2, r.stderr
+
+    def test_two_heredocs_on_one_line_are_two_bodies(self, two_repos):
+        dirty, _clean, home = two_repos
+        body_only = "cat <<A <<B\ngit " + "push a\nA\ngit " + "push b\nB\necho ok"
+        assert _hook(dirty, body_only, home).returncode == 0
+        after = "cat <<A <<B\na\nA\nb\nB\ngit " + "push origin main"
+        assert _hook(dirty, after, home).returncode == 2
+
+    def test_a_wrapper_word_does_not_hide_the_push(self, two_repos):
+        """B-204. `command git …` runs the same git; it matched nothing."""
+        dirty, _clean, home = two_repos
+        r = _hook(dirty, "command git " + "push origin main", home)
+        assert r.returncode == 2, r.stderr
+
     def test_a_local_commit_is_not_a_publication(self, two_repos):
         dirty, _clean, home = two_repos
         r = _hook(dirty, "git commit -m 'wip'", home)
@@ -671,6 +695,22 @@ class TestPublishRxSeesEveryCommitShape:
         assert rx.search("git push origin main")
         assert rx.search("git --no-verify commit -m x")
         assert rx.search("cd /x && git push")
+
+    def test_wrapped_and_spelled_forms_match(self):
+        """B-204, at the regex: each form runs git itself."""
+        mod = self._mod()
+        for cmd in ("command git commit -m x", "exec git push", "env -i git push",
+                    "nice -n 5 git commit -m x", "sudo -u me git push",
+                    "/usr/bin/git push", "\\git push", "bash -c 'git push'",
+                    "eval \"git commit -m x\"", "(cd x && git push)",
+                    "x=$(git commit -m y)", "FOO=1 command git push"):
+            assert mod.PUBLISH_RX.search(mod.strip_heredocs(cmd)), cmd
+
+    def test_prose_and_neighbours_still_do_not_match(self):
+        mod = self._mod()
+        for cmd in ("grep -rn 'git commit' .", "ls /tmp/git commit",
+                    "git commit-tree abc", "git pushx", "echo \"git push\""):
+            assert not mod.PUBLISH_RX.search(mod.strip_heredocs(cmd)), cmd
 
     def test_non_publishing_git_commands_do_not_match(self):
         rx = self._mod().PUBLISH_RX

@@ -48,9 +48,28 @@ import tempfile
 # every one of those forms is caught by the `push` half. The narrowing removes
 # the false block and adds no hole, which is the only shape of narrowing a
 # safety gate may take.
+# B-204: a WRAPPER word in front of git runs the same git. Measured 2026-11-23:
+# `command git commit` did not match, so that spelling committed unscanned —
+# the pass direction. What may stand between the separator and `git`, in any
+# order and number: an env assignment, `command`, `exec`, `nohup`, `time`,
+# `env [-opts]`, `nice [-n N]`, `sudo [-opts]`, a shell's `-c '…'` or `eval '…'`
+# (both end in an optional quote: the git inside them is the command, not
+# prose), a subshell/substitution opener, a backslash (`\git`) and a path
+# (`/usr/bin/git`). Deliberately NOT a bare quote: `echo 'git push later'`
+# is prose and must not match, which the regex-level test holds.
+_WRAPPER = (
+    r"(?:[A-Za-z_][A-Za-z0-9_]*=\S+"
+    r"|command|exec|nohup|time"
+    r"|env(?:\s+-\S+)*"
+    r"|nice(?:\s+-n\s*-?\d+|\s+-\d+)?"
+    r"|sudo(?:\s+-[A-Za-z]+(?:\s+[^-\s]\S*)?)*"
+    r"|(?:ba|z|da|k)?sh(?:\s+-[A-Za-z]+)*\s+-[A-Za-z]*c\s*[\"']?"
+    r"|eval\s*[\"']?"
+    r"|\$?\(|`)"
+)
 PUBLISH_RX = re.compile(
-    r"(?:^|[;&|\n])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*"
-    r"git\s+(?:-c\s+\S+\s+|-C\s+\S+\s+|-[^\s]+\s+|--[^\s]+\s+)*(push|commit)(?:\s|$)"
+    r"(?:^|[;&|\n(`])\s*(?:" + _WRAPPER + r"\s*)*"
+    r"\\?(?:\S*/)?git\s+(?:-c\s+\S+\s+|-C\s+\S+\s+|-[^\s]+\s+|--[^\s]+\s+)*(push|commit)(?:\s|$|[;&|)`'\"])"
 )
 # The `-c`/`-C` alternatives come first because each consumes a SECOND token:
 # `git -c core.hooksPath=/dev/null commit` left `core.hooksPath=/dev/null`
@@ -73,17 +92,25 @@ def strip_heredocs(cmd):
     fires on the very work that hardens this gate. Measured: writing this
     file's own test suite was blocked by this hook.
     """
-    out, skip_to = [], None
+    # B-203: only the BODY lines go. The line that OPENS a heredoc is a command
+    # line, and what follows the `<<TAG` on it — `&& git commit …`, `; git push`
+    # — runs like any other command. The first version kept only the part
+    # before the marker, so `cat <<'X' && git commit …` was never checked:
+    # measured 2026-11-23, the pass direction. Several heredocs on one line are
+    # read in order, one body each, as the shell reads them. Each marker is
+    # replaced by a space of the same length so the offsets the caller takes
+    # from this string (`target_repo`'s `verb_at`) still point into the line.
+    out, pending = [], []
     for line in cmd.split("\n"):
-        if skip_to is not None:
-            if line.strip() == skip_to:
-                skip_to = None
+        if pending:
+            if line.strip() == pending[0]:
+                pending.pop(0)
             continue
-        m = HEREDOC_START.search(line)
-        if m:
-            skip_to = m.group(2)
-            out.append(line[: m.start()])
-            continue
+        markers = list(HEREDOC_START.finditer(line))
+        if markers:
+            pending = [m.group(2) for m in markers]
+            for m in reversed(markers):
+                line = line[: m.start()] + " " * (m.end() - m.start()) + line[m.end():]
         out.append(line)
     return "\n".join(out)
 
