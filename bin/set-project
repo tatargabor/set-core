@@ -1018,6 +1018,7 @@ cmd_init() {
     info "Deploying set-core to $git_root..."
     deploy_set_tools "$git_root" || ((_deploy_warnings++))
     [[ "$DRY_RUN" == "true" ]] || _regenerate_roles "$name"
+    _deploy_auto_clear "$git_root" "$name"
 
     # Resolve project type: CLI flag > saved project-type.yaml
     if [[ -z "$project_type" ]]; then

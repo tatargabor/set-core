@@ -1,0 +1,22 @@
+[Unit]
+# Auto-clear executor for @TREE@ (set-claude-handoff), written by `set-project init`
+# (auto-clear-default-install). The gate only evaluates; this watcher is the only thing that
+# types /clear and the auto-continue prompt. Kill switch: touch .set/handoff/.no-autoclear in
+# the tree. Opt the project out with `auto_clear: false` in its registry entry.
+#
+# No threshold or background flag: the package defaults apply, so a package upgrade moves
+# them. --started-after is the reload-wiring moment: a session that started before the
+# reload hook existed reloads nothing after /clear and must not be cleared. It goes once the
+# package's watcher reads .set/handoff/.reload-wired-at itself.
+#
+# init never rewrites this file once it exists; edit it by hand if you need to.
+Description=@NAME@ auto-clear watcher
+After=default.target
+
+[Service]
+Environment=PATH=%h/.local/bin:@NODE_DIR@:/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/bash @TREE@/.claude/hooks/watch-auto-clear.sh --dir @TREE@ --started-after @STARTED_AFTER@ --interval 60 --auto-continue default
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

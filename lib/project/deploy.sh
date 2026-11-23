@@ -168,6 +168,20 @@ _deploy_hooks() {
     fi
 }
 
+# The handoff package's auto-clear: templates (hash rule), hooks, watcher unit — in that order.
+# auto-clear-default-install. Never fails init; every skip is one line. DRY_RUN-aware.
+# Args: $1 project path, $2 registry name
+_deploy_auto_clear() {
+    local project_path="$1" name="$2" py
+    [[ -n "$name" ]] || return 0
+    py=$(_set_python)
+    local args=(--project-dir "$project_path" --name "$name")
+    [[ "${DRY_RUN:-false}" == "true" ]] && args+=(--dry-run)
+    env "PYTHONPATH=$SET_TOOLS_ROOT/lib:${PYTHONPATH:-}" "$py" -m set_orch.auto_clear_deploy "${args[@]}" \
+        || warn "  auto-clear step failed — run: set-doctor"
+    return 0
+}
+
 # Deploy /set:* and /opsx:* commands.
 # Every copy goes through the provenance guard: a command the project edited is kept,
 # an untouched one receives the framework update. See deploy_provenance.sh.
