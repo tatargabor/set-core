@@ -118,7 +118,7 @@ consumer's name, path, or content.
 - **fixed when:** only the heredoc BODY lines are removed, and the rest of the opening line is kept. A hook test with `cat <<'X' && git commit -m "<consumer name>"` gets exit 2, and the existing "verb only inside a heredoc body" test still passes.
 
 ### B-202 — `.claude/rules/readme-updates.md` makes `docs/readme-guide.md` "the authoritative source" for every README update, and that file does not exist
-- **state:** open.
+- **state:** closed (this commit) — the rule no longer names the guide; it names the README's own section order and the two checks that can be run (`ls bin/set-*`, the retired list). Every path it names resolves.
 - **reported:** 2026-11-23 by this session, rewriting the README for `fleet-era-consolidation` 6.3.
 - **measured:** `ls docs/readme-guide.md` → `No such file or directory`; `git log --all -- docs/readme-guide.md` shows it was MOVED to `docs/archive/readme-guide.md` by `36aa47e7` (2026-03-28, "archive old") — the rule was never updated, so for eight months it has pointed at an archived, eight-month-stale guide by a path that no longer resolves. The rule loads into every session that touches the README and names a checklist nobody can run.
 - **fail direction:** silent — a README update "follows the guide" by following nothing, and the rule still reads as a gate.
