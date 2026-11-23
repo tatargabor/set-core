@@ -151,6 +151,33 @@ def test_a_renamed_template_keeps_its_history(box):
     assert hook(tree, "handoff-arm2.mjs").read_text() == "// handoff-arm.mjs v2\n"
 
 
+def test_an_uncommitted_template_edit_is_not_what_ships(box):
+    """The installer reads the checkout's committed HEAD, not its working tree."""
+    run, pkg, tree, _, _, _ = box
+    (pkg / "templates" / "clear-gate.mjs").write_text("// clear-gate.mjs v3-UNCOMMITTED\n")
+    assert git(pkg, "status", "--porcelain", "--", "templates"), "precondition: the edit is uncommitted"
+    out = run()
+    assert hook(tree, "clear-gate.mjs").read_text() == "// clear-gate.mjs v2\n", \
+        "the project gets HEAD content, not the working-tree edit"
+    assert any("(uncommitted changes in the checkout are not shipped)" in l for l in out)
+
+
+def test_the_from_line_names_the_package_head(box):
+    """The provenance line names the package and its actual HEAD short sha, first."""
+    run, pkg, _, _, _, _ = box
+    sha = git(pkg, "rev-parse", "--short", "HEAD")
+    out = run()
+    assert out[0] == f"  auto-clear templates: from set-claude-handoff {sha}", out
+
+
+def test_a_no_op_run_prints_no_from_line(box):
+    """Everything already current — no provenance line, nothing to attribute."""
+    run, _, _, _, _, _ = box
+    run()
+    out = run()
+    assert not any("from set-claude-handoff" in l for l in out)
+
+
 @pytest.mark.parametrize("entry,why", [({"archived": True}, "archived"),
                                        ({"deploy": False}, "deploy: false"),
                                        ({"auto_clear": False}, "auto_clear: false")])

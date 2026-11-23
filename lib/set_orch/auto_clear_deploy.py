@@ -4,10 +4,11 @@ Order (design D4): templates, then hooks, then the watcher unit — the unit sta
 reload hook is wired, because a watcher clearing sessions that cannot reload is the failure
 the ordering prevents.
 
-- Templates (D1): the handoff package's own installer runs in a scratch tree, so the package
-  stays the one owner of WHICH files exist. Each file is copied into the project only when the
-  target is absent or holds a version the package has shipped (blob hash, read from the
-  checkout's git history). Anything else is kept and reported.
+- Templates (D1): the handoff package's own installer runs in a scratch tree against an
+  export of the checkout's committed HEAD, so the package stays the one owner of WHICH files
+  exist and uncommitted edits never reach a consumer. Each file is copied into the project
+  only when the target is absent or holds a version the package has shipped (blob hash, read
+  from the checkout's git history). Anything else is kept and reported.
 - Hooks (D2): `set-deploy-hooks --auto-clear`, which also writes the reload wiring stamp.
 - Unit (D3): created from `templates/systemd/auto-clear.service` only where no unit runs this
   tree's watcher; an existing one is never rewritten, and its overriding flags are named.
@@ -67,18 +68,63 @@ def skip_reason(entry: dict) -> Optional[str]:
 # ── templates (D1) ───────────────────────────────────────────────────────────
 
 
+def _export_head(pkg: Path, dest: Path) -> tuple:
+    """Export the checkout's committed HEAD into dest (`git archive HEAD | tar -x`).
+
+    Run as two subprocess calls rather than a shell pipeline: the archive is binary, so it
+    must not travel through a text-mode pipe. Returns (rc, tail of stderr).
+    """
+    try:
+        arch = subprocess.run(["git", "-C", str(pkg), "archive", "HEAD"], capture_output=True, timeout=120)
+        if arch.returncode != 0:
+            return arch.returncode, (arch.stderr or b"").decode("utf-8", "replace").strip()
+        tar = subprocess.run(["tar", "-x", "-C", str(dest)], input=arch.stdout, capture_output=True, timeout=120)
+        if tar.returncode != 0:
+            return tar.returncode, (tar.stderr or b"").decode("utf-8", "replace").strip()
+    except (OSError, subprocess.TimeoutExpired) as e:
+        logger.warning("auto-clear deploy: exporting %s's HEAD failed: %s", pkg, type(e).__name__)
+        return 127, type(e).__name__
+    return 0, ""
+
+
 def produced_files(pkg: Path, env: dict) -> tuple:
-    """Run the package installer in a scratch tree. (scratch dir, [relative paths]) or (None, msg)."""
-    cli = pkg / "bin" / "cli.mjs"
+    """Run the package installer from the checkout's COMMITTED HEAD, in a scratch tree.
+
+    The installer must not see the working tree: uncommitted edits under templates/ would
+    land in consumer projects while shipped_blobs() judges "shipped" from HEAD — the two
+    must read the same thing, and that thing is HEAD.
+
+    Returns (scratch dir, [relative paths], HEAD short sha), or (None, reason, "") when the
+    step cannot run — a failure here is a line in the report, never a failed init. On the
+    success path the scratch is handed to the caller, which removes it in its own finally;
+    every other path (export failure, installer failure, exception) cleans up both temp
+    dirs here.
+    """
     if not shutil.which("node", path=env.get("PATH")):
-        return None, "node is not on PATH"
+        return None, "node is not on PATH", ""
+    sha = _git(pkg, "rev-parse", "--short", "HEAD")
+    if not sha:
+        return None, f"git could not read the {ac.PACKAGE} checkout's HEAD", ""
     scratch = Path(tempfile.mkdtemp(prefix="set-auto-clear-"))
-    rc, out = _run(["node", str(cli), "init", "--auto-clear"], cwd=scratch, env=env)
-    if rc != 0:
-        shutil.rmtree(scratch, ignore_errors=True)
-        return None, f"the package installer failed (rc={rc}): {out[-200:]}"
-    files = sorted(str(p.relative_to(scratch)) for p in scratch.rglob("*") if p.is_file())
-    return scratch, files
+    export = Path(tempfile.mkdtemp(prefix="set-auto-clear-head-"))
+    handed_off = False
+    try:
+        rc, err = _export_head(pkg, export)
+        if rc != 0:
+            return None, f"exporting the {ac.PACKAGE} checkout's HEAD failed ({err[-200:]})", ""
+        rc, out = _run(["node", str(export / "bin" / "cli.mjs"), "init", "--auto-clear"], cwd=scratch, env=env)
+        if rc != 0:
+            return None, f"the package installer failed (rc={rc}): {out[-200:]}", ""
+        files = sorted(str(p.relative_to(scratch)) for p in scratch.rglob("*") if p.is_file())
+        handed_off = True
+        return scratch, files, sha
+    except Exception as e:  # noqa: BLE001 — init must never fail
+        logger.warning("auto-clear deploy: producing templates from %s failed: %s: %s", pkg, type(e).__name__, e)
+        return None, f"{type(e).__name__}: {e}", ""
+    finally:
+        shutil.rmtree(export, ignore_errors=True)
+        if not handed_off:
+            shutil.rmtree(scratch, ignore_errors=True)
 
 
 def shipped_blobs(pkg: Path, blob: str) -> set:
@@ -111,7 +157,7 @@ def shipped_blobs(pkg: Path, blob: str) -> set:
 
 def install_templates(pkg: Path, tree: Path, env: dict, dry_run: bool) -> list:
     lines = []
-    scratch, files = produced_files(pkg, env)
+    scratch, files, sha = produced_files(pkg, env)
     if scratch is None:
         return [f"  auto-clear templates: skipped — {files}"]
     try:
@@ -136,6 +182,16 @@ def install_templates(pkg: Path, tree: Path, env: dict, dry_run: bool) -> list:
             logger.info("auto-clear template %s %s in %s", verb, rel, tree)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
+    if lines:
+        # Every line appended above means a file was written/upgraded (or planned to be)
+        # or kept as locally modified — name where those templates came from, first.
+        header = f"  auto-clear templates: from {ac.PACKAGE} {sha}"
+        if _git(pkg, "status", "--porcelain", "--", "templates", "bin", "skills"):
+            header += " (uncommitted changes in the checkout are not shipped)"
+            logger.warning("auto-clear templates: %s's checkout has uncommitted changes "
+                           "under templates/bin/skills; HEAD %s is what ships", ac.PACKAGE, sha)
+        lines.insert(0, header)
+        logger.info("auto-clear templates installed from %s HEAD %s into %s", ac.PACKAGE, sha, tree)
     return lines
 
 
