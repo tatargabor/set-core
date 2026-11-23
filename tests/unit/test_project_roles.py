@@ -190,3 +190,99 @@ def test_check_names_every_problem_and_passes_a_valid_file(tmp_path):
                      "zz is not a registry name", "projects.a.owns: must be a list", "projects.ghost: not a registry name",
                      "projects.b.replaced_by"):
         assert expected in problems, expected
+
+
+# -- flows: how to reach a neighbour (fleet-mandate-and-desk, project-role-rule) ----------
+
+
+def test_a_rule_lists_its_flows_both_ways_and_the_command(fleet):
+    reg, roles, vis = fleet
+    roles["privdep"]["flows"] = [{"to": "pub", "what": "a new CLI flag", "how": "over the bus"},
+                                 {"to": "old", "what": "the legacy export format"}]
+    pr.generate(reg, roles, vis=vis)
+    asker = rule(reg, "privdep")
+    assert "## Reaching other projects" in asker
+    assert "- a new CLI flag → ask `pub` (over the bus)" in asker
+    assert "- the legacy export format → ask `old`" in asker   # no `how`, no empty brackets
+    assert "()" not in asker
+    assert 'set-fleet-ask <project> "<request>"' in asker
+    # The side that is asked sees the same flow from the other end — when it may name the asker.
+    asked = rule(reg, "old")
+    assert "- the legacy export format ← comes from `privdep`" in asked
+
+
+def test_a_public_repo_counts_a_flow_to_a_private_project_and_names_nothing_of_it(fleet):
+    reg, roles, vis = fleet
+    roles["pub"]["flows"] = [{"to": "privdep", "what": "SECRET-SUBJECT", "how": "SECRET-MANNER"},
+                             {"to": "pubdep", "what": "release notes"}]
+    roles["privdep"]["flows"] = [{"to": "pub", "what": "INCOMING-SECRET"}]
+    pr.generate(reg, roles, vis=vis)
+    text = rule(reg, "pub")
+    assert "- release notes → ask `pubdep`" in text
+    assert "1 flow to private projects, not named here" in text
+    assert "1 flow from private projects, not named here" in text
+    for leaked in ("privdep", "SECRET-SUBJECT", "SECRET-MANNER", "INCOMING-SECRET"):
+        assert leaked not in text, leaked
+
+
+def test_a_project_with_no_flows_still_gets_the_command(fleet):
+    reg, roles, vis = fleet
+    pr.generate(reg, roles, vis=vis)
+    text = rule(reg, "pubdep")
+    assert "## Reaching other projects" in text and "set-fleet-ask" in text
+    assert "What this project asks others for" not in text
+    assert "What others ask this project for" not in text
+
+
+def test_a_project_nobody_described_still_gets_the_command(fleet):
+    reg, roles, vis = fleet
+    del roles["pubdep"]
+    pr.generate(reg, roles, vis=vis)
+    text = rule(reg, "pubdep")
+    assert "not described in the operator's role file" in text and "set-fleet-ask" in text
+
+
+def test_a_flow_to_an_unregistered_project_is_reported_and_left_out(fleet, tmp_path):
+    reg, roles, vis = fleet
+    roles["pubdep"]["flows"] = [{"to": "ghost", "what": "GHOST-SUBJECT"},
+                                {"to": "pub", "what": "a real thing"}]
+    pr.generate(reg, roles, vis=vis)
+    text = rule(reg, "pubdep")
+    assert "a real thing" in text
+    assert "ghost" not in text and "GHOST-SUBJECT" not in text
+    # Left OUT, not counted as a private neighbour: a typo is not a private project.
+    assert "not named here" not in text
+    # And in a private repo, where everything registered is named, it is still absent.
+    roles["privdep"]["flows"] = [{"to": "ghost", "what": "GHOST-SUBJECT"}]
+    pr.generate(reg, roles, vis=vis)
+    private = rule(reg, "privdep")
+    assert "ghost" not in private and "GHOST-SUBJECT" not in private
+
+    role_file = tmp_path / "roles.yaml"
+    role_file.write_text(
+        "version: 1\nprojects:\n  pubdep:\n    flows:\n"
+        "      - {to: ghost, what: something}\n"
+        "      - {to: pubdep, what: to itself}\n"
+        "      - {to: pub}\n"
+        "      - {to: pub, what: fine, how: over the bus}\n"
+        "      - {to: pub, what: fine, via: typo}\n"
+        "      - just text\n")
+    problems = "\n".join(pr.validate(role_file, reg))
+    for expected in ("flows[0].to: ghost is not a registry name", "flows[1].to: names the project itself",
+                     "flows[2].what: must be text", "flows[4].via: unknown key", "flows[5]: must be a mapping"):
+        assert expected in problems, expected
+    assert "flows[3]" not in problems
+
+    good = tmp_path / "good.yaml"
+    good.write_text("version: 1\nprojects:\n  pubdep:\n    flows:\n      - {to: pub, what: fine, how: over the bus}\n")
+    assert pr.validate(good, reg) == []
+
+
+def test_the_example_role_file_is_valid_and_shows_a_flow():
+    import yaml
+
+    example = REPO / "templates" / "project-roles.example.yaml"
+    data = yaml.safe_load(example.read_text())
+    registry = {name: {} for name in data["projects"]}
+    assert pr.validate(example, registry) == []
+    assert any(entry.get("flows") for entry in data["projects"].values())

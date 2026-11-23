@@ -66,10 +66,10 @@ Every test written for a fix or a guard is proven with the fix stashed (see the
 
 ## 6. The role rule learns the flows (CORE)
 
-- [ ] 6.1 CORE — `project_roles.py`: read an optional `flows` list per project (`to`, `what`, `how`), declared once on the side it starts from. [REQ: the-role-file-may-declare-flows-between-projects]
-- [ ] 6.2 CORE — Render a "Reaching other projects" section in the generated rule: each outgoing and incoming flow, and the `set-fleet-ask` command; apply the existing visibility rule (a private neighbour is counted, not named, in a public repository's rule). Present even when no flow is declared. [REQ: the-generated-rule-tells-the-agent-how-to-reach-a-neighbour]
-- [ ] 6.3 CORE — `set-project roles --check` warns about a flow whose target is not registered, and generation skips that flow. [REQ: the-role-file-may-declare-flows-between-projects]
-- [ ] 6.4 CORE — Update `templates/project-roles.example.yaml` with a neutral flows example, and the tests for 6.1-6.3 including the public/private case. [REQ: the-generated-rule-tells-the-agent-how-to-reach-a-neighbour]
+- [x] 6.1 CORE — `project_roles.py`: read an optional `flows` list per project (`to`, `what`, `how`), declared once on the side it starts from. [REQ: the-role-file-may-declare-flows-between-projects]
+- [x] 6.2 CORE — Render a "Reaching other projects" section in the generated rule: each outgoing and incoming flow, and the `set-fleet-ask` command; apply the existing visibility rule (a private neighbour is counted, not named, in a public repository's rule). Present even when no flow is declared. [REQ: the-generated-rule-tells-the-agent-how-to-reach-a-neighbour]
+- [x] 6.3 CORE — `set-project roles --check` reports a flow whose target is not registered (as a problem, the same class an unregistered `depends_on` gets), and generation skips that flow. [REQ: the-role-file-may-declare-flows-between-projects]
+- [x] 6.4 CORE — Update `templates/project-roles.example.yaml` with a neutral flows example, and the tests for 6.1-6.3 including the public/private case. [REQ: the-generated-rule-tells-the-agent-how-to-reach-a-neighbour]
 
 ## 7. The start form, the tile and the corrected claim (WEB)
 
@@ -167,7 +167,7 @@ Every test written for a fix or a guard is proven with the fix stashed (see the
 ### project-role-rule
 
 - [ ] AC-53: WHEN a project's entry declares a flow to another registered project THEN the flow is read with its target, its subject and its manner [REQ: the-role-file-may-declare-flows-between-projects, scenario: a-project-with-a-flow]
-- [ ] AC-54: WHEN a flow names a project that is not in the registry THEN the role check reports it as a warning and the rule is still generated without that flow [REQ: the-role-file-may-declare-flows-between-projects, scenario: a-flow-to-an-unregistered-project]
+- [ ] AC-54: WHEN a flow names a project that is not in the registry THEN the role check reports it as a problem and the rule is still generated without that flow [REQ: the-role-file-may-declare-flows-between-projects, scenario: a-flow-to-an-unregistered-project]
 - [ ] AC-55: WHEN the rule is generated for a project that declares flows THEN it contains each flow's subject and target, and the command for asking a project [REQ: the-generated-rule-tells-the-agent-how-to-reach-a-neighbour, scenario: a-rule-with-flows]
 - [ ] AC-56: WHEN the rule is generated for a public repository whose flow goes to a private project THEN the private project is counted and its name does not appear [REQ: the-generated-rule-tells-the-agent-how-to-reach-a-neighbour, scenario: a-public-repository-with-a-private-neighbour]
 - [ ] AC-57: WHEN the rule is generated for a project that declares no flows and is reached by none THEN the rule still contains the command for asking a project [REQ: the-generated-rule-tells-the-agent-how-to-reach-a-neighbour, scenario: a-project-with-no-flows]

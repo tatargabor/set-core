@@ -5,12 +5,18 @@
 #
 # Keys are registry names (`set-project list`). "Depended on by" is computed from the other
 # entries' depends_on, so write each relation once, on the side that depends.
+#
+# `flows` say what one project asks another for, and how: {to, what, how}. Write each once, on
+# the side it starts from. The generated rule turns them into "for this, ask that project" in
+# both projects, next to the command that does the asking (`set-fleet-ask`).
 version: 1
 projects:
   example-app:
     role: The customer-facing web shop.
     owns: [storefront, checkout]
     depends_on: [example-api]
+    flows:
+      - {to: example-api, what: a new field on the order payload, how: ask its desk over the bus}
   example-api:
     role: The order and stock API the shop and the back office call.
     owns: [orders, stock]

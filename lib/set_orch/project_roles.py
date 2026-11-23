@@ -77,7 +77,11 @@ def load_roles(path: Path) -> Optional[dict]:
 
 
 ALLOWED_KEYS = {"role": "one line, text", "owns": "list of text", "depends_on": "list of registry names",
-                "replaced_by": "one registry name"}
+                "replaced_by": "one registry name",
+                "flows": "list of {to: registry name, what: text, how: text}"}
+
+#: The command an agent uses to reach another project. Named in every generated rule.
+ASK_COMMAND = "set-fleet-ask"
 
 
 def validate(path: Path, registry: dict) -> list:
@@ -120,7 +124,51 @@ def validate(path: Path, registry: dict) -> list:
         rb = entry.get("replaced_by")
         if rb is not None and (not isinstance(rb, str) or rb not in registry):
             problems.append(f"{where}.replaced_by: must be one registry name, found {rb!r}")
+        flows = entry.get("flows")
+        if flows is not None and not isinstance(flows, list):
+            problems.append(f"{where}.flows: must be a list of {{to, what, how}}")
+            flows = []
+        for i, flow in enumerate(flows or []):
+            at = f"{where}.flows[{i}]"
+            if not isinstance(flow, dict):
+                problems.append(f"{at}: must be a mapping with `to` and `what`")
+                continue
+            for k in flow:
+                if k not in ("to", "what", "how"):
+                    problems.append(f"{at}.{k}: unknown key (allowed: to, what, how)")
+            to = flow.get("to")
+            if not isinstance(to, str) or not to:
+                problems.append(f"{at}.to: must be one registry name")
+            elif to == name:
+                problems.append(f"{at}.to: names the project itself")
+            elif to not in registry:
+                problems.append(f"{at}.to: {to} is not a registry name — the flow is left out of the rule")
+            if not isinstance(flow.get("what"), str) or not flow.get("what").strip():
+                problems.append(f"{at}.what: must be text")
+            if flow.get("how") is not None and not isinstance(flow.get("how"), str):
+                problems.append(f"{at}.how: must be text")
     return problems
+
+
+def flows_of(role: Optional[dict], registry: dict, *, self_name: Optional[str] = None) -> list:
+    """A project's declared flows that can be rendered: `[{to, what, how}]`.
+
+    A flow whose target is not registered, is the project itself, or has no subject is left
+    out — `--check` names it; the rule is still generated without it.
+    """
+    out = []
+    for flow in (role or {}).get("flows") or []:
+        if not isinstance(flow, dict):
+            continue
+        to, what = flow.get("to"), flow.get("what")
+        if not isinstance(to, str) or to not in registry or to == self_name:
+            continue
+        if not isinstance(what, str) or not what.strip():
+            continue
+        how = flow.get("how")
+        out.append({"to": to, "what": " ".join(what.split()),
+                    "how": " ".join(how.split()) if isinstance(how, str) and how.strip() else None})
+    return out
 
 
 def _leakscan_visibility() -> Visibility:
@@ -167,6 +215,62 @@ def _relations(names: list, registry: dict, self_public: bool, vis: Visibility) 
     return " + ".join(parts)
 
 
+def _named(other: str, registry: dict, self_public: bool, vis: Visibility) -> bool:
+    """Whether `other` may be named in this project's rule — the same rule `_relations` applies."""
+    if not self_public:
+        return True
+    path = os.path.expanduser(str((registry.get(other) or {}).get("path") or ""))
+    return bool(path) and vis(path) == "public"
+
+
+def _reaching(name: str, roles: dict, registry: dict, self_public: bool, vis: Visibility) -> list:
+    """The "Reaching other projects" section: declared flows out and in, and the one command.
+
+    Present in every rule, flows or not — the command is what replaces "open that project by
+    hand", and an agent in a project nobody described needs it just as much.
+    """
+    lines = ["", "## Reaching other projects", ""]
+    out_shown, out_hidden = [], 0
+    for flow in flows_of(roles.get(name), registry, self_name=name):
+        if _named(flow["to"], registry, self_public, vis):
+            how = f" ({flow['how']})" if flow["how"] else ""
+            out_shown.append(f"- {flow['what']} → ask `{flow['to']}`{how}")
+        else:
+            out_hidden += 1
+    in_shown, in_hidden = [], 0
+    for other in sorted(roles):
+        if other == name:
+            continue
+        for flow in flows_of(roles.get(other), registry, self_name=other):
+            if flow["to"] != name:
+                continue
+            if _named(other, registry, self_public, vis):
+                how = f" ({flow['how']})" if flow["how"] else ""
+                in_shown.append(f"- {flow['what']} ← comes from `{other}`{how}")
+            else:
+                in_hidden += 1
+    if out_shown or out_hidden:
+        lines.append("What this project asks others for:")
+        lines += out_shown
+        if out_hidden:
+            lines.append(f"- {out_hidden} flow{'' if out_hidden == 1 else 's'} to private projects, not named here")
+        lines.append("")
+    if in_shown or in_hidden:
+        lines.append("What others ask this project for:")
+        lines += in_shown
+        if in_hidden:
+            lines.append(f"- {in_hidden} flow{'' if in_hidden == 1 else 's'} from private projects, not named here")
+        lines.append("")
+    lines += [
+        f"To ask another project for something, run `{ASK_COMMAND} <project> \"<request>\"`. It finds",
+        "that project's desk — the one session that answers for it — or starts it, sends your request",
+        "over the bus, and records it so the answer can be tracked. Do not open a session in the other",
+        "project by hand, and do not address a bare project name on the bus: that wakes whichever",
+        "session happens to be open there.",
+    ]
+    return lines
+
+
 def render(name: str, entry: dict, role: Optional[dict], roles: dict, registry: dict, vis: Visibility) -> str:
     path = os.path.expanduser(str(entry.get("path") or ""))
     own = vis(path)
@@ -182,6 +286,7 @@ def render(name: str, entry: dict, role: Optional[dict], roles: dict, registry: 
     lines.append(f"Visibility: {vis_word}.")
     if role is None:
         lines += ["", "The role of this project is not described in the operator's role file."]
+        lines += _reaching(name, roles, registry, self_public, vis)
         return "\n".join(lines) + "\n"
     depended_by = sorted(n for n, r in roles.items() if name in _as_list(r.get("depends_on")))
     lines += [
@@ -194,6 +299,7 @@ def render(name: str, entry: dict, role: Optional[dict], roles: dict, registry: 
         "",
         f"**Depended on by:** {_relations(depended_by, registry, self_public, vis)}",
     ]
+    lines += _reaching(name, roles, registry, self_public, vis)
     if self_public:
         lines += ["", "This repository is public: name only public projects in anything committed here."]
     return "\n".join(lines) + "\n"

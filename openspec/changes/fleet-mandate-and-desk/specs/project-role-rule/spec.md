@@ -9,7 +9,7 @@ A project's entry in the role file MAY carry a list of flows, each naming the pr
 
 #### Scenario: A flow to an unregistered project
 - **WHEN** a flow names a project that is not in the registry
-- **THEN** the role check reports it as a warning and the rule is still generated without that flow
+- **THEN** the role check reports it as a problem and the rule is still generated without that flow
 
 ### Requirement: The generated rule tells the agent how to reach a neighbour
 The generated rule SHALL list, for the project's own flows and for flows that reach it, what each is for and which project to ask, together with the command that asks a project. In a public repository's rule a private neighbour SHALL be counted and not named.

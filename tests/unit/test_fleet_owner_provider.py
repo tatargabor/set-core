@@ -600,6 +600,9 @@ def test_recover_hands_the_environment_to_the_start_it_performs(monkeypatch):
     seen = {}
 
     class _Owner:
+        def owned(self):
+            return []
+
         def start(self, argv, **kw):
             seen.update(kw)
             seen["argv"] = list(argv)
