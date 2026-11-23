@@ -114,3 +114,39 @@ What this says:
   in four on questions like these, whatever its accuracy on the options.
 - Not yet measured: the effect of the verbatim reference check (D8) on the tier, and of a prompt
   that rewards abstaining. Both act exactly on the two weaknesses above.
+
+## S4 — the fork, live on this machine (task 2.6), 2026-11-23 23:19–23:22
+
+A scratch interactive session (Claude Code 2.1.331, `--model haiku`, hooks disabled so it took no
+bus seat) was started in tmux in a scratchpad folder and given one operator turn: *"I decided:
+the release color is TEAL, not orange. Just reply OK"*. While it sat at its prompt, it was forked by
+the probe script (`<scratchpad>/fork_probe.py`, not committed) with
+`claude -p --resume <id> --fork-session --model haiku --settings '{"disableAllHooks":true}'
+--tools Read,Grep,Glob --output-format json`, in its own process group (`start_new_session`), and
+the decision prompt on stdin. Measured before and after each fork: the original transcript's line
+count, its sha256 and the sha256 of its last line; every `*.jsonl` under `~/.claude/projects/`;
+`pgrep -g <pgid>` one second after exit.
+
+| arm | exit | latency | answer | orig transcript | group alive after | new transcript in the session's dir | cache read / total input |
+|---|---|---|---|---|---|---|---|
+| `--no-session-persistence` | 0 | 2.3 s | TEAL, quote verbatim from the operator turn | 43 lines, sha `b4526259…` → identical | none | **none** | 49 053 / 54 330 (90 %) |
+| without it | 0 | 2.5 s | TEAL, same quote | identical | none | **one** (the fork's own id) | 54 328 / 54 330 |
+
+What this settles:
+
+- **`--resume --fork-session` together with `--no-session-persistence` works and leaves nothing
+  behind**: no process in the group, no new transcript, the original byte-identical. Without the
+  flag the fork's transcript stays on disk (deleted by hand after the probe) — so D12's flag is
+  load-bearing, not belt-and-braces.
+- **The fork sees the conversation and quotes the operator verbatim**: the quote it returned is
+  exactly the operator turn, which is what the reference check (2.5b) will match against.
+- **The fork shares the prefix cache**: 90 % of its input was a cache read on the first fork, ~100 %
+  on the second. The session here was small (54 k tokens of prefix, mostly the system prompt); the
+  share on a long session is a live number for the decision log, not measured here.
+- **`--resume <id>` finds the session from any cwd** (a fork run from `/` answered TEAL too), so the
+  worker may run in the session's cwd for its read tools without that being what makes resume work.
+- **The session's model is in the transcript**: every assistant entry carries `message.model`
+  (`claude-haiku-5-5` here) — the fallback source for D8's "the session's own model" when the fleet
+  has no provider record.
+- Not measured here: whether the fleet's discovery lists a fork while it runs (it lived 2.5 s), and
+  a fork of a GLM session through its wrapper.
