@@ -92,7 +92,12 @@ válaszba"*. Most of the operator's decisions are spoken in the session — they
 session's context and in no file. A separate headless call in the tree (the first version of this
 decision) cannot see them; S2 measured it at 55 % with sources only.
 
-So the worker runs `claude --resume <session> --fork-session -p` with the decision prompt. The
+So the worker runs `claude --resume <session> --fork-session -p` with the decision prompt, on the
+**same model and provider as the original session** (the user, 2026-11-23: *„fork mindig azon a
+modellen fut amin az eredeti session is"*): the provider and model are read from the session's
+record (the fleet's provider record, else the transcript's last model), a GLM session is forked
+through its provider wrapper, and `auto_answer.model` never overrides a fork — it applies only to
+the sources-only fallback. The
 fork sees the whole conversation, the loaded handoff and the rules, writes to a NEW session id,
 and leaves the original untouched. It shares the original's prompt prefix, so most of it is read
 from the cache. Tools: read-only (reading and searching files); hooks disabled; the relay guard
@@ -129,29 +134,36 @@ read tools. The decider, not the model, runs the search, so the model keeps read
 needs no shell. A project where `set-kb doctor` reports search as not working is not blocked: the
 fixed locations still apply, and the log says the knowledge base was not used.
 
-### D9 — What is stored, and where
-A pending record per call (`<state>/auto-answer/<id>.json`: option, tier, source paths and
-excerpts, deadline) lives beside the relay's answer store and is pruned with it (7 days). It holds
-the same kind of text the answer store already holds, on the same machine, under the same
-retention. The log carries the call id, tier, outcome and source paths, never the question or
-answer text — the relay's own log rule.
+### D9 — What is stored, and where (revised 2026-11-23)
+The user asked for a record of what was asked and what was answered (*„logolva legyen mire mit
+válaszoltunk"*). That supersedes the first version of this decision, which copied the relay's
+rule of logging no text. Two stores now, with different readers:
+- **The decision log** — `~/.local/share/set-core/auto-answer/decisions.jsonl`, mode 600,
+  machine-local, never in a repository, pruned after `auto_answer.log_days` (default 90). One
+  record per relayed question: time, project, agent, session, kind, question, options, choice,
+  derived tier, confidence, checked and failed references, outcome, and the human answer when
+  there was one. It is the operator's own audit trail and the panel's data. It holds consumer
+  text, so nothing reads it into a commit, an artifact or a channel.
+- **The pending record** per call (`<state>/auto-answer/<id>.json`) beside the relay's answer
+  store, pruned with it.
+The relay's journal and the set-web log keep carrying no question or answer text.
 
-### D10 — The operator's earlier answers are a candidate source, decided by the study
-*"Amit korábban már választottam"* is literally the earlier answers: the same kind of question
-answered in the same project before. Those answers live in local transcripts, not in any file the
-lookup reads, so a decision taken only in an answer is invisible to D8. Task group 0 measures how
-many past answers an earlier answer would have predicted. If it carries a meaningful share, the
-decider gets a machine-local index of earlier answers (question, options, choice, time, project —
-never leaving the machine, pruned like the answer store) as one more candidate source, tier
-`decided` with the earlier answer as its quoted source. If it does not, it is left out.
+### D12 — The fork is a `-p` run, bounded, in its own process group, with no session kept
+The user: *„fontos a session kilépjen a fork válasza után"*. A `-p` run exits when it has
+answered; the decider starts it in a new process group, and on the time bound kills the group, so
+a stuck tool call cannot keep a child alive. `--no-session-persistence` keeps the fork from
+leaving a resumable transcript, and the relay guard variable plus disabled hooks keep it off the
+bus and out of the fleet (discovery already skips non-interactive runs). Task 2.6 measures all of
+it on a live session: no process after the answer, no new transcript, the original unchanged.
 
-### D11 — Measure before building, without time leakage
-The study replays past questions with only the sources that existed at the question's time:
-tracked files from git at that moment, untracked ones only if older, earlier answers only. A
-replay against today's files would score decisions that were written down AFTER the question —
-often because of it — as findable, and would set the `likely` bar on an inflated accuracy. Fail
-direction of skipping this: the bar is set too low and the decider answers wrongly with
-confidence.
+### D13 — A header control and a floating panel, in the manner of the relation map
+The user: *„felületen is kell rá gomb és kis felület mint az új relation map"*. One header control
+next to the relay switch carries the state (on/off) and the pending count — a pending proposal is
+a thing that will act, so it is counted where the reader stands (ui-quality). It opens a floating
+panel built like `FleetMap`: absolutely positioned, its own close control, nothing under it moves.
+Inside: the switch, the pending proposals with references, countdown and cancel, and the recent
+decisions from the decision log. The panel reads the log through an API route; the route serves
+the newest records only and never caches them.
 
 ## Risks / Trade-offs
 

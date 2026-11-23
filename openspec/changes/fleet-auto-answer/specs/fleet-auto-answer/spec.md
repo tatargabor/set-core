@@ -5,7 +5,9 @@
 - A proposal window: the automatic answer is shown before it is written, and a human answer wins
 - Forwarding to the operator's real outbound, with the decider's recommendation attached
 - The relay handing its outbound the call's kind, session id and working directory
-- A machine switch, also on the fleet header; the pending automatic answer on the agent, with cancel
+- A machine switch and a floating panel on the fleet header (pending proposals with cancel, recent decisions); the pending proposal marked on the agent
+- A machine-local decision log of what was asked and what was answered
+- The fork ends after its answer and leaves no process or session behind
 
 ## OUT OF SCOPE
 - Changing the relay hooks, the chat bridge, or the envelope the bridge reads
@@ -50,7 +52,7 @@ For each question the decider SHALL produce one choice and a tier: `decided` whe
 - **THEN** no automatic answer is made and the question is forwarded unchanged
 
 ### Requirement: The lookup reads where decisions live, and only reads
-Before the decision, the decider SHALL run the project knowledge-base search (`set-kb search --json`) in the asking session's working directory with the question and its options, and SHALL hand the ranked sections (path, heading, excerpt) to the decision as candidate sources. When the knowledge base cannot search in that project, the decider SHALL continue without it and SHALL log that it did. The decision SHALL be made by a fork of the asking session (the session's conversation resumed into a new session id, the original left unchanged), with read-only file tools only, hooks disabled, the relay's guard set, and a time bound. The fork SHALL be asked for the operator's answer and for references, each either an operator message quoted from the conversation or a file path with an excerpt; it SHALL also be pointed at the instruction files of the project and of the user, the project's rules directory, the session's newest handoff, the open OpenSpec changes, the bug register, the project's memory directory, and any paths listed in `auto_answer.extra_paths`. When the session cannot be forked, the decider SHALL fall back to one headless call in the session's working directory with the same sources and SHALL log the fallback. A decision that fails or times out SHALL produce no decision.
+Before the decision, the decider SHALL run the project knowledge-base search (`set-kb search --json`) in the asking session's working directory with the question and its options, and SHALL hand the ranked sections (path, heading, excerpt) to the decision as candidate sources. When the knowledge base cannot search in that project, the decider SHALL continue without it and SHALL log that it did. The decision SHALL be made by a fork of the asking session (the session's conversation resumed into a new session id, the original left unchanged), on the same model and provider as the original session — `auto_answer.model` SHALL apply only to the fallback — with read-only file tools only, hooks disabled, the relay's guard set, and a time bound. The fork SHALL be asked for the operator's answer and for references, each either an operator message quoted from the conversation or a file path with an excerpt; it SHALL also be pointed at the instruction files of the project and of the user, the project's rules directory, the session's newest handoff, the open OpenSpec changes, the bug register, the project's memory directory, and any paths listed in `auto_answer.extra_paths`. When the session cannot be forked, the decider SHALL fall back to one headless call in the session's working directory with the same sources and SHALL log the fallback. A decision that fails or times out SHALL produce no decision.
 
 #### Scenario: The knowledge base finds the answer
 - **WHEN** the answer to the question is written in a section of the project's documentation that is not one of the fixed locations
@@ -63,6 +65,10 @@ Before the decision, the decider SHALL run the project knowledge-base search (`s
 #### Scenario: The fork answers with the operator's own words
 - **WHEN** the operator stated the decision earlier in the same session, and it is written nowhere else
 - **THEN** the fork's choice is that option, and its reference quotes the operator's message
+
+#### Scenario: The fork keeps the session's model
+- **WHEN** the asking session runs on a given model through a given provider
+- **THEN** the fork runs on that same model through that same provider, whatever `auto_answer.model` says
 
 #### Scenario: The original session is untouched
 - **WHEN** the decider forks a session to decide
@@ -109,13 +115,39 @@ When no forward command is configured and the decider makes no automatic answer,
 - **WHEN** `auto_answer.forward_command` is empty and the question is excluded
 - **THEN** the session's question is released to its terminal
 
-### Requirement: Every automatic answer is visible and cancellable on the fleet
-The fleet SHALL show, on the asking agent, a pending automatic answer with its proposed option, tier and remaining time, and SHALL offer to cancel it; cancelling SHALL leave the question waiting for a human answer. The fleet header SHALL carry the machine switch next to the question-relay switch. The decider SHALL log each decision with the call id, tier, whether it was written, excluded, cancelled or overtaken, and the source paths — never the question or answer text.
+### Requirement: The fork ends after its answer
+The fork that makes the decision SHALL be a non-interactive run that ends when it has answered, and SHALL leave no process behind: when its time bound expires, the decider SHALL terminate the fork's whole process group. The fork SHALL NOT be listed as a fleet agent, SHALL NOT take a bus seat, and SHALL NOT leave a resumable session behind.
 
-#### Scenario: Cancel from the fleet
-- **WHEN** the operator cancels a pending automatic answer on an agent
-- **THEN** the decider does not write it, and the agent's question still waits
+#### Scenario: The fork answers
+- **WHEN** the fork returns its decision
+- **THEN** no process of the fork is alive afterwards, and no new session transcript remains
 
-#### Scenario: The log carries no text
-- **WHEN** an automatic answer is written
-- **THEN** the log line names the call id, the tier and the source paths, and contains neither the question nor the answer
+#### Scenario: The fork overruns its bound
+- **WHEN** the fork has not answered when its time bound expires
+- **THEN** its process group is terminated, no process of it remains, and the question is forwarded without a decision
+
+### Requirement: Every decision is logged with what was asked and what was answered
+The decider SHALL append one record per relayed question to a machine-local decision log that is never written into any repository: the time, project, agent and session, the kind, the question and its options, the decision (choice, derived tier, confidence), the checked and the failed references, the outcome (written, excluded, below the bar, cancelled, overtaken by a human answer, no decision, fallback used) and, when a human answered, that answer. The log file SHALL be readable only by its owner and SHALL be pruned after `auto_answer.log_days` (default 90). The relay's own journal SHALL continue to carry no question or answer text.
+
+#### Scenario: An automatic answer is written
+- **WHEN** the decider writes an answer after the window
+- **THEN** the decision log holds the question, the options, the written answer, its tier and its checked references, with the outcome `written`
+
+#### Scenario: A human answers first
+- **WHEN** the operator answers during the window
+- **THEN** the decision log records the proposal, the outcome `overtaken` and the operator's answer
+
+### Requirement: The fleet carries a switch and a panel of decisions
+The fleet header SHALL carry one control for automatic answering, next to the question-relay switch: it SHALL show whether automatic answering is on and the number of pending proposals, and it SHALL open a floating panel in the manner of the relation map — above the layout, moving nothing under it, with its own close control. The panel SHALL hold the on/off switch, the pending proposals (agent, question, proposed answer, tier, references, remaining time, a cancel control) and the recent decisions from the decision log (time, agent, question, answer, tier, outcome), newest first. The pending proposal SHALL also be marked on the asking agent. Cancelling SHALL leave the question waiting for a human answer.
+
+#### Scenario: Cancel from the panel
+- **WHEN** the operator cancels a pending proposal in the panel
+- **THEN** the decider does not write it, the agent's question still waits, and the decision log records `cancelled`
+
+#### Scenario: The panel opens over the screen
+- **WHEN** the operator opens the panel
+- **THEN** it floats above the fleet and no element under it moves or changes size
+
+#### Scenario: A pending proposal is counted where the reader stands
+- **WHEN** a proposal is pending and the panel is closed
+- **THEN** the header control shows the count of pending proposals
