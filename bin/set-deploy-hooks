@@ -2,6 +2,11 @@
 # set-deploy-hooks - Deploy Claude Code hooks to a target directory
 #
 # Usage: set-deploy-hooks [--quiet] [--no-memory] <target-dir>
+#        set-deploy-hooks --auto-clear [--dry-run] [--quiet] <target-dir>
+#
+# --auto-clear is a SEPARATE step (auto-clear-default-install D2): it merges only the
+# handoff package's reload and arm hooks, and nothing of the base set. See the block
+# after _merge_hooks_additively.
 #
 # Deploys 3 hook events (4 entries) to <target-dir>/.claude/settings.json:
 #   - UserPromptSubmit: skill detection (timeout: 5s)
@@ -26,6 +31,8 @@ set -e
 
 QUIET=false
 NO_MEMORY=false   # accepted, unused — see the header
+AUTO_CLEAR=false
+DRY_RUN=false
 TARGET_DIR=""
 
 while [[ $# -gt 0 ]]; do
@@ -38,6 +45,14 @@ while [[ $# -gt 0 ]]; do
             NO_MEMORY=true
             shift
             ;;
+        --auto-clear)
+            AUTO_CLEAR=true
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
         *)
             TARGET_DIR="$1"
             shift
@@ -47,6 +62,12 @@ done
 
 if [[ -z "$TARGET_DIR" ]]; then
     echo "Usage: set-deploy-hooks [--quiet] [--no-memory] <target-dir>" >&2
+    echo "       set-deploy-hooks --auto-clear [--dry-run] [--quiet] <target-dir>" >&2
+    exit 1
+fi
+
+if $DRY_RUN && ! $AUTO_CLEAR; then
+    echo "Error: --dry-run is only implemented for --auto-clear" >&2
     exit 1
 fi
 
@@ -60,7 +81,7 @@ _success() { $QUIET || echo "  ✔ $*"; }
 
 settings_file="$TARGET_DIR/.claude/settings.json"
 
-mkdir -p "$TARGET_DIR/.claude"
+$DRY_RUN || mkdir -p "$TARGET_DIR/.claude"
 
 # The framework's hook config. It carries NO memory hooks: the memory subsystem was
 # removed after it was measured injecting a false "user frustrated" label into unrelated
@@ -217,6 +238,67 @@ _merge_hooks_additively() {
         )
     ' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
 }
+
+# ── --auto-clear: the handoff package's two hooks (auto-clear-default-install D2) ──
+#
+# The strings are exactly what the package's `init --auto-clear` prints (stable, confirmed by
+# the package on the bus 2026-11-23), so a project that merged them by hand dedups here. A
+# project with its OWN mechanism keeps it: a SessionStart command containing `reinject` whose
+# matcher covers the clear source, or a PostToolUse command containing `handoff-arm`, means
+# the package entry is not added — two reloads after one /clear is the failure this avoids.
+# These entries stay out of the base set's "already canonical" check below, so a project with
+# its own reload never looks non-canonical. keep-going is opt-in and is not merged.
+#
+# The reload wiring stamp (`.set/handoff/.reload-wired-at`, one ISO-8601 UTC line) is written
+# only when THIS step adds the reload entry — never on a no-op run, or every deploy would
+# re-exclude the live sessions the watcher's start filter is meant to keep clearable.
+if $AUTO_CLEAR; then
+    RELOAD_CMD='node "$CLAUDE_PROJECT_DIR/.claude/hooks/handoff-reinject-clear.mjs"'
+    ARM_CMD='node "$CLAUDE_PROJECT_DIR/.claude/hooks/handoff-arm.mjs"'
+    src="$settings_file"; [[ -f "$src" ]] || src=/dev/null
+    state=$(jq -n --slurpfile s <(cat "$src" 2>/dev/null || true) \
+                --arg reload "$RELOAD_CMD" --arg arm "$ARM_CMD" '
+        ($s[0] // {}) as $doc
+        | def cmds($ev): [ ($doc.hooks[$ev] // [])[]? | . as $e | (.hooks // [])[]?
+                           | {matcher: ($e.matcher // ""), command: (.command // "")} ];
+        { reload_pkg: any(cmds("SessionStart")[]; .command == $reload),
+          reload_own: any(cmds("SessionStart")[]; .command != $reload
+                          and (.command | contains("reinject"))
+                          and (.matcher == "" or (.matcher | test("(^|\\|)clear(\\||$)")))),
+          arm_pkg: any(cmds("PostToolUse")[]; .command == $arm),
+          arm_own: any(cmds("PostToolUse")[]; .command != $arm and (.command | contains("handoff-arm"))) }
+    ') || { echo "Error: cannot read $settings_file as JSON" >&2; exit 1; }
+    want_reload=false; want_arm=false
+    if [[ $(jq -r .reload_pkg <<<"$state") == true ]]; then _info "  auto-clear hooks: reload already wired"
+    elif [[ $(jq -r .reload_own <<<"$state") == true ]]; then
+        echo "  auto-clear hooks: reload skipped — the project runs its own reinject for clear"
+    else want_reload=true; fi
+    if [[ $(jq -r .arm_pkg <<<"$state") == true ]]; then _info "  auto-clear hooks: arm already wired"
+    elif [[ $(jq -r .arm_own <<<"$state") == true ]]; then
+        echo "  auto-clear hooks: arm skipped — the project has its own handoff-arm hook"
+    else want_arm=true; fi
+    if ! $want_reload && ! $want_arm; then exit 0; fi
+    desired=$(jq -n --arg reload "$RELOAD_CMD" --arg arm "$ARM_CMD" \
+                    --argjson r "$want_reload" --argjson a "$want_arm" '
+        {} + (if $r then {SessionStart: [{matcher: "clear|compact", hooks: [
+                 {type: "command", command: $reload, timeout: 15}]}]} else {} end)
+           + (if $a then {PostToolUse: [{matcher: "Write|Edit|MultiEdit|Bash", hooks: [
+                 {type: "command", command: $arm, timeout: 10}]}]} else {} end)')
+    if $DRY_RUN; then
+        $want_reload && echo "  auto-clear hooks: would add reload (SessionStart clear|compact) and write .set/handoff/.reload-wired-at"
+        $want_arm && echo "  auto-clear hooks: would add arm (PostToolUse Write|Edit|MultiEdit|Bash)"
+        exit 0
+    fi
+    if [[ -f "$settings_file" ]]; then cp "$settings_file" "$settings_file.bak"; else echo '{}' > "$settings_file"; fi
+    _merge_hooks_additively "$settings_file" "$desired" false false
+    if $want_reload; then
+        mkdir -p "$TARGET_DIR/.set/handoff"
+        date -u +%Y-%m-%dT%H:%M:%SZ > "$TARGET_DIR/.set/handoff/.reload-wired-at"
+        echo "  ✔ auto-clear hooks: reload added; wiring stamp written"
+    fi
+    $want_arm && echo "  ✔ auto-clear hooks: arm added"
+    exit 0
+fi
 
 if [[ -f "$settings_file" ]]; then
     # Detect current hook state

@@ -12,11 +12,11 @@
 
 ## 3. Hooks (D2)
 
-- [ ] 3.1 A separate merge step in `bin/set-deploy-hooks` adds the reload (`SessionStart`, `clear|compact`) and arm (`PostToolUse`, `Write|Edit|MultiEdit|Bash`) entries with the package's exact command strings, through `_merge_hooks_additively` [REQ: init-installs-auto-clear-by-default]
-- [ ] 3.2 Own-mechanism detection: skip the reload entry when a `SessionStart` command containing `reinject` covers the clear source, the arm entry when a `PostToolUse` command contains `handoff-arm`; print the skip [REQ: a-projects-own-reload-or-arm-mechanism-is-not-duplicated]
-- [ ] 3.3 Keep both entries out of the base set's "already canonical" check [REQ: a-projects-own-reload-or-arm-mechanism-is-not-duplicated]
-- [ ] 3.4 Tests: empty settings → both added; a settings file already carrying the package strings → unchanged (dedup); a project reload script → package reload not added; project hooks preserved in every case [REQ: a-projects-own-reload-or-arm-mechanism-is-not-duplicated]
-- [ ] 3.5 Write `<tree>/.set/handoff/.reload-wired-at` (ISO-8601 UTC, `Z`) when the reload entry is first added or its command changes; never on a no-op merge (D3 stamp contract)
+- [x] 3.1 A separate merge step in `bin/set-deploy-hooks` adds the reload (`SessionStart`, `clear|compact`) and arm (`PostToolUse`, `Write|Edit|MultiEdit|Bash`) entries with the package's exact command strings, through `_merge_hooks_additively` [REQ: init-installs-auto-clear-by-default]
+- [x] 3.2 Own-mechanism detection: skip the reload entry when a `SessionStart` command containing `reinject` covers the clear source, the arm entry when a `PostToolUse` command contains `handoff-arm`; print the skip [REQ: a-projects-own-reload-or-arm-mechanism-is-not-duplicated]
+- [x] 3.3 Keep both entries out of the base set's "already canonical" check [REQ: a-projects-own-reload-or-arm-mechanism-is-not-duplicated]
+- [x] 3.4 Tests: empty settings → both added; a settings file already carrying the package strings → unchanged (dedup); a project reload script → package reload not added; project hooks preserved in every case [REQ: a-projects-own-reload-or-arm-mechanism-is-not-duplicated]
+- [x] 3.5 Write `<tree>/.set/handoff/.reload-wired-at` (ISO-8601 UTC, `Z`) when the reload entry is first added or its command changes; never on a no-op merge (D3 stamp contract)
 
 ## 4. The watcher unit (D3, D4)
 
@@ -55,7 +55,7 @@
 - [ ] AC-5: WHEN a template matches no shipped version THEN it is byte-identical and reported [REQ: a-locally-modified-package-file-is-kept, scenario: a-hand-edited-file-survives]
 
 ### a-projects-own-reload-or-arm-mechanism-is-not-duplicated
-- [ ] AC-6: WHEN the project runs its own reload script for clear THEN the package reload is not added and the skip is printed [REQ: a-projects-own-reload-or-arm-mechanism-is-not-duplicated, scenario: a-project-with-its-own-reload-script]
+- [x] AC-6: WHEN the project runs its own reload script for clear THEN the package reload is not added and the skip is printed [REQ: a-projects-own-reload-or-arm-mechanism-is-not-duplicated, scenario: a-project-with-its-own-reload-script]
 
 ### an-existing-watcher-unit-is-never-rewritten
 - [ ] AC-7: WHEN an existing unit passes `--compact-threshold 500000` THEN it is byte-identical and the flag is named with its removal [REQ: an-existing-watcher-unit-is-never-rewritten, scenario: a-hand-written-unit-with-an-old-threshold]
@@ -91,3 +91,13 @@
   `versions --json` manifest is planned but not built — keep the git-history walk until it is;
   keep-going may stop needing `--threshold` once it reads the gate's default — do not merge it with
   a pinned value then.
+- 2026-11-23, group 3 (hooks): `set-deploy-hooks --auto-clear [--dry-run]` is its own mode — it
+  merges only the two package entries through `_merge_hooks_additively` (both removal flags off)
+  and exits before the base set's canonical check, so 3.3 holds by construction. A reinject wired
+  for `startup` only does not count as an own reload; an empty matcher does. `--dry-run` without
+  `--auto-clear` is refused rather than silently writing. `tests/unit/test_deploy_hooks_auto_clear.py`
+  11 tests; three mutants (matcher test dropped, no-op exit dropped, dry-run branch dropped) fail
+  1/1/2; the base-set suites (wave board, wait detect, memory absent, question relay) 149 passed.
+- keep-going stays unmerged: it is opt-in in the package. The package confirmed the same day that
+  it reads the gate's default and its printed hooks carry no `--threshold`; a project that wants
+  it merges those strings, and the doctor reports any pinned value.
