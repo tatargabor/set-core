@@ -46,13 +46,13 @@ Every test written for a fix or a guard is proven with the fix stashed (see the
 
 ## 4. The desk (CORE, API)
 
-- [ ] 4.1 CORE — `lib/set_orch/fleet/desk.py`: resolve a project to the live, framework-held agent whose open mandate has kind `desk`; never consider any other session. [REQ: a-project-request-resolves-to-the-project-s-desk-and-to-no-other-session]
-- [ ] 4.2 CORE — Start a desk when none is live: project root from the registry, label `<project>-desk`, `desk` mandate with the requester, the desk opening line. A held-label refusal from the owner is treated as "the desk exists" and re-resolved. [REQ: the-desk-is-started-when-none-is-live]
-- [ ] 4.3 CORE — Refusals before any start: unknown project, archived project, failed start-location check, not on the bus (the bus doctor's `hooks.session-start`, measurements.md M6), never trusted by the runtime (M3), and `unmeasured` when either of the last two cannot be read. After a start: wait for the desk's bus seat up to 60 seconds (M4), then fail with `desk-not-ready`. [REQ: a-request-that-cannot-have-a-desk-is-refused-with-the-reason]
+- [x] 4.1 CORE — `lib/set_orch/fleet/desk.py`: resolve a project to the live, framework-held agent whose open mandate has kind `desk`; never consider any other session. [REQ: a-project-request-resolves-to-the-project-s-desk-and-to-no-other-session]
+- [x] 4.2 CORE — Start a desk when none is live: project root from the registry, label `<project>-desk`, `desk` mandate with the requester, the desk opening line. A held-label refusal from the owner is treated as "the desk exists" and re-resolved. [REQ: the-desk-is-started-when-none-is-live]
+- [x] 4.3 CORE — Refusals before any start: unknown project, archived project, failed start-location check, not on the bus (the bus doctor's `hooks.session-start`, measurements.md M6), never trusted by the runtime (M3), and `unmeasured` when either of the last two cannot be read. After a start: wait for the desk's bus seat up to 60 seconds (M4), then fail with `desk-not-ready`. [REQ: a-request-that-cannot-have-a-desk-is-refused-with-the-reason]
 - [ ] 4.4 API — Reserve the desk label: refuse renaming a desk, and refuse a non-desk start or rename that takes a registered project's desk label. [REQ: the-desk-label-is-reserved]
 - [ ] 4.5 CORE — The quiet sweep, run from the dashboard service's lifespan: stop a desk with no resolving or open engagement whose state and last movement are both measured and past the bound; keep it when anything is unmeasured; end the mandate with `desk-quiet`. Bound from a config key, default thirty minutes. Log the label, the pid and the measured idle time. [REQ: a-quiet-desk-stops-and-an-unmeasured-one-is-kept]
 - [ ] 4.6 API — `POST /api/fleet/desks/resolve`: resolution as one call, returning the engagement id, the desk (label, seat, whether it was started) or the refusal reason. [REQ: the-desk-is-started-when-none-is-live]
-- [ ] 4.7 CORE — Tests: live desk found, working sessions ignored, concurrent resolution yields one start, each refusal, the three sweep cases. [REQ: a-project-request-resolves-to-the-project-s-desk-and-to-no-other-session]
+- [x] 4.7 CORE — Tests: live desk found, working sessions ignored, concurrent resolution yields one start, each refusal, the three sweep cases. [REQ: a-project-request-resolves-to-the-project-s-desk-and-to-no-other-session]
 
 ## 5. Engagements (CORE, API, CLI)
 
