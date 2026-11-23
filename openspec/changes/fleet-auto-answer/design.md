@@ -165,6 +165,17 @@ Inside: the switch, the pending proposals with references, countdown and cancel,
 decisions from the decision log. The panel reads the log through an API route; the route serves
 the newest records only and never caches them.
 
+### D14 — Build the strong arm; measure it live through the decision log
+The replay (S2, S3) put the strongest arm — conversation plus sources on Opus — at 65 % overall,
+84 % where the real answer was an option, 76 % on its allowed set, with free-text abstention as the
+dominant error. The user decided (2026-11-23): *„mehet az erős megoldás és majd megmérjük
+élesben"*. So the further replay is dropped, and the live measurement is built into the product:
+every proposal and the operator's own answer land in the same decision-log record (outcome
+`overtaken` with the human answer, or `written`/`cancelled`), so the live accuracy per tier is a
+query over the log (task 5.0). The automatic write stays behind the switch, default off; the
+operator turns it on when the live numbers say so. Until then the decider is a proposer: every
+relayed question arrives with its recommended answer and checked references.
+
 ## Risks / Trade-offs
 
 - [The fork repeats the agent's own recommendation] → the prompt asks for the operator's words, the
