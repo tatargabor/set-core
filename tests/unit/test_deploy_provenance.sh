@@ -467,6 +467,30 @@ else
     test_fail "dry-run wrote or did not name the removals: $out"
 fi
 
+test_start "retire: a pre-ledger copy equal to a blob set-core shipped is removed; another is kept"
+read -r SRC PROJ <<< "$(new_scenario retire_preledger)"
+mkdir -p "$PROJ/.claude/commands/set"
+echo "shipped once" > "$PROJ/.claude/commands/set/old.md"
+echo "written by the project" > "$PROJ/.claude/commands/set/own.md"
+printf '.claude/commands/set/old.md\n.claude/commands/set/own.md\n' > "$WORK/retire_preledger/retired.txt"
+git hash-object "$PROJ/.claude/commands/set/old.md" > "$WORK/retire_preledger/shipped.txt"
+( _pv_retired_list() { echo "$WORK/retire_preledger/retired.txt"; }
+  _pv_shipped_blobs() { echo "$WORK/retire_preledger/shipped.txt"; }
+  _pv_begin "$PROJ"; _pv_retire_paths "$PROJ"; _pv_end ) >/dev/null 2>&1
+if [[ ! -e "$PROJ/.claude/commands/set/old.md" && -f "$PROJ/.claude/commands/set/own.md" ]]; then
+    test_pass
+else
+    test_fail "old.md gone=$([[ ! -e $PROJ/.claude/commands/set/old.md ]] && echo y || echo n) own.md kept=$([[ -f $PROJ/.claude/commands/set/own.md ]] && echo y || echo n)"
+fi
+
+test_start "retire: a ledger-recorded copy the project EDITED is kept even if it equals an old shipped blob"
+read -r PROJ LIST <<< "$(retire_setup retire_edited_old 2>/dev/null)"
+echo "an older shipped text" > "$PROJ/.claude/commands/set/cmd.md"
+git hash-object "$PROJ/.claude/commands/set/cmd.md" > "$WORK/retire_edited_old/shipped.txt"
+( _pv_retired_list() { echo "$LIST"; }; _pv_shipped_blobs() { echo "$WORK/retire_edited_old/shipped.txt"; }
+  _pv_begin "$PROJ"; _pv_retire_paths "$PROJ"; _pv_end ) >/dev/null 2>&1
+assert_content "$PROJ/.claude/commands/set/cmd.md" "an older shipped text" "a ledger-edited file was removed by the history fallback"
+
 test_start "retire: a retired key is never deployed"
 read -r SRC PROJ <<< "$(new_scenario retire_nodeploy)"
 echo "x" > "$SRC/cmd.md"; printf '.claude/commands/set/cmd.md\n' > "$WORK/retire_nodeploy/retired.txt"

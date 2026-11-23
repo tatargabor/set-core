@@ -269,6 +269,32 @@ _pv_retired_list() {
     printf '%s/templates/core/retired-paths.txt' "${SET_TOOLS_ROOT:-}"
 }
 
+# Every blob set-core ever shipped from its deploy sources, one per line, built once per run.
+#
+# Retirement's fallback for a copy written BEFORE the ledger existed: such a copy has no
+# recorded hash, so `_pv_is_ours` cannot vouch for it, and it used to be kept as "unknown
+# provenance" forever. Measured 2026-11-23: in projects initialised before the ledger, all
+# 30 retired files were kept, each byte-identical to a blob in set-core's own history. A git
+# blob equal to one set-core shipped is a copy nobody edited; anything else is still kept.
+_pv_shipped_blobs() {
+    if [[ -z "${_PV_SHIPPED_BLOBS:-}" || ! -f "$_PV_SHIPPED_BLOBS" ]]; then
+        _PV_SHIPPED_BLOBS="$(mktemp -t set-pv-shipped.XXXXXX)"
+        git -C "${SET_TOOLS_ROOT:-.}" log --all --format= --raw --no-abbrev -- \
+            templates/core/rules .claude/commands/set .claude/commands/opsx .claude/skills/set .claude/agents \
+            2>/dev/null | awk 'NF >= 5 {print $4}' | sort -u > "$_PV_SHIPPED_BLOBS"
+    fi
+    printf '%s' "$_PV_SHIPPED_BLOBS"
+}
+
+# Is this file a byte-identical copy of something set-core shipped? (see above)
+_pv_was_shipped() {
+    local file="$1" blob
+    [[ -f "$file" ]] || return 1
+    blob="$(git hash-object "$file" 2>/dev/null)" || return 1
+    [[ -n "$blob" ]] || return 1
+    grep -qx "$blob" "$(_pv_shipped_blobs)"
+}
+
 # Is this project-relative key retired? Exact line, or under a `dir/` line.
 _pv_is_retired() {
     local key="$1" list line
@@ -312,7 +338,11 @@ _pv_retire_paths() {
 
     for key in "${candidates[@]}"; do
         f="$project_path/$key"
-        if _pv_is_ours "$key" "$f"; then
+        # The ledger vouches for a copy it wrote; for an older copy, set-core's own history
+        # does — but only when the ledger has no hash for it (a recorded, differing hash
+        # means the project edited it, and that stays the project's).
+        if _pv_is_ours "$key" "$f" \
+           || { [[ -z "$(_pv_known_hash "$key" 2>/dev/null)" ]] && _pv_was_shipped "$f"; }; then
             if [[ "${DRY_RUN:-false}" == "true" ]]; then
                 info "    Would remove $key (retired by set-core)"
             else
