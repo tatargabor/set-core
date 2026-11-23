@@ -32,9 +32,11 @@ class Check:
     detail: str
     fix: Optional[str] = None
     project: Optional[str] = None
+    module: Optional[str] = None  # the module doctor that produced it (doctor-module-contract)
+    path: Optional[str] = None  # join key from a doctor/1 record; not part of set-doctor/1 output
 
     def to_dict(self) -> dict:
-        return {k: v for k, v in asdict(self).items() if v is not None}
+        return {k: v for k, v in asdict(self).items() if v is not None and k != "path"}
 
 
 @dataclass
@@ -57,6 +59,13 @@ class Context:
 
     def which(self, name: str) -> Optional[str]:
         return shutil.which(name, path=self.env.get("PATH", ""))
+
+    @property
+    def child(self) -> bool:
+        """Run by a module doctor that set-doctor started: run no module doctors (no recursion)."""
+        from set_doctor.modules import CHILD_ENV
+
+        return self.env.get(CHILD_ENV, "") == "1"
 
 
 def run(cmd, cwd=None, timeout=60, env=None) -> tuple:
@@ -370,47 +379,82 @@ def deep_dry_run(ctx: Context, path: str) -> Check:
     return Check("project", "dry-run", "ok", "init would change nothing")
 
 
-def kb_doctor(ctx: Context, path: str) -> Check:
-    rc, so, se = run([os.path.join(ctx.root, "bin", "set-kb"), "doctor", "--json"], cwd=path, timeout=120,
-                     env=ctx.env)
+def kb_doctor(ctx: Context, path: str, command: Optional[list] = None) -> Check:
+    """The `set-kb.doctor/1` adapter: one project's `set-kb doctor --json`, folded into one record.
+    A `set-kb` declaration's command replaces the built-in one (one run, never two)."""
+    cmd = command or [os.path.join(ctx.root, "bin", "set-kb"), "doctor", "--json"]
+    from set_doctor.modules import child_env
+
+    rc, so, se = run(cmd, cwd=path, timeout=120, env=child_env(ctx.env))
     fix = sh(f"cd {path} && set-kb doctor")
+    mk = lambda st, d, f=None: Check("project", "kb", st, d, f, module="set-kb")  # noqa: E731
     try:
         d = json.loads(so)
     except ValueError:
-        return Check("project", "kb", "fail", f"set-kb doctor gave no report: {(se or so).strip()[-300:]}", fix)
+        return mk("fail", f"set-kb doctor gave no report: {(se or so).strip()[-300:]}", fix)
     bad = [c for c in d.get("checks", []) if c.get("status") == "blocked"]
     warn = [c for c in d.get("checks", []) if c.get("status") == "warn"]
     if bad:
-        return Check("project", "kb", "fail", "; ".join(f"{c['name']}: {c['detail']}" for c in bad), fix)
+        return mk("fail", "; ".join(f"{c['name']}: {c['detail']}" for c in bad), fix)
     if warn:
         # "not built yet" is the zero-config default, not a defect: the first search builds it.
         real = [c for c in warn if not (c["name"] == "index" and "not built yet" in c["detail"])]
         if real:
-            return Check("project", "kb", "warn", "; ".join(f"{c['name']}: {c['detail']}" for c in real), fix)
+            return mk("warn", "; ".join(f"{c['name']}: {c['detail']}" for c in real), fix)
     idx = next((c["detail"] for c in d.get("checks", []) if c.get("name") == "index"), "")
-    return Check("project", "kb", "ok", f"search works — index {idx}" if idx else "search works")
+    return mk("ok", f"search works — index {idx}" if idx else "search works")
 
 
-def bus_status(sac_by_path: Optional[dict], path: str) -> Check:
+GUARD_HOOKS = ("session-start", "watch-guard")
+
+
+def bus_status(sac_by_path: Optional[dict], path: str, skip_reason: Optional[str] = None) -> list:
+    """The `sac.doctor/1` adapter for one project (design D4).
+
+    A LIVE seat without `session-start` or `watch-guard` is a fail: without the first the session
+    never gets the background inbox-watch instruction, without the second nothing declines a
+    Monitor watch, and each Monitor expiry re-reads the whole context (B-193)."""
+    mk = lambda st, d, f=None, n="bus": Check("project", n, st, d, f, module="sac")  # noqa: E731
     if sac_by_path is None:
-        return Check("project", "bus", "skip", "sac doctor did not run (see the bus section)")
+        return [mk("skip", skip_reason or "sac doctor did not run (see the bus section)")]
     p = sac_by_path.get(os.path.realpath(path))
     fix = sh(f"cd {path} && sac install")
-    if not p or p.get("verdict") == "off":
-        return Check("project", "bus", "warn", "not on the agent bus (no sac hooks)", fix)
-    if p.get("verdict") == "ok":
-        return Check("project", "bus", "ok", "hooks wired" + (f", rooms: {', '.join(p.get('rooms') or [])}"
-                                                              if p.get("rooms") else ""))
-    return Check("project", "bus", "warn", "; ".join(p.get("problems") or ["sac doctor: warn"]),
-                 sh(f"sac doctor --project {os.path.basename(path)}"))
+    if not p:
+        return [mk("warn", "not on the agent bus (no sac hooks)", fix)]
+    hooks = p.get("hooks") or {}
+    live = [str(x) for x in (p.get("live") or [])]
+    out = []
+    missing = [k for k in GUARD_HOOKS if not hooks.get(k)]
+    if live and missing:
+        logger.warning("live seat(s) %s in %s without hook(s) %s", live, path, missing)
+        why = {"session-start": "it never gets the background inbox-watch instruction",
+               "watch-guard": "nothing declines a Monitor watch, which re-reads the whole context on every expiry"}
+        out.append(mk("fail", f"live session {', '.join(live)} runs without the {' and '.join(missing)} hook"
+                              f"{'s' if len(missing) > 1 else ''}: " + "; ".join(why[k] for k in missing), fix))
+    elif p.get("verdict") == "off":
+        out.append(mk("warn", "not on the agent bus (no sac hooks)", fix))
+    elif p.get("verdict") == "ok":
+        out.append(mk("ok", "hooks wired" + (f", rooms: {', '.join(p.get('rooms') or [])}" if p.get("rooms") else "")))
+    else:
+        out.append(mk("warn", "; ".join(p.get("problems") or ["sac doctor: warn"]),
+                      sh(f"sac doctor --project {os.path.basename(path)}")))
+    dup = {k: v for k, v in hooks.items() if isinstance(v, list) and len(v) > 1}
+    if dup:
+        out.append(mk("warn", "; ".join(f"{k} runs from {len(v)} carriers ({', '.join(map(str, v))})"
+                                       for k, v in sorted(dup.items())) + " — each carrier runs the hook",
+                      sh(f"cd {path} && sac uninstall --dry-run   # if the plugin ships the hooks"), n="bus wiring"))
+    return out
 
 
-def check_project(ctx: Context, name: str, entry: dict, claude_projects, sac_by_path) -> list:
+def check_project(ctx: Context, name: str, entry: dict, claude_projects, sac_by_path,
+                  kb_command: Optional[list] = None, module_skip: Optional[str] = None) -> list:
     path = os.path.expanduser(str(entry.get("path") or ""))
     tag = lambda cs: [setattr(c, "project", name) or c for c in cs]  # noqa: E731
     if not path or not os.path.isdir(path):
-        return tag([Check("project", "path", "fail", f"registered path does not exist: {path or '(none)'}",
-                          sh(f"set-project remove {name}   # or restore the checkout at that path"))])
+        # run_all folds these into one `stale` record before it gets here; a direct caller
+        # still gets a record, never silence.
+        return tag([Check("project", "path", "warn", f"registered path does not exist: {path or '(none)'}",
+                          sh("set-project prune --dry-run"))])
     rc, top, _ = git(path, "rev-parse", "--show-toplevel")
     if rc != 0:
         return tag([Check("project", "path", "fail", f"{path} is not a git repository",
@@ -424,25 +468,63 @@ def check_project(ctx: Context, name: str, entry: dict, claude_projects, sac_by_
         if ctx.deep:
             out.append(deep_dry_run(ctx, path))
         out.append(mcp_registration(ctx, claude_projects, path))
-        out.append(bus_status(sac_by_path, path))
-    out.append(kb_doctor(ctx, path))
+        out += bus_status(sac_by_path, path, module_skip)
+    if module_skip:
+        out.append(Check("project", "kb", "skip", module_skip, module="set-kb"))
+    else:
+        out.append(kb_doctor(ctx, path, kb_command))
     return tag(out)
 
 
-def sac_doctor(ctx: Context) -> tuple:
-    """(by_realpath | None, Check)."""
-    sac = ctx.which("sac")
-    if not sac:
-        return None, Check("bus", "sac", "fail", "the `sac` launcher is not on PATH",
-                           sh("node <set-agent-comm checkout>/bin/sac.mjs setup"))
-    rc, so, se = run([sac, "doctor", "--json"], timeout=90, env=ctx.env)
+def stale_entries(registry: dict, names: list) -> tuple:
+    """(alive names, {gone name: reason}). Stale = the registered path is gone, or the directory
+    is there but is not a git repository (a run directory stripped to its `.set` folder)."""
+    stale = {}
+    for n in names:
+        path = os.path.expanduser(str(registry[n].get("path") or ""))
+        if not path or not os.path.isdir(path):
+            stale[n] = "gone"
+        elif git(path, "rev-parse", "--show-toplevel")[0] != 0:
+            stale[n] = "not a git repository"
+    return [n for n in names if n not in stale], stale
+
+
+def stale_check(stale: dict) -> Check:
+    """One record for every stale registry entry (design D5): bookkeeping, not a broken system,
+    so it does not set the exit code — but each name and its reason stay visible."""
+    logger.info("stale registry entries: %d", len(stale))
+    by_reason: dict = {}
+    for n, why in sorted(stale.items()):
+        by_reason.setdefault(why, []).append(n)
+    detail = f"{len(stale)} registry entr{'y' if len(stale) == 1 else 'ies'} with nothing to check — " + \
+        "; ".join(f"{why}: {', '.join(ns)}" for why, ns in sorted(by_reason.items()))
+    fix = sh("for p in " + " ".join(sorted(stale)) + "; do set-project remove \"$p\"; done")
+    return Check("project", "stale", "warn", detail, fix)
+
+
+def sac_doctor(ctx: Context, decl=None) -> tuple:
+    """(by_realpath | None, Check). The `sac.doctor/1` adapter; a `sac` declaration's command
+    replaces the built-in `sac doctor --json` (one run, never two)."""
+    from set_doctor.modules import child_env, installed, not_installed
+
+    if decl is not None:
+        if not installed(decl, ctx.env):
+            return None, not_installed(decl)
+        cmd = decl.command
+    else:
+        sac = ctx.which("sac")
+        if not sac:
+            return None, Check("bus", "sac", "fail", "the `sac` launcher is not on PATH",
+                               sh("node <set-agent-comm checkout>/bin/sac.mjs setup"), module="sac")
+        cmd = [sac, "doctor", "--json"]
+    rc, so, se = run(cmd, timeout=90, env=child_env(ctx.env))
     try:
         d = json.loads(so)
     except ValueError:
         return None, Check("bus", "sac", "fail", f"sac doctor gave no report: {(se or so).strip()[-300:]}",
-                           sh("sac doctor"))
+                           sh("sac doctor"), module="sac")
     by_path = {os.path.realpath(p["path"]): p for p in d.get("projects", []) if p.get("path")}
-    return by_path, Check("bus", "sac", "ok", f"{sac} — {len(by_path)} project(s) known to the bus")
+    return by_path, Check("bus", "sac", "ok", f"{cmd[0]} — {len(by_path)} project(s) known to the bus", module="sac")
 
 
 def check_relay(ctx: Context) -> Check:
@@ -526,14 +608,64 @@ def check_github(ctx: Context) -> list:
 # ── all of it ────────────────────────────────────────────────────────────────
 
 
+def run_modules(ctx: Context, decls: dict, registry: dict, workers: int = 8) -> list:
+    """Every declared module doctor except the built-in adapters' (sac, set-kb), each run once."""
+    from set_doctor import modules as m
+
+    jobs = [d for name, d in sorted(decls.items()) if not (name in ("sac", "set-kb") and d.contract != m.CONTRACT)]
+    path_to_name = {os.path.realpath(os.path.expanduser(str(e.get("path") or ""))): n for n, e in registry.items()}
+
+    def one(decl) -> list:
+        if decl.contract not in m.KNOWN_CONTRACTS:
+            return [Check("modules", decl.module, "fail", f"declares unknown contract {decl.contract!r} ({decl.file})",
+                          f"fix {decl.file}", module=decl.module)]
+        if not m.installed(decl, ctx.env):
+            return [m.not_installed(decl)]
+        data, problem = m.run_json(decl, ctx.env)
+        if problem:
+            return [problem]
+        if decl.contract == m.AIPLUS_CONTRACT:
+            recs, problem = m.parse_aiplus(decl, data, set(registry))
+        elif decl.contract == m.CONTRACT:
+            recs, problem = m.parse_doctor1(decl, data)
+            recs = m.join_by_path(recs, path_to_name)
+        else:
+            return [Check("modules", decl.module, "fail",
+                          f"contract {decl.contract!r} is a built-in adapter's, not this module's ({decl.file})",
+                          f"fix {decl.file}", module=decl.module)]
+        if problem:
+            return [problem]
+        if not recs:
+            return [Check("modules", decl.module, "ok", "reported no checks", module=decl.module)]
+        return recs
+
+    out: list = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for recs in pool.map(one, jobs):
+            out += recs
+    return out
+
+
 def run_all(ctx: Context, workers: int = 8) -> list:
+    from set_doctor import modules as m
+
     checks: list = []
     checks += check_install(ctx)
     checks += check_checkout(ctx)
     checks += check_tools(ctx)
     checks += check_mcp_probe(ctx)
-    sac_by_path, sac_check = sac_doctor(ctx)
-    checks.append(sac_check)
+    decls: dict = {}
+    module_skip = None
+    if ctx.child:
+        module_skip = "module doctors are run by the parent set-doctor"
+        checks.append(Check("modules", "modules", "skip", f"{m.CHILD_ENV}=1 — {module_skip}"))
+        sac_by_path = None
+    else:
+        decls, problems = m.load_declarations(ctx.env)
+        checks += problems
+        sac_decl = decls.get("sac") if decls.get("sac") and decls["sac"].contract != m.CONTRACT else None
+        sac_by_path, sac_check = sac_doctor(ctx, sac_decl)
+        checks.append(sac_check)
     checks.append(check_relay(ctx))
     claude_projects = load_claude_projects(ctx)
     reg_path, registry = load_registry(ctx)
@@ -547,9 +679,27 @@ def run_all(ctx: Context, workers: int = 8) -> list:
     else:
         checks.append(Check("project", "registry", "ok", f"{len(registry)} project(s) in {reg_path}"))
     names = [n for n in sorted(registry) if not ctx.project_glob or fnmatch.fnmatch(n, ctx.project_glob)]
+    names, gone = stale_entries(registry, names)
+    if gone:
+        checks.append(stale_check(gone))
+    kb_decl = decls.get("set-kb")
+    kb_command = None
+    if kb_decl is not None and kb_decl.contract != m.CONTRACT:
+        if m.installed(kb_decl, ctx.env):
+            kb_command = kb_decl.command
+        else:
+            checks.append(m.not_installed(kb_decl))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for cs in pool.map(lambda n: check_project(ctx, n, registry[n], claude_projects, sac_by_path), names):
+        alive = {n: e for n, e in registry.items() if n not in gone}
+        mod_future = pool.submit(run_modules, ctx, decls, alive, workers) if decls and not ctx.child else None
+        for cs in pool.map(lambda n: check_project(ctx, n, registry[n], claude_projects, sac_by_path,
+                                                   kb_command, module_skip), names):
             checks += cs
+        if mod_future is not None:
+            wanted = set(names)
+            # --project narrows the report, not the module's run: a record about a project the
+            # glob excludes is left out, the same as that project's own checks.
+            checks += [c for c in mod_future.result() if not c.project or c.project in wanted]
     checks += check_provider(ctx)
     checks += check_github(ctx)
     for c in checks:

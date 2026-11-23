@@ -83,6 +83,13 @@ that `set-doctor` printed before this change. A declaration for one of these mod
 replace its built-in invocation, not add a second run. Once that module's declaration names
 `doctor/1`, the adapter SHALL no longer be used.
 
+A declaration may also name the family doctor's own contract, `aiplus-doctor/1`, which keys its
+per-repository records by repository name. That adapter SHALL attach every record to the
+registered project with the same name. A record for a repository name the registry does not
+know SHALL be reported under the module's own section. The family doctor's machine records
+SHALL be reported under the module's own section, except its record about `set-doctor` itself,
+which describes the run that is reading it. Nothing SHALL be dropped.
+
 #### Scenario: No declaration, no regression
 - **WHEN** `doctors.d` is empty
 - **THEN** every project still gets its `bus` and `kb` records, as before this change
@@ -90,6 +97,10 @@ replace its built-in invocation, not add a second run. Once that module's declar
 #### Scenario: A declaration replaces the built-in run
 - **WHEN** a declaration for module `sac` exists
 - **THEN** `sac doctor` is run once, not twice
+
+#### Scenario: The family doctor's repository findings reach their projects
+- **WHEN** a declaration names contract `aiplus-doctor/1`, and its report has a `fail` for a repository registered under the same name
+- **THEN** that project's block shows the `fail` with `module` set to the declared module, and a repository the registry does not know appears under the module's section
 
 ### Requirement: A module doctor that runs set-doctor does not recurse
 

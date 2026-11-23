@@ -24,9 +24,8 @@ SHALL NOT count as passing. `--json` SHALL print `{"schema": "set-doctor/1", "ok
 
 ### Requirement: Every registered project is checked
 
-For each registered project (or those matching `--project`) whose path exists, the doctor SHALL
-check:
-- it is a git repository (`fail` otherwise);
+For each registered project (or those matching `--project`) whose path is a git repository, the
+doctor SHALL check:
 - the set-core version in `.claude/.set-version` against this checkout: `warn` with the number of
   commits behind and `set-project init` in that project as the fix, or `warn` when it was never
   deployed;
@@ -38,10 +37,11 @@ check:
 A registry entry with `"deploy": false` SHALL `skip` the deploy, MCP and bus checks, with the
 reason.
 
-Registry entries whose path no longer exists SHALL be reported together as ONE `warn` record named
-`stale`, in the projects section. It SHALL give their count and names, and `set-project prune
---dry-run` as the fix. They SHALL NOT each be reported as a `fail`, and SHALL NOT be checked
-further.
+Registry entries whose path no longer exists, and entries whose directory exists but is not a git
+repository, SHALL be reported together as ONE `warn` record named `stale`, in the projects section.
+It SHALL give their count, and name each entry with its reason (gone / not a git repository). Its
+fix SHALL deregister exactly those entries. They SHALL NOT each be reported as a `fail`, and SHALL
+NOT be checked further.
 
 The bus records SHALL be derived from the agent-bus module's per-project hooks and live seats.
 - A project with at least one live seat that has no `session-start` hook or no `watch-guard` hook
@@ -51,8 +51,8 @@ The bus records SHALL be derived from the agent-bus module's per-project hooks a
   carrier runs the hook.
 
 #### Scenario: A registered path is gone
-- **WHEN** two registry entries' paths do not exist
-- **THEN** the report has one `stale` warn naming both entries with `set-project prune --dry-run` as the fix, and no `fail` for either
+- **WHEN** one registry entry's path does not exist and another's directory has no git repository
+- **THEN** the report has one `stale` warn naming both entries with their reasons and a fix that deregisters both, and no `fail` for either
 
 #### Scenario: A project behind this checkout
 - **WHEN** a project's `.set-version` names a commit three commits behind this checkout

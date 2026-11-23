@@ -15,7 +15,8 @@ from set_doctor.checks import RANK, Context, head_label, run_all
 logger = logging.getLogger(__name__)
 
 SECTIONS = [("install", "INSTALL"), ("checkout", "CHECKOUT"), ("tools", "TOOLS"), ("mcp", "MCP SERVER"),
-            ("bus", "AGENT BUS"), ("project", "PROJECTS"), ("providers", "PROVIDERS"), ("github", "GITHUB")]
+            ("bus", "AGENT BUS"), ("project", "PROJECTS"), ("modules", "MODULES"), ("providers", "PROVIDERS"),
+            ("github", "GITHUB")]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -86,8 +87,12 @@ def render_text(ctx: Context, checks: list, show_all: bool) -> str:
     return "\n".join(lines)
 
 
+BUILT_IN_MODULES = ("sac", "set-kb")  # their record names already say what they are
+
+
 def line_for(c, indent="  ") -> list:
-    out = [f"{indent}{MARK[c.status]}  {c.name:<12} {c.detail}"]
+    name = f"{c.module}:{c.name}" if c.module and c.module not in BUILT_IN_MODULES and c.name != c.module else c.name
+    out = [f"{indent}{MARK[c.status]}  {name:<12} {c.detail}"]
     if c.fix and c.status in ("warn", "fail"):
         out.append(f"{indent}      → {c.fix}")
     return out

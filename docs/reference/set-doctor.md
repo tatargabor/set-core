@@ -36,10 +36,72 @@ Every `warn` and `fail` carries `fix`: the exact command to run.
 | checkout | uncommitted files; ahead/behind the branch's upstream after a `git fetch` (20 s timeout; `--offline` compares with the refs on disk and says so) |
 | tools | python3 ≥ 3.10, uv, node ≥ 18, jq, git, claude, and the OpenSpec CLI at least the version the checkout's generated OpenSpec skills were made with |
 | mcp | one live MCP conversation: the server of this checkout is started over stdio, `initialize`, then `kb_search` against a throwaway one-file repository |
-| bus | the `sac` launcher; `sac doctor` once for all projects; the relay's health endpoint |
-| project | per registry entry: the path exists and is a git repository; the deployed set-core version (`.claude/.set-version`) against this checkout; the set-core MCP registration in the Claude config (present, this checkout's server, `CLAUDE_PROJECT_DIR` = the project); `set-kb doctor` (including whether every linked project resolves); the project's bus wiring. A `"deploy": false` entry (a data repository, see `set-project register`) skips deploy, MCP and bus. |
+| bus | the `sac` launcher (or the `sac` declaration's command); `sac doctor` once for all projects; the relay's health endpoint |
+| project | per registry entry that is a git repository: the deployed set-core version (`.claude/.set-version`) against this checkout; the set-core MCP registration in the Claude config (present, this checkout's server, `CLAUDE_PROJECT_DIR` = the project); `set-kb doctor` (including whether every linked project resolves); the project's bus wiring (see below); every module doctor's records about that project. A `"deploy": false` entry (a data repository, see `set-project register`) skips deploy, MCP and bus. Entries whose path is gone or is not a git repository are reported together in ONE `stale` warn, each named with its reason, with a fix that deregisters exactly those — bookkeeping, so it does not set the exit code. |
+| modules | every module doctor declared in `doctors.d` (below): its machine-level records, records about a path no registered project has, a declaration that is broken, duplicated, or names a command not installed on this machine |
 | providers | GLM resolves from `providers.json` with a credential. A file that exists but is refused (e.g. not mode 0600) is a `fail` with the reason, not "not configured". |
 | github | `gh auth status` |
+
+## The bus rule
+
+The `bus` record per project comes from `sac doctor`'s `hooks` and `live` fields:
+
+| situation | status |
+|---|---|
+| a **live** seat, and no `session-start` or no `watch-guard` hook | `fail`, naming the seat(s) and the missing hook(s) |
+| no hooks, no live seat | `warn` |
+| hooks wired, no problem | `ok` |
+| any other `sac doctor` problem (e.g. a machine path in a tracked settings file) | `warn` |
+| a hook kind wired by more than one carrier (settings file **and** plugin) | an extra `bus wiring` `warn` naming the carriers — each carrier runs the hook |
+
+Why the live case is a `fail`. Without `session-start`, the session never gets the instruction
+to watch its inbox as a background shell. Without `watch-guard`, nothing declines a `Monitor`
+watch, and every 30-minute `Monitor` expiry wakes the session to re-read its whole context. A
+session measured in exactly this state did that ~26 times at ~230k tokens of context (B-193).
+
+## Module doctors
+
+`set-doctor` is the umbrella over the module doctors installed on this machine. A module
+**declares** itself; nothing is hard-coded. Each declaration is one file in
+`<set-core config dir>/doctors.d/` (`$SET_CONFIG_DIR`, else `$XDG_CONFIG_HOME/set-core`, else
+`~/.config/set-core`), normally written by the module's own installer:
+
+```json
+{"module": "example", "command": ["example", "doctor", "--json"],
+ "contract": "doctor/1", "install": "one line that installs it", "timeout_s": 120}
+```
+
+Each declared module runs **once** per `set-doctor` run, in parallel with the project checks.
+Every record it produces carries `"module"`.
+
+**The `doctor/1` contract** a module prints:
+
+```json
+{"schema": "doctor/1", "module": "example",
+ "checks": [{"section": "x", "name": "thing", "status": "warn", "detail": "...",
+             "fix": "the command", "path": "/abs/path/of/the/project"}]}
+```
+
+- A record with `path` lands on the registered project at the same real path. Without one, or
+  with a path no project has, it is shown under MODULES.
+- Statuses are the same four. An unknown `schema`, or a status outside the four, is a `fail` of
+  that module, never a silent drop.
+- A command that times out, or prints no parseable report, is a `fail` with its error tail.
+- A declared command that is not on `PATH` is a `warn`, *declared but not installed on this
+  machine*, with the declaration's `install` line as the fix. This is how a second developer's
+  machine learns what it is missing.
+
+**Contracts that predate `doctor/1`** are read through adapters:
+
+| contract | module | notes |
+|---|---|---|
+| `sac.doctor/1` | `sac` | built in; runs even with no declaration. A declaration replaces its command (one run, never two). |
+| `set-kb.doctor/1` | `set-kb` | built in, per project. `install.sh` writes its declaration. |
+| `aiplus-doctor/1` | the family doctor | only when declared. Per-repository records join the registered project of the **same name**. Machine records and unknown repositories go under MODULES. Its own record about `set-doctor` is dropped, because it describes the run reading it. |
+
+**No recursion.** Every module runs with `SET_DOCTOR_CHILD=1`. A `set-doctor` started under that
+marker runs no module doctors and says so with one `skip`, so a module doctor that itself calls
+`set-doctor` is safe to declare.
 
 ## Secrets
 
@@ -64,7 +126,7 @@ account name. `--live` relays only whether the call answered.
 }
 ```
 
-`project` is present only on per-project records; `fix` only on `warn`/`fail`. A caller (e.g. a
+`project` is present only on per-project records, `module` only on records a module doctor produced, `fix` only on `warn`/`fail`. A caller (e.g. a
 platform's own doctor) should treat any unknown `schema` as a contract change.
 
 ## Cost

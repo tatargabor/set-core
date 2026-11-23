@@ -722,6 +722,23 @@ install_skills() {
 
 # Deploy set-core (hooks, commands, skills) to all registered projects
 # Uses set-project init which handles both registration and deployment
+# set-doctor runs every module doctor declared in <config dir>/doctors.d (change
+# doctor-module-contract). set-core declares its own: set-kb. Idempotent; only rewrites when
+# the content differs.
+install_doctor_declarations() {
+    local cfg="${SET_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/set-core}"
+    local dir="$cfg/doctors.d"
+    local file="$dir/set-kb.json"
+    local want
+    want='{"module": "set-kb", "command": ["set-kb", "doctor", "--json"], "contract": "set-kb.doctor/1", "install": "./install.sh in a set-core checkout"}'
+    mkdir -p "$dir" || { warn "could not create $dir"; return 0; }
+    if [[ -f "$file" ]] && [[ "$(cat "$file")" == "$want" ]]; then
+        info "doctor declaration current: $file"
+        return 0
+    fi
+    printf '%s\n' "$want" > "$file" && success "doctor declaration written: $file" || warn "could not write $file"
+}
+
 install_projects() {
     info "Deploying set-core to registered projects..."
 
@@ -1249,6 +1266,7 @@ main() {
     echo ""
 
     install_scripts
+    install_doctor_declarations
     echo ""
 
     install_completions

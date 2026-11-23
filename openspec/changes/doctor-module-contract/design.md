@@ -9,7 +9,9 @@ A family-level doctor in another repository runs `set-doctor` and reads only its
 then re-implements the agent-bus hook check with its own regex over settings files.
 
 On a real machine the report ended `21 fail, 90 warn`:
-- 21 fails were registry entries for deleted run directories;
+- 21 fails were registry entries whose directory is no longer a git repository (run directories
+  stripped to a `.set` folder; `set-project prune` does not touch them, it only handles missing
+  paths);
 - 48 warns were "deploy behind";
 - 34 warns were bus findings.
 
@@ -74,10 +76,11 @@ current adapters, so an empty `doctors.d` reproduces today's records exactly. A 
 The logic stays in the adapter. When `sac` speaks `doctor/1`, it should emit these records itself.
 The rule is written in the spec, so the two cannot drift silently.
 
-**D5 — Stale registry entries become one `stale` warn.** A gone path is a bookkeeping fact, not a
-broken system, and 21 of them made every run exit 1. That trained callers to ignore the exit
-code, and the family doctor did. The fix is `set-project prune --dry-run`, which already exists.
-This does not hide a failure: the count and names stay in the record, and a real `fail` elsewhere
+**D5 — Stale registry entries become one `stale` warn.** A gone path, or a registered directory
+that is no longer a git repository, is a bookkeeping fact, not a broken system, and 21 of them made
+every run exit 1. That trained callers to ignore the exit
+code, and the family doctor did. `set-project prune` only handles missing paths, so the fix names a
+`set-project remove` per entry. This does not hide a failure: the count and names stay in the record, and a real `fail` elsewhere
 still sets exit 1.
 
 **D6 — Recursion marker `SET_DOCTOR_CHILD=1`.** The family doctor runs `set-doctor`. If it is also

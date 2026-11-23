@@ -150,10 +150,12 @@ def project_repo(tmp_path, name="proj") -> Path:
     return p
 
 
-def test_a_registered_path_that_is_gone_fails(machine):
+def test_a_registered_path_that_is_gone_is_not_a_fail(machine):
+    """doctor-module-contract D5: a gone path is bookkeeping. run_all folds it into one `stale`
+    record (tests/unit/test_doctor_modules.py); a direct caller still gets a record, as a warn."""
     ctx, tmp = machine
     [c] = check_project(ctx, "gone", {"path": str(tmp / "nowhere")}, {}, {})
-    assert c.status == "fail" and "does not exist" in c.detail and str(tmp / "nowhere") in c.detail
+    assert c.status == "warn" and "does not exist" in c.detail and str(tmp / "nowhere") in c.detail
     assert c.project == "gone"
 
 
@@ -279,12 +281,14 @@ def test_end_to_end_json_contract_and_no_secret(machine):
     r = run_doctor(env, "--json")
     assert SECRET not in r.stdout and SECRET not in r.stderr
     d = json.loads(r.stdout)
-    assert d["schema"] == "set-doctor/1" and d["ok"] is False and r.returncode == 1
+    assert d["schema"] == "set-doctor/1"
+    assert d["ok"] is (r.returncode == 0), "ok mirrors the exit code; the sandbox may or may not have a fail"
     checks = d["checks"]
     assert {c["section"] for c in checks} >= {"install", "checkout", "tools", "mcp", "bus", "project",
                                                "providers", "github"}
-    gone = [c for c in checks if c.get("project") == "gone"]
-    assert gone and gone[0]["status"] == "fail" and "fix" in gone[0]
+    assert not [c for c in checks if c.get("project") == "gone"], "a stale entry is not checked as a project"
+    [stale] = [c for c in checks if c["name"] == "stale"]
+    assert stale["status"] == "warn" and "gone" in stale["detail"] and "set-project remove" in stale["fix"]
     glm = [c for c in checks if c["name"] == "glm"][0]
     assert glm["status"] == "ok" and "credential present" in glm["detail"]
     assert all("fix" in c for c in checks if c["status"] in ("warn", "fail")), "every problem names its fix"
@@ -294,8 +298,8 @@ def test_end_to_end_json_contract_and_no_secret(machine):
 def test_end_to_end_text_names_the_fix_and_the_project(machine):
     env = sandbox_env(machine)
     r = run_doctor(env, "--project", "gone")
-    assert r.returncode == 1 and SECRET not in r.stdout
-    assert "FAIL  gone" in r.stdout and "→ set-project remove gone" in r.stdout
+    assert SECRET not in r.stdout
+    assert "WARN  stale" in r.stdout and "gone: gone" in r.stdout and 'set-project remove "$p"' in r.stdout
     assert "consumer" not in r.stdout.split("PROJECTS", 1)[1].split("PROVIDERS", 1)[0], "--project filters"
 
 

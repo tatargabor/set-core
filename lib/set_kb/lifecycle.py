@@ -206,11 +206,18 @@ def registry_path(environ=None) -> str:
     reg = e.get("SET_CORE_REGISTRY", "").strip()
     if reg:
         return os.path.expanduser(reg)
+    return os.path.join(config_dir(e), "projects.json")
+
+
+def config_dir(environ=None) -> str:
+    """The set-core config directory: SET_CONFIG_DIR, else XDG_CONFIG_HOME/set-core,
+    else ~/.config/set-core. One resolver, so a reader cannot hard-code it (B-175)."""
+    e = os.environ if environ is None else environ
     cfg_dir = e.get("SET_CONFIG_DIR", "").strip()
     if not cfg_dir:
         home = e.get("HOME") or os.path.expanduser("~")
         cfg_dir = os.path.join(e.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"), "set-core")
-    return os.path.join(cfg_dir, "projects.json")
+    return cfg_dir
 
 
 def registry_project_root(name: str) -> str:
