@@ -68,6 +68,27 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-205 — an agent started by another agent for one task stays open after the task, and nothing closes it but the 48 h idle-close
+- **state:** open — a lifetime on the start and a done step change the start contract, so this needs its own OpenSpec change.
+- **reported:** 2026-11-22 by a consumer-family peer session on the bus (room `set-core`), relaying the owner's order: *„azt csinaljuk meg hogy miért nem zarodtal be ha megvlt a válasz. eza fleetben nyitott agent hiányossága"*. Read and registered 2026-11-23 by this session; it had sat unanswered in the room.
+- **measured (by the reporter, 2026-11-22, `GET /api/fleet/agents` at 5478078f):** an agent with `kind: interactive`, `parent {source: recorded}` and `purpose: null` answered its three questions and then kept an inbox watch open. `StartAgentBody` (`lib/set_orch/api/fleet.py`) has no lifetime field, so the fleet cannot tell a one-task agent from a standing seat. No command or rule tells the agent or its parent to call the stop route. `idle_close` keys on `last_human_input_seconds` with a 48 h threshold, and an agent-started agent never gets owner input after its brief. Not re-measured by this session; the field list and the idle-close key were confirmed in the code.
+- **fail direction:** cost, silently. Every bus entry wakes the idle agent, and it re-reads its whole context until the daily close.
+- **fixed when:** an agent started with a `task` lifetime (the default when `requested_by` is a seat) closes itself or is closed after its done step, stays resumable from the roster, and idle-close applies a short threshold to an agent-started agent with no owner input. A test starts one, runs the done step and asserts that the label is gone and the roster entry is kept.
+
+### B-204 — the agent-side leak gate does not match `command git commit`, so that spelling publishes unscanned
+- **state:** open.
+- **reported:** 2026-11-15 by a peer session on the bus, relaying a downstream security review (H4 (2)). Re-measured 2026-11-23 by this session.
+- **measured:** `PUBLISH_RX` in `bin/set-hook-leakscan` requires `git` directly after a separator or an env assignment. `PUBLISH_RX.search(strip_heredocs("command git commit -m hi"))` → no match, while `git commit -m hi` → match. The same holds for any wrapper word (`command`, `builtin`, `exec`, `nice`, `env`).
+- **fail direction:** pass.
+- **fixed when:** a hook test for `command git commit -m "<consumer name>"` gets exit 2, and plain `git commit` still does.
+
+### B-203 — `strip_heredocs` drops the rest of a line after a heredoc START, so `cat <<'X' && git commit …` is never checked
+- **state:** open. Related to B-179 (a heredoc commit message is never scanned), but this is a different cut: here the VERB itself is lost.
+- **reported:** 2026-11-15 by a peer session on the bus, relaying a downstream security review (H4 (1)). Re-measured 2026-11-23 by this session.
+- **measured:** `strip_heredocs` keeps only `line[:m.start()]` of the line that opens a heredoc. `PUBLISH_RX.search(strip_heredocs("cat <<'X' && git commit -m hi\nbody\nX"))` → no match. Everything after the first `<<TAG` on that line (`&& git commit …`, `; git push`) is invisible to the gate.
+- **fail direction:** pass.
+- **fixed when:** only the heredoc BODY lines are removed, and the rest of the opening line is kept. A hook test with `cat <<'X' && git commit -m "<consumer name>"` gets exit 2, and the existing "verb only inside a heredoc body" test still passes.
+
 ### B-202 — `.claude/rules/readme-updates.md` makes `docs/readme-guide.md` "the authoritative source" for every README update, and that file does not exist
 - **state:** open.
 - **reported:** 2026-11-23 by this session, rewriting the README for `fleet-era-consolidation` 6.3.
