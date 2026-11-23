@@ -9,27 +9,28 @@
 
 ---
 
-> ### ⚠ This document is behind the code — last substantially revised **2026-04-27**
->
-> Several capabilities have shipped since and are **not described anywhere below**:
->
-> | shipped since | what it is |
-> |---|---|
-> | **fleet view** | a live screen of every running agent across projects, with per-agent log and terminal |
-> | **work cycle** (`lib/set_workcycle`) | the sectioned apply loop, lifted out of a consumer project into the framework |
-> | **consumer status contract** | a project declares its bugs, releases, test system and live system; set-core reads them through a domain-free layer |
-> | **`set-leakscan`** | a commit, pre-push and pre-tool gate that refuses to publish consumer names, credentials, local paths, phone numbers, private deny-list terms, transcript and `.env` files — with masked output |
->
-> Work on several of these is still in flight, and the documentation will be
-> refreshed once they land together rather than in pieces. **Until then, treat
-> this README as accurate about what it describes and silent about the rest** —
-> `openspec/changes/` and `openspec/specs/` are current.
->
-> This notice is here rather than absent on purpose. Stale documentation that
-> says nothing about being stale is the more expensive of the two states: it
-> reads as a complete picture, and a reader cannot tell the difference.
+## What set-core is today (2026-11)
 
----
+set-core is the **fleet and tooling layer** around Claude Code that I use every day across a few dozen projects:
+
+| part | what it does |
+|---|---|
+| **fleet dashboard + agent owner** (`set-web`, `set-agent-owner`) | launch, watch, instruct and stop agent sessions across projects from one screen; idle sessions are closed by a timer |
+| **relay hooks** | a session's questions, permission prompts and notifications reach the dashboard instead of sitting in a terminal nobody looks at |
+| **`set-project`** | deploys rules, skills, hooks and the MCP registration into a project — provenance-guarded, so a file the project edited is never overwritten, and files the framework retires are removed only when untouched |
+| **project role rules** (`set-project roles`) | a generated, git-excluded rule in every project naming its role and relations, from a machine-local role file; a public repository names only public siblings |
+| **`set-kb`** | knowledge-base search over a project's documents, as a CLI and an MCP tool |
+| **`set-leakscan`** | commit, push and agent-tool gates that refuse to publish client names, credentials, local paths and private deny-list terms |
+| **`set-doctor`** | the machine check — install, checkout, tools, every registered project, module doctors — each finding with the command that fixes it |
+| **providers** (`set-providers`, `set-glm`) | run the same sessions on a non-Anthropic model, explicitly, never as a silent fallback |
+| **`set-wave-board`** | a progress board a project publishes for the people it works with |
+| **OpenSpec** | every framework change goes through a proposal → specs → design → tasks → verify chain |
+
+The agent bus the sessions talk over is a separate project, [set-agent-comm](https://github.com/tatargabor/set-agent-comm); handoffs and the auto-clear cycle are [set-claude-handoff](https://github.com/tatargabor/set-claude-handoff).
+
+> ### ⚠ The orchestration pipeline below is being retired
+>
+> Most of this README describes the **spec → parallel agents → gates → merge** orchestration set-core was first built for. It has not run on the author's machine in over a month, and it is being retired in stages (`openspec/changes/fleet-era-consolidation` and its follow-ups `hook-diet`, `retire-orchestration-cli`, `retire-orchestration-engine`, `profile-layer-decision`). Its `/set:*` slash commands are **no longer deployed** into projects. The sections below are kept as a record of what it does and what was learned, not as a recommendation to start using it.
 
 I use Claude Code every day. It's great for writing code, but shipping software — coordinating parallel agents, testing, merging, recovering from failures — needs more structure. set-core is what I built around it: give it a markdown spec, it decomposes into independent changes, dispatches parallel agents in git worktrees, runs quality gates on each, and merges the results.
 
@@ -49,7 +50,7 @@ Built with set-core, using set-core. This project was developed using its own or
 
 | Repository | Description |
 |------------|-------------|
-| **[set-core](https://github.com/tatargabor/set-core)** | Core orchestration engine, web module, dashboard, CLI tools |
+| **[set-core](https://github.com/tatargabor/set-core)** | Fleet dashboard, agent owner, deploy, doctor, leak scan, knowledge search, CLI tools (and the orchestration engine being retired) |
 | [set-voice-agent-delivery](https://github.com/tatargabor/set-voice-agent-delivery) | Voice agent project type — Soniox STT, Google TTS, spec-driven customer interaction |
 
 ---
@@ -289,6 +290,8 @@ set-glm --check                       # GLM only: config check + live probe
 Switching is always explicit: an absent configuration stops loudly and never falls back silently. The full `providers.json` shape, how to wire a gateway-backed provider, and the measured failure modes are in [provider configuration](docs/reference/configuration.md#provider-configuration-providersjson).
 
 ### Step 2: Try an E2E test first
+
+> ⚠ Steps 2 and 3 use the orchestration pipeline that is being retired (see the top of this file); `/set:write-spec` and `/set:start` are no longer deployed. For the current tooling, `set-project init` in a project and `set-doctor` on the machine are the starting points.
 
 Before setting up your own project, see the full pipeline in action. Open a Claude Code session **from the set-core directory** and type:
 

@@ -13,52 +13,28 @@ This project is **set-core** — an orchestration framework for Claude Code that
 | Implement tasks | `/opsx:apply` | Code the change |
 | Verify implementation | `/opsx:verify` | Before archiving |
 | Archive completed change | `/opsx:archive` | Finalize and close |
-| Archive multiple changes | `/opsx:bulk-archive` | Batch cleanup |
 | Sync specs to main | `/opsx:sync` | Update main specs without archiving |
-| Run full orchestration | `/set:sentinel` | Autonomous multi-change execution |
-| Decompose spec into plan | `/set:decompose` | Break spec into orchestration changes |
-| Review a plan | `/set:plan-review` | Validate plan quality |
-| Create worktree | `/set:new <id>` | Parallel development branch |
-| Open worktree in editor | `/set:work <id>` | Start working in a worktree |
-| List worktrees | `/set:list` | See active parallel work |
-| Merge worktree | `/set:merge <id>` | Merge via integration gates |
-| Close worktree | `/set:close <id>` | Clean up finished work |
-| Check project health | `/set:audit` | Diagnose config/setup issues |
-| Forensics on a finished run | `/set:forensics` | Post-run debugging / error triage |
-| See agent activity | `/set:status` | What's everyone working on |
-| Send message to agent | `/set:msg` | Cross-agent communication |
-| Check inbox | `/set:inbox` | Read messages from other agents |
-| Broadcast status | `/set:broadcast` | Tell team what you're doing |
-| Push branch | `/set:push` | Push to remote |
-| Start agent loop | `/set:loop` | Autonomous Ralph loop |
-| Onboarding walkthrough | `/opsx:onboard` | First time? Start here |
-| Quick help | `/set:help` | Feature reference |
+| Check the machine and every project | `set-doctor` | After an install, a pull, or when something looks off |
+| Deploy set-core into a project | `set-project init` (`--dry-run` first) | New project, or after set-core changed |
+| Write the project role rules | `set-project roles` (`--check`, `--dry-run`) | After editing the machine-local role file |
+| Hide a project nobody develops | `set-project archive <name>` | The doctor skips it; its role rule says "do not develop" |
+| Search a project's knowledge | `set-kb search` / MCP `kb_search` | Before answering from memory |
+| Check what a push would publish | `set-leakscan` (`--staged`, `--tree`) | Before every push; the hooks run it too |
+| Talk to another session | `sac` (set-agent-comm) | Cross-project coordination — the git-based `/set:msg` path is retired |
+| Architecture before an offer | `/set:blueprint` | Research the open questions, then the plan |
 
-## Typical Workflows
-
-**Structured change (most common):**
-```
-/opsx:explore  →  /opsx:new  →  /opsx:apply  →  /opsx:verify  →  /opsx:archive
-```
-
-**Quick fix:**
-```
-/opsx:ff <name>  →  /opsx:apply  →  /opsx:verify  →  /opsx:archive
-```
-
-**Full autonomous orchestration:**
-```
-/set:sentinel --spec <path> --max-parallel 3
-```
-
-**Consumer project diagnostics:**
-Read run logs → fix set-core bugs → `set-project init` to redeploy
+**Retired** (fleet-era-consolidation, 2026-11-23): the orchestration slash commands
+(`/set:sentinel`, `/set:decompose`, `/set:plan-review`, `/set:start`, `/set:write-spec`,
+`/set:new`, `/set:work`, `/set:list`, `/set:merge`, `/set:close`, `/set:loop`, `/set:push`,
+`/set:status`, `/set:audit`, `/set:forensics`, `/set:harvest`, `/set:help`) and the git-bus
+ones (`/set:msg`, `/set:inbox`, `/set:broadcast`) are no longer deployed. The engine behind
+them is dormant and is being removed in stages — see `openspec/changes/fleet-era-consolidation`.
 
 ## Key Architectural Rules
 
 - **Layer 1 (lib/set_orch/)** is abstract — NEVER put project-specific logic here
 - **Layer 2 (modules/)** implements project-type specifics (web patterns, framework detection)
-- **All merges go through integration gates** — never `git merge` manually
+- **All orchestration merges go through integration gates** — never `git merge` manually (while the engine exists)
 - **Profile system is the extension point** — new behaviors go through ProjectType ABC
 - **Consumer projects get set-core via `set-project init`** — templates/core/rules/ for universal rules, modules/*/templates/ for project-type rules
 
