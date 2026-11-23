@@ -125,7 +125,8 @@ _migrate_consumer() {
     local pk_file="$project_path/project-knowledge.yaml"
     if [[ ! -f "$pk_file" && -f "$SET_TOOLS_ROOT/templates/project-knowledge.yaml" ]]; then
         if [[ "$DRY_RUN" == "true" ]]; then
-            info "  Would scaffold project-knowledge.yaml"
+            # The real run only informs (below); a plan must not promise a write it will not make.
+            info "  project-knowledge.yaml missing — init does not create it (run 'set-project init-knowledge')"
         else
             # Don't auto-create — just inform. Use init-knowledge for proper scaffolding
             info "  project-knowledge.yaml missing — run 'set-project init-knowledge' to scaffold"

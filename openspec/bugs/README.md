@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-195 — `set-project init --dry-run` plans `Would scaffold project-knowledge.yaml`, which the real run never does
+- **state:** closed 2026-11-23 in the commit that adds this line: the dry-run now prints the same "missing — init does not create it" line as the real run.
+- **reported:** 2026-11-23 by this session, aggregating 48 dry-runs (the line appeared in all 48).
+- **measured:** `bin/set-project` `_scaffold_knowledge`-path: under `DRY_RUN` it printed `Would scaffold`, otherwise only `project-knowledge.yaml missing — run 'set-project init-knowledge'` and wrote nothing.
+- **fail direction:** the plan over-reports writes — harmless on disk, but a plan that claims writes the run does not make teaches its reader to skim it.
+- **fixed when:** the dry-run and the real run print the same statement for a missing `project-knowledge.yaml`.
+
 ### B-194 — `set-project init` compares the registered path and the git root as strings, so a project registered through a symlink cannot be redeployed, and a no-deploy entry registered that way does not stop `init`
 - **state:** closed 2026-11-23 in the commit that adds this line (`git log -S'B-194' -- bin/set-common.sh`). `same_dir` (realpath on both sides) replaces the three string compares; `no_deploy_entry_for` replaces the jq path match. Three new tests in `tests/unit/test_set_project_register.py`, each red with its string compare put back (mutation run, restore verified with `cmp`). The real project's dry-run now ends rc=0 with `already registered. Updating set-core deployment...`. Same commit: the file's `untouched` helper allowed nothing under `.claude/`, which `863a7a18` (relay hooks wired machine-locally on `register`, owner-asked) made false — two tests were red on clean HEAD; it now allows exactly `.claude/settings.local.json`, still requiring an empty `git status --porcelain`.
 - **reported:** 2026-11-23 by this session, while dry-running `set-project init` across the 48 projects `set-doctor` reports as behind.
