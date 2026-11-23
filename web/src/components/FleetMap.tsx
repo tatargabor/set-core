@@ -149,11 +149,15 @@ function ProjectNode({ data }: NodeProps) {
   )
 }
 
+/** Context-fill bands from the server (`context_fill.band_for`): one colour per meaning. */
+const FILL_TEXT: Record<string, string> = { normal: 'text-fg-muted', warning: 'text-amber-400', critical: 'text-rose-400' }
+const FILL_BAR: Record<string, string> = { normal: 'bg-emerald-500/60', warning: 'bg-amber-400', critical: 'bg-rose-400' }
+
 function AgentNode({ data }: NodeProps) {
   const node = data as unknown as Extract<MapNode, { type: 'agent' }>
   return (
     <div
-      className={`w-full h-full px-2 py-1 rounded border bg-surface-panel cursor-pointer flex flex-col justify-center ${
+      className={`relative w-full h-full px-2 py-1 rounded border bg-surface-panel cursor-pointer flex flex-col justify-center ${
         node.noMandate ? 'border-amber-400/60' : 'border-surface-line'
       }`}
       data-fleet-map-agent={node.label}
@@ -163,6 +167,20 @@ function AgentNode({ data }: NodeProps) {
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATE_DOT[node.state ?? ''] ?? 'bg-amber-400/60'}`}
               title={`state: ${node.state ?? 'unknown'}`} />
         <span className="text-xs text-fg-strong truncate">{node.label}</span>
+        {node.worktree && (
+          <span className="ml-auto shrink-0 max-w-[45%] truncate text-xs text-sky-300"
+                data-fleet-map-worktree={node.worktree}
+                title={node.worktree === '?' ? 'runs outside the main tree, in no listed worktree' : `worktree ${node.worktree}`}>
+            ⎇ {node.worktree}
+          </span>
+        )}
+        {node.fill !== null && (
+          <span className={`${node.worktree ? '' : 'ml-auto '}shrink-0 text-xs tabular-nums ${FILL_TEXT[node.band ?? ''] ?? 'text-fg-ghost'}`}
+                data-fleet-map-fill={Math.round(node.fill * 100)}
+                title="context fill">
+            {Math.round(node.fill * 100)}%
+          </span>
+        )}
       </div>
       <div className="flex items-baseline gap-1.5 min-w-0 text-xs">
         {node.badge && (
@@ -174,6 +192,15 @@ function AgentNode({ data }: NodeProps) {
           <span className="text-amber-400 shrink-0" title="The mandate store could not be read.">mandate ?</span>
         )}
       </div>
+      {/* The fill as a 2 px bar on the node's bottom edge: inside the box, so the
+          layout does not move, and absent (not empty) when the fill is unmeasured. */}
+      {node.fill !== null && (
+        <span className="absolute left-0 bottom-0 h-0.5 pointer-events-none"
+              style={{ width: `${Math.min(100, Math.max(2, node.fill * 100))}%` }}
+              data-fleet-map-fill-bar>
+          <span className={`block h-full ${FILL_BAR[node.band ?? ''] ?? 'bg-fg-ghost'}`} />
+        </span>
+      )}
       <Handles />
     </div>
   )

@@ -42,6 +42,13 @@ export interface MapAgent {
   population: string | null
   mandate: FleetMandate | null
   mandate_absent: FleetMandateAbsent | null
+  /** Optional: a server older than the field sends none, which is not "main". */
+  branch?: string | null
+  /** Set only when the agent runs OUTSIDE the project's main tree. */
+  worktree?: { name: string | null; branch: string | null; unlisted?: boolean } | null
+  /** Copied from the listing row: `state` is `measured` only when fill/window exist. */
+  context?: { state?: string; fill?: number; band?: string; tokens?: number; window?: number; model?: string } | null
+  cache?: { cold?: boolean; rewrite_usd?: number; seconds_remaining?: number } | null
 }
 
 export interface MapProject {
@@ -115,6 +122,11 @@ export type MapNode = Box & (
       noMandate: boolean
       /** The store could not be read — which is not "no mandate". */
       mandateUnmeasured: boolean
+      /** The worktree's name when the agent runs outside the main tree; '?' when unlisted. */
+      worktree: string | null
+      /** Context fill 0..1, only when measured — null is "not measured", never empty. */
+      fill: number | null
+      band: string | null
       detail: string[]
     }
   /** A project with nothing live, drawn only because a relation ends on it. */
@@ -175,8 +187,37 @@ export const projectId = (name: string) => `p:${name}`
 export const agentId = (pid: number) => `a:${pid}`
 const projectOfSeat = (seat: string | null | undefined) => (seat ? seat.split('#')[0] : null)
 
+function kTokens(n: number): string {
+  return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}k`
+}
+
+/** Where the agent works and what its context holds — one line each, nothing measured here. */
+export function workAndUsageLines(agent: MapAgent): string[] {
+  const lines: string[] = []
+  const wt = agent.worktree
+  if (wt) {
+    lines.push(wt.unlisted
+      ? `worktree: outside the project's main tree, not in its worktree list${wt.branch ? ` · branch ${wt.branch}` : ''}`
+      : `worktree: ${wt.name}${wt.branch ? ` · branch ${wt.branch}` : ''}`)
+  } else if (agent.branch) {
+    lines.push(`branch: ${agent.branch}`)
+  }
+  const c = agent.context
+  if (c?.state === 'measured' && typeof c.fill === 'number' && typeof c.tokens === 'number' && typeof c.window === 'number') {
+    lines.push(`context: ${Math.round(c.fill * 100)}% — ${kTokens(c.tokens)} of ${kTokens(c.window)}${c.model ? ` · ${c.model}` : ''}`)
+  } else if (c) {
+    lines.push('context: not measured')
+  }
+  const k = agent.cache
+  if (k && typeof k.cold === 'boolean') {
+    const cost = typeof k.rewrite_usd === 'number' ? ` · rewriting it would cost ~$${k.rewrite_usd.toFixed(2)}` : ''
+    lines.push(k.cold ? `cache: cold${cost}` : `cache: warm, ${Math.round((k.seconds_remaining ?? 0) / 60)} min left${cost}`)
+  }
+  return lines
+}
+
 function agentDetail(agent: MapAgent, project: string): string[] {
-  const lines = [`project: ${project}`, `state: ${agent.state ?? 'unknown'}`]
+  const lines = [`project: ${project}`, `state: ${agent.state ?? 'unknown'}`, ...workAndUsageLines(agent)]
   if (agent.seat) lines.push(`bus seat: ${agent.seat}`)
   if (agent.mandate) return [...lines, ...mandateDescription(agent.mandate)]
   const reason = agent.mandate_absent?.reason
@@ -389,6 +430,9 @@ export function layoutMap(payload: MapPayload): MapModel {
         goal: agent.mandate ? agent.mandate.goal : null,
         noMandate: !agent.mandate && !unmeasured,
         mandateUnmeasured: unmeasured,
+        worktree: agent.worktree ? (agent.worktree.name ?? '?') : null,
+        fill: agent.context?.state === 'measured' && typeof agent.context.fill === 'number' ? agent.context.fill : null,
+        band: agent.context?.state === 'measured' ? agent.context.band ?? null : null,
         detail: agentDetail(agent, project.name),
         x: x + GROUP_PAD, y: y + GROUP_HEAD + j * (AGENT_H + AGENT_GAP),
         w: GROUP_W - 2 * GROUP_PAD, h: AGENT_H,

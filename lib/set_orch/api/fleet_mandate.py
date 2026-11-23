@@ -437,6 +437,71 @@ def _flows(sources: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
+def _worktrees_of(root: str) -> List[Dict[str, Optional[str]]]:
+    """`git worktree list` for one repository: [{path, branch}], the main tree included.
+
+    Called only for a project that has an agent whose cwd lies OUTSIDE the project root —
+    the shape a worktree has once discovery resolves every worktree to its repository —
+    so the common map costs no git call at all.
+    """
+    import subprocess
+
+    try:
+        out = subprocess.run(["git", "-C", root, "worktree", "list", "--porcelain"],
+                             capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.debug("fleet map: git worktree list failed in a project root (%s)", type(exc).__name__)
+        return []
+    if out.returncode != 0:
+        return []
+    trees: List[Dict[str, Optional[str]]] = []
+    for block in out.stdout.split("\n\n"):
+        path = branch = None
+        for line in block.splitlines():
+            if line.startswith("worktree "):
+                path = line[len("worktree "):]
+            elif line.startswith("branch "):
+                branch = line[len("branch "):].removeprefix("refs/heads/")
+        if path:
+            trees.append({"path": path, "branch": branch})
+    return trees
+
+
+def _inside(path: str, root: str) -> bool:
+    root = root.rstrip("/")
+    return path == root or path.startswith(root + "/")
+
+
+def _worktree_of(row: Dict[str, Any], cache: Dict[str, List[Dict[str, Optional[str]]]]) -> Optional[Dict[str, Any]]:
+    """The worktree an agent runs in, or None when it runs in the project's main tree.
+
+    Only the worktree's NAME (its directory's basename) and branch are returned: the map
+    shows where an agent works, and an absolute path on a node is a home directory on
+    the screen for no reader's benefit.
+    """
+    root, cwd = row.get("project_root"), row.get("cwd")
+    if not root or not cwd or _inside(cwd, root):
+        return None
+    if root not in cache:
+        cache[root] = _worktrees_of(root)
+    for tree in sorted(cache[root], key=lambda t: len(t["path"] or ""), reverse=True):
+        if tree["path"] and tree["path"] != root and _inside(cwd, tree["path"]):
+            return {"name": os.path.basename(tree["path"].rstrip("/")), "branch": tree["branch"]}
+    # Outside the root and in no listed worktree: say so rather than guess a name.
+    return {"name": None, "branch": row.get("branch"), "unlisted": True}
+
+
+def _usage_of(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Context fill and cache heat, copied from the listing row — no new measurement."""
+    ctx = row.get("context") or {}
+    cache = row.get("cache") or {}
+    out: Dict[str, Any] = {"context": {k: ctx[k] for k in ("state", "fill", "band", "tokens", "window", "model")
+                                       if k in ctx}}
+    if cache:
+        out["cache"] = {k: cache[k] for k in ("cold", "rewrite_usd", "seconds_remaining") if k in cache}
+    return out
+
+
 @router.get("/api/fleet/map")
 def fleet_map() -> Dict[str, Any]:
     """Projects, their live agents with mandates, and three kinds of relation.
@@ -469,6 +534,7 @@ def fleet_map() -> Dict[str, Any]:
     projects: List[Dict[str, Any]] = []
     by_seat: Dict[str, Dict[str, Any]] = {}
     no_mandate = 0
+    trees: Dict[str, List[Dict[str, Optional[str]]]] = {}
     for group in listing.get("projects") or []:
         agents = []
         for row in group.get("agents") or []:
@@ -485,6 +551,9 @@ def fleet_map() -> Dict[str, Any]:
                 "population": row.get("population"),
                 "mandate": row.get("mandate"),
                 "mandate_absent": absent,
+                "branch": row.get("branch"),
+                "worktree": _worktree_of(row, trees),
+                **_usage_of(row),
             }
             agents.append(node)
             if row.get("seat"):

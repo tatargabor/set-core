@@ -399,3 +399,37 @@ describe('the opener', () => {
     expect(openerSummary(undefined, false).kind).toBe('asking')
   })
 })
+
+describe('where an agent works and what its context holds', () => {
+  const proj = (a: MapAgent) => payload({ projects: [{ name: 'alpha', archived: false, expanded: true, agents: [a] }] })
+  const node = (a: MapAgent) => {
+    const n = layoutMap(proj(a)).nodes.find(x => x.type === 'agent')
+    if (!n || n.type !== 'agent') throw new Error('no agent node')
+    return n
+  }
+
+  it('names the worktree and carries a measured fill', () => {
+    const n = node(agent(1, {
+      worktree: { name: 'alpha-wt-x', branch: 'feature-x' },
+      context: { state: 'measured', fill: 0.37, band: 'normal', tokens: 370_000, window: 1_000_000, model: 'claude-opus-5-5' },
+      cache: { cold: false, rewrite_usd: 2.9, seconds_remaining: 1800 },
+    }))
+    expect(n.worktree).toBe('alpha-wt-x')
+    expect(n.fill).toBe(0.37)
+    expect(n.detail).toContain('worktree: alpha-wt-x · branch feature-x')
+    expect(n.detail).toContain('context: 37% — 370k of 1.0M · claude-opus-5-5')
+    expect(n.detail).toContain('cache: warm, 30 min left · rewriting it would cost ~$2.90')
+  })
+
+  it('an unmeasured context is null and says so, never a zero', () => {
+    const n = node(agent(1, { context: { state: 'unmeasured' }, branch: 'main' }))
+    expect(n.fill).toBeNull()
+    expect(n.worktree).toBeNull()
+    expect(n.detail).toContain('context: not measured')
+    expect(n.detail).toContain('branch: main')
+  })
+
+  it('a worktree that is not in the list is marked, not named', () => {
+    expect(node(agent(1, { worktree: { name: null, branch: null, unlisted: true } })).worktree).toBe('?')
+  })
+})

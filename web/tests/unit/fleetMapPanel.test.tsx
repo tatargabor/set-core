@@ -224,3 +224,24 @@ describe('a detail', () => {
     expect(document.querySelector('[data-fleet-map-detail]')).toBeNull()
   })
 })
+
+describe('the node shows where the agent works and how full its context is', () => {
+  it('a worktree chip, the fill as text and as a bar; nothing for an unmeasured fill', async () => {
+    const withUsage: MapPayload = {
+      ...PAYLOAD,
+      projects: PAYLOAD.projects.map(p => p.name !== 'alpha' ? p : {
+        ...p, agents: [{ ...p.agents[0],
+          worktree: { name: 'alpha-wt-x', branch: 'feature-x' },
+          context: { state: 'measured', fill: 0.82, band: 'warning', tokens: 820_000, window: 1_000_000 } }],
+      }),
+    }
+    const panel = await openMap(withUsage)
+    const held = panel.querySelector('[data-fleet-map-agent="alpha-1200"]')!
+    expect(held.querySelector('[data-fleet-map-worktree]')!.textContent).toContain('alpha-wt-x')
+    expect(held.querySelector('[data-fleet-map-fill]')!.textContent).toBe('82%')
+    expect(held.querySelector('[data-fleet-map-fill-bar]')).toBeTruthy()
+    const none = panel.querySelector('[data-fleet-map-agent="beta-desk"]')!
+    expect(none.querySelector('[data-fleet-map-fill]')).toBeNull()
+    expect(none.querySelector('[data-fleet-map-worktree]')).toBeNull()
+  })
+})
