@@ -2754,6 +2754,11 @@ async def fleet_terminal(websocket: WebSocket, label: str) -> None:
         for task in pending:
             task.cancel()
         for task in done:
+            # A task cancelled by a server shutdown has no exception to read: asking for it
+            # raises CancelledError, which surfaced as six "Exception in ASGI application"
+            # tracebacks on every set-web restart with terminals open.
+            if task.cancelled():
+                continue
             if (exc := task.exception()) is not None and not isinstance(exc, WebSocketDisconnect):
                 logger.warning("fleet terminal: %s relay ended: %s", label, type(exc).__name__)
     except WebSocketDisconnect:
