@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-197 — in a consumer whose `core.hooksPath` is RELATIVE (e.g. `.husky/_`), every git worktree resolves it inside itself, gets only the hooks git-lfs writes there, and the whole pre-commit/pre-push gate chain silently does not run
+- **state:** open — consumer-side config, but set-core creates worktrees in consumers (orchestration, `/set:new`, agent isolation), so every unit of work done there pushes past the consumer's gates.
+- **reported:** 2026-11-23 by this session, pushing a gate fix from a fresh worktree of a consumer: the push printed only LFS and remote lines.
+- **measured:** `git config --show-origin core.hooksPath` → `file:.git/config .husky/_`. In the worktree, `.husky/_/` was untracked and held exactly `post-checkout post-commit post-merge pre-push`, created at `worktree add` time; its `pre-push` is git-lfs's (`git lfs pre-push "$@"`), not husky's wrapper (`. "$(dirname "$0")/h"`), which lives only in the main checkout's `.husky/_/`. No `pre-commit` existed in the worktree. The main checkout's chain (`.husky/pre-push` → `pnpm exec lefthook run pre-push`) never ran.
+- **fail direction:** OPEN, and silent — the hook that runs succeeds, so the push looks gated. Same family as the 2026-07-24 worktree hook-wiring defect in CLAUDE.md: a hook that cannot run does not error, it stops enforcing.
+- **fixed when:** a worktree set-core creates in such a consumer runs the main checkout's gate chain on commit and push (e.g. an absolute per-worktree `core.hooksPath` via `git config --worktree`, or refusing to create the worktree), and `set-doctor` names a consumer with a relative `core.hooksPath` that has worktrees.
+
 ### B-196 — the fleet offers `sonnet-5-5` from the catalogue, but the agent owner that launches it runs code older than the name map, so the session starts on a model name the CLI rejects
 - **state:** open — the fix is a restart of `set-agent-owner`, which ends every agent it holds (13 on 2026-11-23); it waits for a moment the owner chooses.
 - **reported:** 2026-11-23 by this session: a fleet start with `{"provider":"anthropic","model":"sonnet-5-5"}` opened a session that answered `There's an issue with the selected model (sonnet-5-5). It may not exist or you may not have access to it.`
