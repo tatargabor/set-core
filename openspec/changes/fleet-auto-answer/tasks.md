@@ -10,7 +10,7 @@ The study runs BEFORE the decider is built and decides its thresholds. Its raw m
 
 ## 1. The relay hands its outbound what it is asking about
 
-- [ ] 1.1 CORE `lib/set_orch/fleet/question_relay.py`: every place that runs the outbound (`AskUserQuestion`, permission, continuation) exports `SET_RELAY_KIND`, `SET_RELAY_SESSION` and `SET_RELAY_CWD` to the outbound process; the envelope is unchanged. Test: a fake outbound records its environment and stdin; the envelope bytes equal the pre-change envelope. [REQ: the-relay-tells-its-outbound-what-it-is-asking-about]
+- [x] 1.1 CORE `lib/set_orch/fleet/question_relay.py`: every place that runs the outbound (`AskUserQuestion`, permission, continuation) exports `SET_RELAY_KIND`, `SET_RELAY_SESSION` and `SET_RELAY_CWD` to the outbound process; the envelope is unchanged. Test: a fake outbound records its environment and stdin; the envelope bytes equal the pre-change envelope. [REQ: the-relay-tells-its-outbound-what-it-is-asking-about]
 
 ## 2. The decider core
 
@@ -54,7 +54,7 @@ The study runs BEFORE the decider is built and decides its thresholds. Its raw m
 - [ ] AC-2: WHEN the relay runs the decider THEN the decider exits within a few seconds, before the decision is made [REQ: the-decider-is-the-relay-s-outbound-and-forwards-to-the-operator-s, scenario: the-relay-is-not-held]
 
 ### the-relay-tells-its-outbound-what-it-is-asking-about
-- [ ] AC-3: WHEN the continuation carrier hands a question to the outbound THEN the outbound's environment names the kind `continuation`, the session id and the working directory, and the envelope carries no new field [REQ: the-relay-tells-its-outbound-what-it-is-asking-about, scenario: a-continuation-is-relayed]
+- [x] AC-3: WHEN the continuation carrier hands a question to the outbound THEN the outbound's environment names the kind `continuation`, the session id and the working directory, and the envelope carries no new field [REQ: the-relay-tells-its-outbound-what-it-is-asking-about, scenario: a-continuation-is-relayed]
 
 ### the-decision-names-its-tier-and-its-source
 - [ ] AC-4: WHEN the project's rules state the operator's decision that answers the question THEN the choice is that option, the tier is `decided`, and the source names the file and quotes the decision [REQ: the-decision-names-its-tier-and-its-source, scenario: a-decision-already-on-record]

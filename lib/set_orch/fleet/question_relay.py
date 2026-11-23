@@ -24,6 +24,7 @@ Three rules shape everything below, and each is a rule, not a taste:
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -567,7 +568,39 @@ def _project_name(cwd: str) -> str:
         return os.path.basename(cwd.rstrip("/")) or "unknown"
 
 
-def _run_command(command: str, payload: str) -> int:
+#: What the relay tells its outbound about the call, beside the envelope (fleet-auto-answer
+#: D3). The envelope is what a chat bridge posts verbatim, so a local path or a session id
+#: in it would reach a channel; the environment reaches only the outbound process.
+ENV_KIND = "SET_RELAY_KIND"
+ENV_SESSION = "SET_RELAY_SESSION"
+ENV_CWD = "SET_RELAY_CWD"
+KIND_ASK = "ask"
+
+
+def relay_env(kind: str, session_id: str, cwd: str) -> Dict[str, str]:
+    """The three variables the outbound receives: which blocking point, whose, where."""
+    return {ENV_KIND: kind, ENV_SESSION: session_id, ENV_CWD: cwd}
+
+
+def _takes_env(run: Callable[..., int]) -> bool:
+    try:
+        return "env" in inspect.signature(run).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _hand(run: Callable[..., int], command: str, payload: str, env: Dict[str, str]) -> int:
+    """Run the outbound, with the call's environment when the runner can take it.
+
+    A runner injected without an `env` parameter (an older test double, a caller's own
+    runner) is called exactly as before, so the hand-over contract stays two-argument.
+    """
+    if _takes_env(run):
+        return run(command, payload, env=env)
+    return run(command, payload)
+
+
+def _run_command(command: str, payload: str, env: Optional[Dict[str, str]] = None) -> int:
     # No output pipe is held, on purpose. With a pipe, `run` waits until EVERY holder of
     # it has closed it — and a bridge that leaves a background child running (a poller, a
     # delayed sender) keeps it open, so the hand-off itself blocks and nothing waits in
@@ -576,6 +609,7 @@ def _run_command(command: str, payload: str) -> int:
     # bridge's own output is its own log's business; the exit code is what decides here.
     return subprocess.run(shlex.split(command), input=payload, text=True,
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                          env={**os.environ, **env} if env else None,
                           timeout=120).returncode
 
 
@@ -736,7 +770,7 @@ def notify(hook_input: Dict[str, Any], *,
 
 def relay(hook_input: Dict[str, Any], *,
           get: Getter = local_config.get,
-          run: Callable[[str, str], int] = _run_command,
+          run: Callable[..., int] = _run_command,
           post: Callable[[str, str], None] = post_webhook,
           project_name: Callable[[str], str] = _project_name,
           clock: Callable[[], float] = time.monotonic,
@@ -780,7 +814,8 @@ def relay(hook_input: Dict[str, Any], *,
     cid = call_id(session_id, str(hook_input.get("tool_use_id") or wall()))
     envelope = build_envelope(tool_input, cid, _text(get(KEY_AUDIENCE)), f"{project} · {sid}", answer_dir)
     try:
-        code = run(_text(get(KEY_COMMAND)), json.dumps(envelope, ensure_ascii=False))
+        code = _hand(run, _text(get(KEY_COMMAND)), json.dumps(envelope, ensure_ascii=False),
+                     relay_env(KIND_ASK, session_id, cwd))
     except Exception as exc:
         logger.warning("question relay [%s]: outbound could not run (%s); released", sid, type(exc).__name__)
         return None
@@ -829,7 +864,7 @@ TRANSCRIPT_TAIL = 262144
 
 
 def hand_over_one(hook_input: Dict[str, Any], kind: str, question: str, options: List[str], *,
-                  get: Getter, run: Callable[[str, str], int], project_name: Callable[[str], str],
+                  get: Getter, run: Callable[..., int], project_name: Callable[[str], str],
                   wall: Callable[[], float], base: Path) -> Optional[Dict[str, Any]]:
     """Hand ONE question to the two-way outbound and write its waiting record.
 
@@ -853,7 +888,8 @@ def hand_over_one(hook_input: Dict[str, Any], kind: str, question: str, options:
                                               "options": [{"label": o} for o in options]}]},
                               cid, _text(get(KEY_AUDIENCE)), f"{project} · {sid}", answer_dir)
     try:
-        code = run(_text(get(KEY_COMMAND)), json.dumps(envelope, ensure_ascii=False))
+        code = _hand(run, _text(get(KEY_COMMAND)), json.dumps(envelope, ensure_ascii=False),
+                     relay_env(kind, session_id, cwd))
     except Exception as exc:
         logger.warning("question relay %s [%s]: outbound could not run (%s); released", kind, sid, type(exc).__name__)
         return None
@@ -993,7 +1029,7 @@ def permission_output(text: str) -> Dict[str, Any]:
 
 def permission(hook_input: Dict[str, Any], *,
                get: Getter = local_config.get,
-               run: Callable[[str, str], int] = _run_command,
+               run: Callable[..., int] = _run_command,
                project_name: Callable[[str], str] = _project_name,
                clock: Callable[[], float] = time.monotonic,
                wall: Callable[[], float] = time.time,

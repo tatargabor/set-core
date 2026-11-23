@@ -154,7 +154,7 @@ def instruction(answer: str) -> str:
 
 def continue_turn(hook_input: Dict[str, Any], *,
                   get: qr.Getter = local_config.get,
-                  run: Callable[[str, str], int] = qr._run_command,
+                  run: Callable[..., int] = qr._run_command,
                   project_name: Callable[[str], str] = qr._project_name,
                   suggester: Optional[Suggester] = None,
                   clock: Callable[[], float] = time.monotonic,
