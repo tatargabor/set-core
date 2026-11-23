@@ -151,8 +151,9 @@ pair room held three older REQUESTs addressed to the PROJECT (from an earlier se
 left unread because no session of that project was running), and the desk took them up as its
 next work. That is the desk doing its job — a request addressed to a project is the desk's —
 but it means "the desk stops after the bound" (default quiet bound: 30 minutes, `desk.DEFAULT_QUIET_MINUTES`) could not be seen in
-this run. It is observed when the desk next goes quiet; until then 9.1 stays open on that one
-point.
+this run. Observed later the same evening: the desk went quiet at ~21:32 and the sweep stopped it at
+22:05:15 (`fleet desk sweep: stopped <desk> (pid …) after 1972 s without movement`), i.e. on the
+first five-minute round past the 30-minute bound.
 
 **A side finding during the run.** set-web was restarted by another session at 21:24:38 and
 answered nothing until 21:25:04: application startup waits on a 15 s Discord connect timeout
