@@ -112,3 +112,16 @@ alternatives: reading the project's settings file ourselves would duplicate the 
 resolution and miss a hook wired through a plugin; the `verdict` field also turns `warn` for
 reasons that do not prevent a seat. When the doctor cannot be run, enrolment is **unmeasured**
 and the request is refused as such, rather than started on a guess.
+
+## M7 — which room a seat-addressed request lands in (task 5.5)
+
+In a throwaway bus store with two projects that also shared an unrelated room: a send from
+one project addressed to a **seat** of the other, with no room named, went to the project
+pair room (`dm-<a>--<b>`) — the bus opens it on its own — and woke exactly that seat. The same
+happened once the pair room already existed, and with the room named explicitly. The send's
+JSON carried `room` and `ts` each time.
+
+So `set-fleet-ask` names no room: the request lands in one stable room per pair of projects,
+however many desks come and go, and the engagement's pointer is read from the send's answer.
+The bus's machine-readable agent list carries each seat's FULL session id, which is how the
+command finds the asker's own seat.

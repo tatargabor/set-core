@@ -1,0 +1,23 @@
+#!/bin/bash
+# set-fleet-ask — ask another project for something, in one command.
+#
+#   set-fleet-ask <project> "<request>" [--subject "…"] [--question]
+#   set-fleet-ask --list
+#
+# Finds the project's desk — the one session that answers for it — or has the
+# fleet start it, sends the request on the bus AS THIS SESSION, and records the
+# engagement so the answer can be tracked. It replaces opening the other project
+# by hand and waiting on the bus.
+#
+# Same Python-resolution shape as `set-fleet-roster`, and `-m` rather than a file
+# path because the module uses package-relative imports.
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+export SET_TOOLS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+source "$SCRIPT_DIR/set-common.sh" 2>/dev/null
+
+PYTHON="$(find_python 2>/dev/null)" || PYTHON="python3"
+
+exec env PYTHONPATH="$SET_TOOLS_ROOT/lib:$SET_TOOLS_ROOT/modules/web${PYTHONPATH:+:$PYTHONPATH}" \
+     "$PYTHON" -m set_orch.fleet.ask_cli "$@"
