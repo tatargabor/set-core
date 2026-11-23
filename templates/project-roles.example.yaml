@@ -1,0 +1,19 @@
+# Project role file — copy to ~/.config/set-core/project-roles.yaml (or $SET_CONFIG_DIR) and
+# fill it in. It stays on this machine: it names private projects, so it must never be
+# committed anywhere. `set-project roles` turns it into a git-excluded
+# `.claude/rules/project-role.md` in every registered project.
+#
+# Keys are registry names (`set-project list`). "Depended on by" is computed from the other
+# entries' depends_on, so write each relation once, on the side that depends.
+version: 1
+projects:
+  example-app:
+    role: The customer-facing web shop.
+    owns: [storefront, checkout]
+    depends_on: [example-api]
+  example-api:
+    role: The order and stock API the shop and the back office call.
+    owns: [orders, stock]
+  example-old-app:
+    role: The previous shop, kept for reference.
+    replaced_by: example-app   # shown in the archived notice when the entry is archived

@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-200 — `set_orch.project_registry` hard-codes the registry at `Path.home()/.config/set-core/projects.json`, so `set-project archive|unarchive|prune` ignore `SET_CONFIG_DIR` / `SET_CORE_REGISTRY` while every other reader honours them
+- **state:** open — same class as B-175 (one resolver for the config dir, `set_kb.lifecycle.registry_path`).
+- **reported:** 2026-11-23 by this session, sandbox-testing `fleet-era-consolidation` 3.3.
+- **measured:** with `SET_CONFIG_DIR=<tmp>` holding a registry with entry `x`, `set-project roles` found `x` (it uses `registry_path`) while `set-project archive x` answered `Not found in the registry: x` and wrote nothing; `lib/set_orch/project_registry.py:22` is `PROJECTS_FILE = Path.home() / ".config" / "set-core" / "projects.json"`. With `HOME=<tmp>` as well, both agree.
+- **fail direction:** a sandbox or a test that sets only `SET_CONFIG_DIR` runs `archive`/`prune` against the REAL registry — here it refused (unknown name), but a name present in both would have been archived for real.
+- **fixed when:** `project_registry` resolves its file through `registry_path`, and an archive with only `SET_CONFIG_DIR` set changes the sandbox registry and leaves the real one byte-identical.
+
 ### B-199 — the skills set-core deploys one level deeper (`.claude/skills/set/<name>/SKILL.md`: `set:kb`, `set:wave-board`, `glm`, `set:blueprint`, …) are not discovered by Claude Code, so they reach no session in any project
 - **state:** open — found while scoping stage 2 of `fleet-era-consolidation`; that change retires the orchestration ones, this entry covers the three that are meant to be used.
 - **reported:** 2026-11-23 by this session.

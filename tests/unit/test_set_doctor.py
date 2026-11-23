@@ -213,7 +213,7 @@ def test_a_consumer_is_checked_on_every_count(machine):
     ctx, tmp = machine
     proj = project_repo(tmp)
     checks = check_project(ctx, "proj", {"path": str(proj)}, {}, {})
-    assert {c.name for c in checks} == {"path", "deploy", "mcp", "bus", "kb"}
+    assert {c.name for c in checks} == {"path", "deploy", "mcp", "bus", "role", "kb"}
     assert by(checks, "bus").status == "warn" and by(checks, "bus").fix == f"cd {proj} && sac install"
 
 

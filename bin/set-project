@@ -714,6 +714,8 @@ Commands:
   archive <name>...       Hide named projects from the dashboard; the entry and
                           every file are kept, and it is reversible
   unarchive <name>...     Undo archive for the named projects
+  roles [<name>...]       Write the machine-local project role rule from
+                          ~/.config/set-core/project-roles.yaml (--dry-run)
   default <name>          Set default project
 
 Options:
@@ -1015,6 +1017,7 @@ cmd_init() {
     echo ""
     info "Deploying set-core to $git_root..."
     deploy_set_tools "$git_root" || ((_deploy_warnings++))
+    [[ "$DRY_RUN" == "true" ]] || _regenerate_roles "$name"
 
     # Resolve project type: CLI flag > saved project-type.yaml
     if [[ -z "$project_type" ]]; then
@@ -1253,6 +1256,37 @@ cmd_archive() {
         exit 1
     fi
     env "PYTHONPATH=$SET_TOOLS_ROOT/lib:${PYTHONPATH:-}" "$py" -m set_orch.registry_prune "$mode" "$@"
+    local rc=$?
+    # The archived notice lives in the project role rule, so it follows the flag.
+    if [[ $rc -eq 0 && " $* " != *" --dry-run "* ]]; then
+        local names=() a
+        for a in "$@"; do [[ "$a" == -* ]] || names+=("$a"); done
+        _regenerate_roles "${names[@]}"
+    fi
+    return $rc
+}
+
+# Write the machine-local project role rule (.claude/rules/project-role.md, git-excluded)
+# into registered projects from the operator's role file. See set_orch.project_roles.
+cmd_roles() {
+    local py
+    py=$(_set_python)
+    env "PYTHONPATH=$SET_TOOLS_ROOT/lib:${PYTHONPATH:-}" "$py" -m set_orch.project_roles "$@"
+}
+
+# Regenerate the role rule for named projects after init/archive. Quiet when there is no
+# role file — the role rule is opt-in through that file. Never fails the caller.
+_regenerate_roles() {
+    [[ $# -gt 0 ]] || return 0
+    local py out
+    py=$(_set_python)
+    out=$(env "PYTHONPATH=$SET_TOOLS_ROOT/lib:${PYTHONPATH:-}" "$py" -m set_orch.project_roles "$@" 2>&1) || {
+        warn "  project role rule: regeneration failed — run 'set-project roles $*'"
+        return 0
+    }
+    [[ "$out" == "no role file"* ]] && return 0
+    info "  ${out%%$'\n'*}"
+    return 0
 }
 
 # Register a repository WITHOUT deploying anything into it: no rules, skills, hooks,
@@ -1641,6 +1675,10 @@ case "$1" in
     unarchive)
         shift
         cmd_archive unarchive "$@"
+        ;;
+    roles)
+        shift
+        cmd_roles "$@"
         ;;
     default)
         shift

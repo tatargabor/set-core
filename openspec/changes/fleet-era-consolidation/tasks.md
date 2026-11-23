@@ -21,18 +21,18 @@
 
 - [x] 3.1 The doctor skips archived registry entries and prints one summary line with their count; `--project <name>` still checks an archived one (`lib/set_doctor/cli.py`, `checks.py`) [REQ: archived-projects-are-not-checked]
 - [x] 3.2 Tests for both doctor scenarios [REQ: archived-projects-are-not-checked]
-- [ ] 3.3 `set-project archive` and unarchive regenerate the project's role rule, so the notice appears and disappears with the flag [REQ: an-archived-project-tells-the-agent-not-to-develop-it]
+- [x] 3.3 `set-project archive` and unarchive regenerate the project's role rule, so the notice appears and disappears with the flag [REQ: an-archived-project-tells-the-agent-not-to-develop-it]
 
 ## 4. Project role rules
 
-- [ ] 4.1 Define the role file schema (role, owns, depends on, depended on by, replaced by) and ship an empty example under `templates/`; the real file lives in the user's set-core config directory [REQ: roles-come-from-a-private-machine-local-file]
-- [ ] 4.2 Implement `set-project roles`: read the registry and the role file, write `.claude/rules/project-role.md` with a generated-by marker into each existing project, and skip a file without the marker [REQ: one-generated-rule-per-registered-project]
-- [ ] 4.3 Add the rule's path to `.git/info/exclude` when writing it [REQ: the-rule-never-enters-a-commit]
-- [ ] 4.4 Reuse the leak scan's visibility decision (and its cache); for a public project, name only public relations and count the private ones; undecidable counts as private [REQ: a-public-repository-names-only-public-siblings]
-- [ ] 4.5 Open the rule with the archived notice for an archived entry, naming the replacement when the role file gives one [REQ: an-archived-project-tells-the-agent-not-to-develop-it]
-- [ ] 4.6 `set-project init` regenerates the rule for the project it deploys into [REQ: one-generated-rule-per-registered-project]
-- [ ] 4.7 The doctor's role check: missing or older than the role file is `warn` with `set-project roles` as the fix; no role file is `skip` with the reason [REQ: the-project-role-rule-is-checked]
-- [ ] 4.8 Tests for every scenario in the project-role-rule spec, each failing with the change stashed [REQ: one-generated-rule-per-registered-project]
+- [x] 4.1 Define the role file schema (role, owns, depends on, depended on by, replaced by) and ship an empty example under `templates/`; the real file lives in the user's set-core config directory [REQ: roles-come-from-a-private-machine-local-file]
+- [x] 4.2 Implement `set-project roles`: read the registry and the role file, write `.claude/rules/project-role.md` with a generated-by marker into each existing project, and skip a file without the marker [REQ: one-generated-rule-per-registered-project]
+- [x] 4.3 Add the rule's path to `.git/info/exclude` when writing it [REQ: the-rule-never-enters-a-commit]
+- [x] 4.4 Reuse the leak scan's visibility decision (and its cache); for a public project, name only public relations and count the private ones; undecidable counts as private [REQ: a-public-repository-names-only-public-siblings]
+- [x] 4.5 Open the rule with the archived notice for an archived entry, naming the replacement when the role file gives one [REQ: an-archived-project-tells-the-agent-not-to-develop-it]
+- [x] 4.6 `set-project init` regenerates the rule for the project it deploys into [REQ: one-generated-rule-per-registered-project]
+- [x] 4.7 The doctor's role check: missing or older than the role file is `warn` with `set-project roles` as the fix; no role file is `skip` with the reason [REQ: the-project-role-rule-is-checked]
+- [x] 4.8 Tests for every scenario in the project-role-rule spec, each failing with the change stashed [REQ: one-generated-rule-per-registered-project]
 - [ ] 4.9 Operator step, local only: fill the role file from the private project map and run `set-project roles`; open one public and one archived project and read the generated rule [REQ: roles-come-from-a-private-machine-local-file]
 
 ## 5. Log hygiene sweep
@@ -74,19 +74,30 @@
   the deletions in the working tree for the project to commit.
 - 3.1/3.2 — four tests; with the filter mutated away two of them fail (restore verified with
   `cmp`). On this machine's registry: "24 archived projects skipped", the registry holds 24.
+- 4.x — `lib/set_orch/project_roles.py` + `set-project roles`; 13 tests in
+  `tests/unit/test_project_roles.py` (one end to end through the real command); four mutants
+  (exclude off, marker ignored, visibility ignored, notice off) each turn tests red, restore
+  verified with `cmp`. Visibility comes from `set-leakscan`'s own `remote_visibility`; an
+  unknown sibling is counted, an unknown self is treated as public. Data repositories
+  (`deploy: false`) get no rule. The doctor's new `role` check is listed in the two tests
+  that enumerate check names.
+- 3.3 — sandbox: archive → the notice appears, unarchive → it is gone, `git status` clean.
+  The sandbox needed `HOME` overridden as well as `SET_CONFIG_DIR`: B-200.
+- 4.9 stays open: it needs the owner's role content (and, proposed to the family umbrella, the
+  umbrella owns the family's entries).
 
 ## Acceptance Criteria (from spec scenarios)
 
 ### project-role-rule
-- [ ] AC-1: WHEN the role file does not exist THEN `set-project roles` writes no rule, reports "no role file" with the path and exits 0 [REQ: roles-come-from-a-private-machine-local-file, scenario: no-role-file]
-- [ ] AC-2: WHEN a registered project has no entry THEN its rule carries registry facts only and says the role is not described [REQ: roles-come-from-a-private-machine-local-file, scenario: a-project-without-an-entry]
-- [ ] AC-3: WHEN `project-role.md` exists without the marker THEN it is left unchanged and reported as skipped [REQ: one-generated-rule-per-registered-project, scenario: a-hand-written-file-in-the-way]
-- [ ] AC-4: WHEN `set-project roles` runs twice unchanged THEN the second run changes no byte [REQ: one-generated-rule-per-registered-project, scenario: regeneration-is-idempotent]
-- [ ] AC-5: WHEN the rule is written into a clean repository THEN `git status --porcelain` stays empty [REQ: the-rule-never-enters-a-commit, scenario: written-into-a-clean-repository]
-- [ ] AC-6: WHEN a public project has one public and one private dependent THEN the rule names the public one and counts the private one [REQ: a-public-repository-names-only-public-siblings, scenario: a-public-repository-with-a-private-consumer]
-- [ ] AC-7: WHEN a relation's visibility cannot be decided THEN it is counted as private and not named [REQ: a-public-repository-names-only-public-siblings, scenario: visibility-cannot-be-decided]
-- [ ] AC-8: WHEN an agent starts in an archived project THEN the rule's first lines say it is archived and not to be developed [REQ: an-archived-project-tells-the-agent-not-to-develop-it, scenario: opening-an-archived-project]
-- [ ] AC-9: WHEN the archived flag is cleared and the rule regenerated THEN the notice is gone [REQ: an-archived-project-tells-the-agent-not-to-develop-it, scenario: un-archiving]
+- [x] AC-1: WHEN the role file does not exist THEN `set-project roles` writes no rule, reports "no role file" with the path and exits 0 [REQ: roles-come-from-a-private-machine-local-file, scenario: no-role-file]
+- [x] AC-2: WHEN a registered project has no entry THEN its rule carries registry facts only and says the role is not described [REQ: roles-come-from-a-private-machine-local-file, scenario: a-project-without-an-entry]
+- [x] AC-3: WHEN `project-role.md` exists without the marker THEN it is left unchanged and reported as skipped [REQ: one-generated-rule-per-registered-project, scenario: a-hand-written-file-in-the-way]
+- [x] AC-4: WHEN `set-project roles` runs twice unchanged THEN the second run changes no byte [REQ: one-generated-rule-per-registered-project, scenario: regeneration-is-idempotent]
+- [x] AC-5: WHEN the rule is written into a clean repository THEN `git status --porcelain` stays empty [REQ: the-rule-never-enters-a-commit, scenario: written-into-a-clean-repository]
+- [x] AC-6: WHEN a public project has one public and one private dependent THEN the rule names the public one and counts the private one [REQ: a-public-repository-names-only-public-siblings, scenario: a-public-repository-with-a-private-consumer]
+- [x] AC-7: WHEN a relation's visibility cannot be decided THEN it is counted as private and not named [REQ: a-public-repository-names-only-public-siblings, scenario: visibility-cannot-be-decided]
+- [x] AC-8: WHEN an agent starts in an archived project THEN the rule's first lines say it is archived and not to be developed [REQ: an-archived-project-tells-the-agent-not-to-develop-it, scenario: opening-an-archived-project]
+- [x] AC-9: WHEN the archived flag is cleared and the rule regenerated THEN the notice is gone [REQ: an-archived-project-tells-the-agent-not-to-develop-it, scenario: un-archiving]
 
 ### service-log-hygiene
 - [ ] AC-10: WHEN a poll finds an optional resource absent every cycle THEN at most one WARNING is logged, at the state change [REQ: a-normal-answer-is-not-a-warning, scenario: a-polled-resource-is-absent]
@@ -96,7 +107,7 @@
 ### machine-doctor
 - [x] AC-13: WHEN the registry holds three archived entries THEN none is checked and one line says "3 archived projects skipped" [REQ: archived-projects-are-not-checked, scenario: an-archived-entry-in-the-registry]
 - [x] AC-14: WHEN `--project` names an archived entry THEN it is checked [REQ: archived-projects-are-not-checked, scenario: asking-for-an-archived-project-by-name]
-- [ ] AC-15: WHEN the role file changed after a rule was generated THEN the role check warns with `set-project roles` as the fix [REQ: the-project-role-rule-is-checked, scenario: a-stale-role-rule]
+- [x] AC-15: WHEN the role file changed after a rule was generated THEN the role check warns with `set-project roles` as the fix [REQ: the-project-role-rule-is-checked, scenario: a-stale-role-rule]
 
 ### project-init-deploy
 - [x] AC-16: WHEN a consumer holds an unchanged retired command THEN init removes it and reports it under "retired" [REQ: retired-framework-artifacts-are-not-deployed-and-are-removed, scenario: a-retired-command-deployed-earlier]

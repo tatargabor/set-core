@@ -469,11 +469,23 @@ def check_project(ctx: Context, name: str, entry: dict, claude_projects, sac_by_
             out.append(deep_dry_run(ctx, path))
         out.append(mcp_registration(ctx, claude_projects, path))
         out += bus_status(sac_by_path, path, module_skip)
+        out.append(role_rule(ctx, name, path))
     if module_skip:
         out.append(Check("project", "kb", "skip", module_skip, module="set-kb"))
     else:
         out.append(kb_doctor(ctx, path, kb_command))
     return tag(out)
+
+
+def role_rule(ctx: Context, name: str, path: str) -> Check:
+    """The machine-local project role rule (fleet-era-consolidation, `project-role-rule`):
+    missing or older than the operator's role file is a warn; no role file is a skip — the
+    rule is opt-in through that file."""
+    from set_orch.project_roles import rule_state
+
+    status, detail = rule_state(path, ctx.env)
+    return Check("project", "role", status, detail,
+                 sh(f"set-project roles {name}") if status == "warn" else None)
 
 
 def stale_entries(registry: dict, names: list) -> tuple:
