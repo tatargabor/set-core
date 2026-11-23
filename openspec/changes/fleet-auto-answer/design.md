@@ -113,6 +113,23 @@ the same kind of text the answer store already holds, on the same machine, under
 retention. The log carries the call id, tier, outcome and source paths, never the question or
 answer text — the relay's own log rule.
 
+### D10 — The operator's earlier answers are a candidate source, decided by the study
+*"Amit korábban már választottam"* is literally the earlier answers: the same kind of question
+answered in the same project before. Those answers live in local transcripts, not in any file the
+lookup reads, so a decision taken only in an answer is invisible to D8. Task group 0 measures how
+many past answers an earlier answer would have predicted. If it carries a meaningful share, the
+decider gets a machine-local index of earlier answers (question, options, choice, time, project —
+never leaving the machine, pruned like the answer store) as one more candidate source, tier
+`decided` with the earlier answer as its quoted source. If it does not, it is left out.
+
+### D11 — Measure before building, without time leakage
+The study replays past questions with only the sources that existed at the question's time:
+tracked files from git at that moment, untracked ones only if older, earlier answers only. A
+replay against today's files would score decisions that were written down AFTER the question —
+often because of it — as findable, and would set the `likely` bar on an inflated accuracy. Fail
+direction of skipping this: the bar is set too low and the decider answers wrongly with
+confidence.
+
 ## Risks / Trade-offs
 
 - [A `likely` answer is wrong] → it is proposed with its tier before it is written; the window,
