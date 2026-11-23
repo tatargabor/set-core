@@ -278,8 +278,33 @@ def user(text, at=ASKED - 20, meta=False):
     return e
 
 
-def test_launch_from_the_fleet_record_wins(tmp_path):
+def test_an_inherited_unit_record_does_not_override_the_measured_model(tmp_path):
+    """Measured live (5.2): a haiku session in a tmux server inside an Opus agent's scope
+    was forked on Opus, because the unit's record belonged to the OTHER agent."""
     t = write_transcript(tmp_path / "t.jsonl", [assistant("claude-haiku-5-5")])
+    launch = aa.session_launch(SID, t, pid_of=lambda s: 4242, unit=lambda p: "set-agent-other.scope",
+                               record_get=lambda u: {"provider": "glm", "model": "glm-4.6"},
+                               resolve=lambda **k: pytest.fail("the record's provider must not be resolved"),
+                               catalogue=lambda: {"providers": [{"name": "glm", "models": ["glm-4.6"]}]})
+    assert launch.argv == ["claude", "--model", "claude-haiku-5-5"] and launch.source == "transcript"
+    same = aa.session_launch(SID, t, pid_of=lambda s: 4242, unit=lambda p: "set-agent-other.scope",
+                             record_get=lambda u: {"provider": "anthropic", "model": "opus"},
+                             resolve=lambda provider=None, model=None: Plan(provider, "opus"),
+                             catalogue=lambda: {"providers": []})
+    assert same.argv == ["claude", "--model", "claude-haiku-5-5"], "the record's provider, the measured model"
+
+
+def test_without_a_measured_model_the_record_is_used(tmp_path):
+    t = write_transcript(tmp_path / "t.jsonl", [user("hello")])
+    launch = aa.session_launch(SID, t, pid_of=lambda s: 4242, unit=lambda p: "u.scope",
+                               record_get=lambda u: {"provider": "glm", "model": "glm-4.6"},
+                               resolve=lambda provider=None, model=None: Plan(provider, model, env={"X": "1"}),
+                               catalogue=lambda: {"providers": []})
+    assert launch.argv == ["claude", "--model", "glm-4.6"] and launch.source == "record"
+
+
+def test_launch_from_the_fleet_record_wins(tmp_path):
+    t = write_transcript(tmp_path / "t.jsonl", [assistant("glm-4.6")])
     seen = {}
 
     def resolve(provider=None, model=None):
@@ -287,7 +312,7 @@ def test_launch_from_the_fleet_record_wins(tmp_path):
         return Plan(provider, model, env={"ANTHROPIC_BASE_URL": "https://glm.example"})
     launch = aa.session_launch(SID, t, pid_of=lambda s: 4242, unit=lambda p: "set-agent-a1.scope",
                                record_get=lambda u: {"provider": "glm", "model": "glm-4.6"} if u == "set-agent-a1.scope" else None,
-                               resolve=resolve, catalogue=lambda: {"providers": []})
+                               resolve=resolve, catalogue=lambda: {"providers": [{"name": "glm", "models": ["glm-4.6"]}]})
     assert seen["args"] == ("glm", "glm-4.6") and launch.source == "record"
     assert launch.argv == ["claude", "--model", "glm-4.6"] and launch.env == {"ANTHROPIC_BASE_URL": "https://glm.example"}
     assert launch.unset == ("ANTHROPIC_API_KEY",)

@@ -35,10 +35,11 @@ def world(tmp_path, monkeypatch):
 def propose(base, write_at, state="proposed", outcome="allowed"):
     aw._private_write(aw.pending_path(base, CID), {
         "id": CID, "session_id": SID, "kind": "ask", "source": "proj · 47f1763f", "project": "proj",
-        "created": write_at - 60, "write_at": write_at, "state": state, "cancelled": False,
+        "cwd": "/work/proj", "created": write_at - 60, "write_at": write_at, "state": state, "cancelled": False,
         "questions": [{"key": "Q1", "question": "Which colour?", "options": ["TEAL", "ORANGE"],
                        "outcome": outcome, "choice": "TEAL", "tier": "decided", "confidence": 0.9,
                        "references": [{"kind": "operator", "quote": "TEAL it is, always", "checked": True},
+                                      {"kind": "file", "path": "/work/proj/docs/colours.md", "quote": "TEAL wins", "checked": True},
                                       {"kind": "file", "path": "x.md", "quote": "made up", "checked": False}]}]})
 
 
@@ -67,7 +68,8 @@ def test_pending_proposal_is_listed_with_checked_references_only(world):
     p = s["pending"][0]
     assert p["choice"] == "TEAL" and p["tier"] == "decided" and p["agent"] == "proj · 47f1763f"
     assert 40 <= p["seconds_left"] <= 42.5
-    assert [r["quote"] for r in p["references"]] == ["TEAL it is, always"]
+    assert [r["quote"] for r in p["references"]] == ["TEAL it is, always", "TEAL wins"]
+    assert p["references"][1]["path"] == "docs/colours.md", "an absolute path in the tree is shown relative"
 
 
 def test_forwarded_and_cancelled_records_are_not_pending(world):

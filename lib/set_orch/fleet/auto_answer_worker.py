@@ -216,7 +216,11 @@ def pending_view(now: float, base: Optional[Path] = None) -> List[Dict[str, Any]
                 "agent": rec.get("source"), "project": rec.get("project"), "kind": rec.get("kind"),
                 "question": q.get("question"), "choice": q.get("choice"), "tier": q.get("tier"),
                 "confidence": q.get("confidence"),
-                "references": [r for r in q.get("references") or [] if r.get("checked")],
+                # Shown as the channel shows them: relative to the tree, never a home path
+                # (seen on the running screen: the fork had cited an absolute path).
+                "references": [{**r, **({"path": _shown_path(str(r["path"]), str(rec.get("cwd") or ""))}
+                                        if r.get("path") else {})}
+                               for r in q.get("references") or [] if r.get("checked")],
                 "seconds_left": max(0.0, write_at - now) if isinstance(write_at, (int, float)) else None,
             })
     return out
@@ -398,7 +402,7 @@ def work(payload: str, relay_vars: Dict[str, str], world: Optional[World] = None
     write_at = forwarded_at + aa.window_s(w.get) if allowed else None
     pending = {
         "id": cid, "session_id": session_id, "kind": kind, "source": str(first.get("source") or ""),
-        "project": os.path.basename(cwd.rstrip("/")) if cwd else "", "created": forwarded_at,
+        "project": os.path.basename(cwd.rstrip("/")) if cwd else "", "cwd": cwd, "created": forwarded_at,
         "write_at": write_at, "state": "proposed" if allowed else "forwarded", "cancelled": False,
         "method": decision.method,
         "questions": [{

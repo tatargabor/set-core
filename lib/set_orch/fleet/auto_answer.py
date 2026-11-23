@@ -570,6 +570,13 @@ def _plan_launch(provider: str, model: Optional[str], source: str, resolve: Call
                   provider=plan.provider, model=model or plan.model, source=source)
 
 
+def _belongs(model: str, provider: str, catalogue: Dict[str, Any]) -> bool:
+    if provider == "anthropic" and model.startswith("claude-"):
+        return True
+    return any(p.get("name") == provider and model in (p.get("models") or [])
+               for p in catalogue.get("providers") or [])
+
+
 def session_launch(session_id: str, transcript: Optional[Path], *,
                    pid_of: Callable[[str], Optional[int]] = session_pid,
                    unit: Callable[[int], Optional[str]] = unit_of,
@@ -578,10 +585,15 @@ def session_launch(session_id: str, transcript: Optional[Path], *,
                    catalogue: Optional[Callable[[], Dict[str, Any]]] = None) -> Optional[Launch]:
     """How to start a fork on the SAME model and provider as the session (D8), or None.
 
-    The fleet's provider record wins (keyed on the session's unit); else the transcript's
-    newest model: a `claude-*` model runs on the CLI's own login, a model in another
-    provider's catalogue (a GLM session) runs on that provider's plan. A session whose
-    model cannot be placed is not forked on a guess — the caller falls back.
+    **The measured model wins** — the transcript's newest `message.model`, which is what
+    actually answered in that session. The fleet's provider record (keyed on the session's
+    unit) supplies the PROVIDER, and only when the measured model is that provider's: a
+    session started from inside another agent's scope (a tmux server, a subprocess)
+    inherits that agent's unit, and its record then names the other agent's provider and
+    model. Measured live (task 5.2): a haiku session started in a tmux server inside an
+    Opus session's scope was forked on Opus until this rule. Without a measured model (no
+    assistant turn yet) the record is used as it stands. A model that cannot be placed is
+    not forked on a guess — the caller falls back.
     """
     from .. import providers
     from . import provider_record
@@ -592,15 +604,20 @@ def session_launch(session_id: str, transcript: Optional[Path], *,
         pid = pid_of(session_id)
         u = unit(pid) if pid else None
         recorded = record_get(u) if u else None
-        if recorded and recorded.get("provider"):
-            return _plan_launch(str(recorded["provider"]), recorded.get("model"), "record", resolve)
+        rec_provider = str(recorded.get("provider")) if recorded and recorded.get("provider") else ""
         model = transcript_model(transcript) if transcript else None
         if not model:
-            return None
+            return _plan_launch(rec_provider, recorded.get("model"), "record", resolve) if rec_provider else None
+        cat = catalogue()
+        if rec_provider and _belongs(model, rec_provider, cat):
+            return _plan_launch(rec_provider, model, "record", resolve)
+        if rec_provider:
+            logger.warning("auto answer: the unit's provider record (%s) does not match the session's measured "
+                           "model; the measured model wins", rec_provider)
         if model.startswith("claude-"):
             return Launch(argv=["claude", "--model", model], env={}, unset=(), provider="anthropic",
                           model=model, source="transcript")
-        for p in catalogue().get("providers") or []:
+        for p in cat.get("providers") or []:
             if model in (p.get("models") or []) and p.get("name") != "anthropic":
                 return _plan_launch(str(p["name"]), model, "transcript", resolve)
         logger.warning("auto answer: the session's model is in no provider's catalogue; not forked")

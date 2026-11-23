@@ -157,3 +157,57 @@ What this settles:
   (`--strict-mcp-config`). So a model's own list of its tools is not evidence of what it can run.
 - Not measured here: whether the fleet's discovery lists a fork while it runs (it lived 2.5 s), and
   a fork of a GLM session through its wrapper.
+
+## S5 — the whole path, live, in a scratch session (tasks 4.3, 5.2), 2026-11-23 23:52 – 2026-11-24 00:03
+
+**Set-up, and what it does NOT prove.** The machine's question relay was OFF and its outbound is
+the operator's real chat bridge, so neither was touched. A scratch interactive session (Claude Code
+2.1.331, haiku, `--setting-sources project`, a project `.claude/settings.json` carrying only the
+`AskUserQuestion` relay hook) was started in tmux with the relay and the decider switched on in
+ITS OWN environment (`SETCORE_QUESTION_RELAY_*=…`, `SETCORE_AUTO_ANSWER_ENABLED=true`,
+`SETCORE_AUTO_ANSWER_WINDOW_S=45`). `question_relay.command` was `set-auto-answer`, and the
+forward command was a recorder that appends what it receives to a scratch file — standing in for
+the chat bridge. So this proves the hook → decider → fork → forward → window → write path on a
+real session, and the fleet surface on the real dashboard; it does NOT prove the real bridge
+renders the proposal (task 5.1 stays open for that). The scratch tree held a decision in its
+`CLAUDE.md`, an answer in `docs/importer-notes.md`, and (later) an approval given in the
+conversation. The "operator" answers below were delivered through `question_relay.deliver_answer`
+— the same answer file the fleet and the bridge write.
+
+| # | question | proposal (tier, checked source) | outcome | human answer | decision latency |
+|---|---|---|---|---|---|
+| 1 | banner colour, TEAL / ORANGE | TEAL — `decided`, file excerpt of `CLAUDE.md` checked | **written** after the 45 s window; the session continued with `ANSWER=TEAL` | — | 11.6 s |
+| 2 | retry count, 1 / 3 / 5 | the fork abstained (kb could not search: see below) | no-decision, forwarded unchanged | 3 | 6.0 s |
+| 3 | retry count, 2 / 3 / 4 | 3 — `found`, `docs/importer-notes.md` excerpt checked, the section came from `set-kb` | **written**; session continued with `ANSWER=3` | — | 8.1 s |
+| 4 | may I push 3 commits? | the fork abstained | no-decision, forwarded unchanged, nothing written | No, keep local | — |
+| 5 | footer colour, TEAL / ORANGE | TEAL — `decided` | **cancelled from the fleet panel**; at the original write time the session was still waiting and no answer file existed | ORANGE | — |
+| 6 | may I push 2 commits? (after the operator wrote "you may always push … I approve every push") | Yes, push — `decided`, the operator's quote checked verbatim | **excluded** (`outward step: publish`); forwarded with the recommendation; still waiting a minute after the window; nothing written | No, keep local | — |
+
+The decision log (`~/.local/share/set-core/auto-answer/decisions.jsonl`, mode 600, directory 700)
+held one record per question with the proposal and the human answer side by side; the fork's cache
+read on the later questions was 52–90 k tokens against 4–6 uncached.
+
+**Two defects the live run found, and one environment fact:**
+
+- **The fork ran on the wrong model.** Question 1 was forked on `anthropic/opus` while the session
+  was haiku: the tmux server had been started from inside another agent's systemd scope, so the
+  scratch session INHERITED that unit, and the unit's provider record belonged to the other agent.
+  Fixed in `session_launch`: the transcript's measured model wins, and the record supplies only the
+  provider, and only when the measured model is that provider's. Questions 2–6 forked on
+  `claude-haiku-5-5` (read back from each record's `launch` field). A unit test holds the case.
+- **The panel showed the fork's file reference as an absolute path** (the forwarded text already
+  showed it relative). Fixed: the pending view shortens it the way the forward does.
+- `set-kb` refuses to build an index in a tree whose `.set/` is not gitignored (the index carries
+  corpus text). Question 2 ran before the scratch tree had that line, logged `kb: not used (exit 2)`,
+  and the fork — with the answer only in a docs file outside the decision locations — abstained.
+  Question 3, after `.set/` was ignored, was answered `found` from the kb's section. That is the
+  D8a path working, and it is why the kb step exists.
+
+**Seen on the dashboard (task 4.3), in the browser:** the header control with its pending count
+(`🤖 1`) beside the relay's waiting count (`⌛ 1`); the panel floating top-right over the fleet with
+the pending proposal (agent, question, `→ 3`, tier, the checked excerpt, a live countdown, cancel)
+and the recent decisions with the operator's own answer next to the proposal (`you: 3`,
+`written`); the asking agent's tile carrying `auto «3» in 14s`; cancel emptying the pending list.
+The switch read `off` because the machine config was off — the scratch session had it on in its
+own environment only; and the panel's `window 60s` is likewise the machine value, not the 45 s
+the session ran with.
