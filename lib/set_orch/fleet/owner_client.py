@@ -185,6 +185,8 @@ class OwnerClient:
         provider: Optional[str] = None,
         model: Optional[str] = None,
         project: Optional[str] = None,
+        mandate_id: Optional[str] = None,
+        mandate_kind: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Ask the owner to start an agent.
 
@@ -220,6 +222,14 @@ class OwnerClient:
             params["model"] = model
         if project:
             params["project"] = project
+        if mandate_id:
+            # ASK FIRST, for the reason above: an owner that does not know the
+            # parameter drops it, and the agent starts without the carrier and
+            # without the id — a mandate on the tile that the agent was never told.
+            self.require_feature("mandate", because="the mandate")
+            params["mandate_id"] = mandate_id
+            if mandate_kind:
+                params["mandate_kind"] = mandate_kind
         return self.request("start", params)
 
     def stop(self, label: str) -> Dict[str, Any]:
@@ -238,6 +248,7 @@ class OwnerClient:
         label: Optional[str] = None,
         resume_argv: Optional[List[str]] = None,
         provider_unit: Optional[str] = None,
+        mandate_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Resume an orphan.
 
@@ -255,6 +266,9 @@ class OwnerClient:
             params["resume_argv"] = list(resume_argv)
         if provider_unit:
             params["provider_unit"] = provider_unit
+        if mandate_id:
+            self.require_feature("mandate", because="the mandate")
+            params["mandate_id"] = mandate_id
         return self.request("recover", params)
 
     def write(self, label: str, data: bytes) -> int:

@@ -1,0 +1,20 @@
+#!/bin/bash
+# set-fleet-mandate — why an agent was started: read it, declare it, and the
+# SessionStart hook the fleet hands every agent it starts.
+#
+# `hook` runs before the agent has a turn, on every start, clear, compaction and
+# resume. It must never fail a session start: it prints the mandate as
+# session-start context, or prints nothing, and exits 0 either way.
+#
+# Same Python-resolution shape as `set-fleet-roster`, and `-m` rather than a file
+# path because the module uses package-relative imports.
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+export SET_TOOLS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+source "$SCRIPT_DIR/set-common.sh" 2>/dev/null
+
+PYTHON="$(find_python 2>/dev/null)" || PYTHON="python3"
+
+exec env PYTHONPATH="$SET_TOOLS_ROOT/lib:$SET_TOOLS_ROOT/modules/web${PYTHONPATH:+:$PYTHONPATH}" \
+     "$PYTHON" -m set_orch.fleet.mandate_cli "$@"

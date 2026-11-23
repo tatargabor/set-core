@@ -753,10 +753,11 @@ def test_this_owner_declares_every_parameter_a_caller_may_send(monkeypatch, tmp_
     """
     daemon = ownerd_mod.OwnerDaemon(str(tmp_path / "o.sock"), owner=_FakeOwner())
     features = set(_run(daemon._do_health({}))["features"])
-    assert features == {"provider-selection", "unit-origin"}
+    assert features == {"provider-selection", "unit-origin", "mandate"}
 
     import inspect
     src = inspect.getsource(ownerd_mod.OwnerDaemon._do_start)
     # Each declared feature names a parameter this handler actually reads.
     assert 'params.get("provider")' in src
     assert 'params.get("requested_by")' in src
+    assert 'params.get("mandate_id")' in src

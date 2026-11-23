@@ -45,7 +45,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional, Sequence
 
-from . import provider_record, scopes
+from . import mandate_delivery, provider_record, scopes
 from ..providers import resolver as providers
 from ..providers.errors import (
     ConfigError, IncompleteCredential, MissingCredential, ProviderError,
@@ -82,7 +82,12 @@ DEFAULT_AGENT_ARGV = ("claude", "--dangerously-skip-permissions")
 #: now is that its silent loss writes a FALSE record rather than an empty one.
 #: The design distinguishes "no origin was declared" from "the origin is
 #: unknown"; a dropped parameter produces the first while the second is true.
-FEATURES = frozenset({"provider-selection", "unit-origin"})
+#:
+#: `mandate` covers `mandate_id` / `mandate_kind`. Dropped silently by an older
+#: owner, the agent would start without the session-start carrier and without the
+#: id in its environment — a running agent whose tile claims a mandate it was never
+#: told and that nothing can join back to its record.
+FEATURES = frozenset({"provider-selection", "unit-origin", "mandate"})
 
 #: Resolution refusals, as KINDS rather than as prose. A caller that has to grep
 #: the sentence to tell "you named a provider that does not exist" from "this
@@ -668,6 +673,22 @@ class OwnerDaemon:
             argv = argv + list(plan.launch_args(argv))
             logger.info("fleet owner: %s -> %s", label, plan.describe())
 
+        # The mandate travels as an ID and a KIND, never as text: the goal lives
+        # in the dashboard's record and reaches the agent through the hook these
+        # additions wire in. Nothing is persisted here, and no caller-supplied
+        # string becomes part of the argv on this path. After the provider block
+        # on purpose — the opening line is the positional prompt and must be last.
+        mandate_id = params.get("mandate_id")
+        if mandate_id:
+            add_env, add_argv = mandate_delivery.launch_additions(
+                str(mandate_id), label=label,
+                kind=str(params.get("mandate_kind") or "work"),
+                requested_by_agent=bool(params.get("requested_by")),
+            )
+            env = {**(env or {}), **add_env}
+            argv = argv + add_argv
+            logger.info("fleet owner: %s carries mandate %s", label, mandate_id)
+
         # Blocking: `start` waits for systemd to report the scope active. Off the
         # loop, or every other agent's drain stalls behind it.
         agent = await asyncio.to_thread(
@@ -779,6 +800,21 @@ class OwnerDaemon:
                 resume_argv = base + list(extra)
             logger.info("fleet owner: recovering %s (record %s) -> %s",
                         unit, record_unit, plan.describe())
+
+        # A resumed agent keeps the mandate its session held: the id goes back
+        # into the environment and the session-start carrier back onto the argv.
+        # No opening line — a restore hands the session back to whoever had it.
+        mandate_id = params.get("mandate_id")
+        if mandate_id:
+            add_env, add_argv = mandate_delivery.launch_additions(
+                str(mandate_id), label=params.get("label") or unit,
+                kind="work", requested_by_agent=False,
+            )
+            resume_argv = list(resume_argv or [
+                "claude", "--dangerously-skip-permissions",
+                "--resume", params["session_id"]]) + add_argv
+            env = {**(env or {}), **add_env}
+            logger.info("fleet owner: recovering %s with mandate %s", unit, mandate_id)
 
         agent = await asyncio.to_thread(
             recover,
