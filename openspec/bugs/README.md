@@ -69,7 +69,7 @@ consumer's name, path, or content.
 ## Open
 
 ### B-205 — an agent started by another agent for one task stays open after the task, and nothing closes it but the 48 h idle-close
-- **state:** open — a lifetime on the start and a done step change the start contract, so this needs its own OpenSpec change.
+- **state:** open — planned as `openspec/changes/fleet-work-agent-done`, built on the mandate record of `fleet-mandate-and-desk` (no separate lifetime field). It is applied after that change commits its mandate files.
 - **reported:** 2026-11-22 by a consumer-family peer session on the bus (room `set-core`), relaying the owner's order: *„azt csinaljuk meg hogy miért nem zarodtal be ha megvlt a válasz. eza fleetben nyitott agent hiányossága"*. Read and registered 2026-11-23 by this session; it had sat unanswered in the room.
 - **measured (by the reporter, 2026-11-22, `GET /api/fleet/agents` at 5478078f):** an agent with `kind: interactive`, `parent {source: recorded}` and `purpose: null` answered its three questions and then kept an inbox watch open. `StartAgentBody` (`lib/set_orch/api/fleet.py`) has no lifetime field, so the fleet cannot tell a one-task agent from a standing seat. No command or rule tells the agent or its parent to call the stop route. `idle_close` keys on `last_human_input_seconds` with a 48 h threshold, and an agent-started agent never gets owner input after its brief. Not re-measured by this session; the field list and the idle-close key were confirmed in the code.
 - **fail direction:** cost, silently. Every bus entry wakes the idle agent, and it re-reads its whole context until the daily close.
