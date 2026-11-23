@@ -85,15 +85,38 @@ The worker writes the answer to a temporary file and links it to the answer path
 human answer already exists. It never overwrites. A cancel removes the pending record, and the
 worker re-reads it immediately before writing.
 
-### D8 — The lookup is a read-only headless session in the asking tree
-The model call runs with `cwd` = the session's working directory, tools limited to reading and
-searching, hooks disabled, no persisted session, and the relay's guard variable set (so it cannot
-relay its own questions). The prompt names where decisions live — the instruction files of the
-project and the user, `.claude/rules/`, the session's newest handoff under `.set/handoff/`, open
-changes under `openspec/changes/`, `openspec/bugs/README.md` when present, the project's memory
-directory — and any `auto_answer.extra_paths`. These are framework and runtime conventions, not a
-project's domain, so the core layer stays domain-free. The output is one JSON object; anything
-else is "no decision".
+### D8 — The decision is made by a FORK of the asking session, with references that are checked
+Decided by the user on 2026-11-23, after the S2 replay: *„a forkolt session nekem alapvetően
+jónak tűnik ha forrásokra kérdezünk rá hivatkozásokkal és annak az eredményét adjuk be a
+válaszba"*. Most of the operator's decisions are spoken in the session — they exist in the asking
+session's context and in no file. A separate headless call in the tree (the first version of this
+decision) cannot see them; S2 measured it at 55 % with sources only.
+
+So the worker runs `claude --resume <session> --fork-session -p` with the decision prompt. The
+fork sees the whole conversation, the loaded handoff and the rules, writes to a NEW session id,
+and leaves the original untouched. It shares the original's prompt prefix, so most of it is read
+from the cache. Tools: read-only (reading and searching files); hooks disabled; the relay guard
+variable set, so the fork cannot relay its own questions; bounded in time.
+
+The prompt asks the fork to predict the OPERATOR's answer from the operator's own words, not to
+repeat the agent's recommendation, and to return references: each one either an operator message
+from the conversation (quoted verbatim) or a file path with a verbatim excerpt. The fork's own
+tier is a claim; the tier the decider USES is derived from the references after a mechanical
+check:
+- a reference to the conversation counts only if the quoted text occurs verbatim in an OPERATOR
+  turn of the session's transcript before the question;
+- a file reference counts only if the excerpt occurs verbatim in that file;
+- `decided` needs at least one checked operator quote or decision record; `found` at least one
+  checked file excerpt; a choice whose references all fail is downgraded to `likely` with its
+  confidence, and a `likely` answer can still only be written above `likely_min`.
+
+The decider's own knowledge-base step (D8a) runs first and its hits are given to the fork as
+candidate sources. The fork's result — choice, checked references, derived tier — is what the
+proposal shows and what the window writes.
+
+*Alternative kept as a fallback:* the headless call in the tree with sources only, used when the
+session's transcript cannot be resumed (no transcript, a provider the fork cannot reach). It is
+logged as `fallback: sources-only`.
 
 ### D8a — The knowledge base runs first, and the decider runs it, not the model
 The fixed locations in D8 find what we already know the place of. *"It is in the information, it
@@ -132,6 +155,11 @@ confidence.
 
 ## Risks / Trade-offs
 
+- [The fork repeats the agent's own recommendation] → the prompt asks for the operator's words, the
+  references are checked, and the replay (task 0.4) measures the fork against the recommended-option
+  baseline before anything is written.
+- [Cost of a fork: it re-reads the session's context] → the shared prefix is mostly cached; only
+  while the switch is on; measured in task 2.6.
 - [A `likely` answer is wrong] → it is proposed with its tier before it is written; the window,
   the bar and the switch are the operator's; outward steps are excluded regardless.
 - [The pattern check misses a phrasing of an outward step] → the model's flag is the second check;
