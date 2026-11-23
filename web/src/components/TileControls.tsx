@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   Expand, Maximize2, Minimize2, MessageSquare, PanelBottom, PanelLeft, PanelRight, PanelTop,
@@ -29,7 +30,7 @@ export const DOCK_CONTROLS: { edge: DockEdge; icon: LucideIcon; where: string }[
 ]
 
 import type { FleetAgent } from '../lib/fleetTypes'
-import { terminalOffer } from '../lib/fleetTerminal'
+import { TMUX_REASON, terminalOffer } from '../lib/fleetTerminal'
 
 /**
  * A tile's controls, as window controls — asked for on 2026-08-19:
@@ -157,6 +158,29 @@ export default function TileControls({
 }) {
   const offer = terminalOffer(agent, ownerReachable)
   const dockable = onDock && agent.terminal_label
+  // The tmux viewer's request, and its refusal. The refusal stays on the control
+  // (amber, the server's sentence in its label) until the next attempt — a
+  // failure that vanished on its own would be a failure nobody saw.
+  const [viewer, setViewer] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null })
+  const openViewer = async (pid: number) => {
+    setViewer({ busy: true, error: null })
+    try {
+      const res = await fetch(`/api/fleet/agents/${pid}/tmux-view`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || typeof body?.label !== 'string') {
+        setViewer({ busy: false, error: String(body?.detail ?? `the server answered ${res.status}`) })
+        return
+      }
+      setViewer({ busy: false, error: null })
+      onTerminal(body.label)
+    } catch (err) {
+      setViewer({ busy: false, error: `the request did not reach the server: ${String(err)}` })
+    }
+  }
   return (
     <span className="ml-auto flex items-center gap-0.5 shrink-0" data-tile-controls={agent.pid}>
       {/* FIRST in the row, and not a button: it reports a condition, it does not
@@ -247,6 +271,22 @@ export default function TileControls({
             ? 'close the terminal — the agent keeps running'
             : 'open the terminal — the framework holds this one'}
           onClick={() => onTerminal(terminalOpen ? null : offer.label)}
+        />
+      ) : offer.kind === 'tmux' ? (
+        /* Foreign, inside tmux: the one foreign case with an act. The act is a
+           VIEWER — `tmux attach` on a pty the owner holds — and the label says
+           so, including what closing it does and does not do. */
+        <IconButton
+          icon={SquareTerminal}
+          testId="terminal-tmux"
+          tone={viewer.error ? 'amber' : 'default'}
+          mark={{ 'data-fleet-terminal-tmux': offer.pane }}
+          label={viewer.busy
+            ? 'opening a tmux viewer…'
+            : viewer.error
+              ? `the tmux viewer did not open: ${viewer.error} — click to try again`
+              : `open a terminal through tmux (pane ${offer.pane}) — ${TMUX_REASON}`}
+          onClick={viewer.busy ? undefined : () => { void openViewer(offer.pid) }}
         />
       ) : (
         /* The absent cases carry `data-fleet-terminal-absent` and their REASON on

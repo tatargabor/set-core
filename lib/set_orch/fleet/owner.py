@@ -778,6 +778,16 @@ def recover(
     rather than proceeding into a fork.
     """
     unit = scopes.as_unit_name(unit)
+    # A scope this owner HOLDS is not an orphan's, whatever process was found in
+    # it. Measured 2026-11-23: a child agent a held agent started through tmux
+    # lives in the parent's scope, and stopping that scope here would kill the
+    # live parent. Refused before anything is stopped.
+    held = next((a for a in owner.owned() if a.unit == unit), None)
+    if held is not None:
+        raise OwnerError(
+            f"{unit} is held here as {held.label}; refusing to recover — "
+            "stopping it would end a live agent this owner holds"
+        )
     _refuse_if_the_session_is_running(session_id)
     scope = scopes.get(unit)
     if scope is not None and not scopes.is_gone(unit):

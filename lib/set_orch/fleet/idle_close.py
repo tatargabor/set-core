@@ -79,11 +79,18 @@ def classify(agent: Dict[str, Any], threshold_s: float) -> str:
         return KEEP_UNMEASURED
     if idle <= threshold_s:
         return KEEP_RECENT
-    if not agent.get("terminal_label"):
+    # A tmux VIEWER's label is a terminal we hold on an agent we did not start:
+    # stopping it detaches the viewer and closes nothing, so it does not count.
+    if not agent.get("terminal_label") or _viewer_only(agent):
         return UNREACHABLE
     if _is_busy(agent):
         return KEEP_BUSY
     return CLOSE
+
+
+def _viewer_only(agent: Dict[str, Any]) -> bool:
+    """True when the agent's terminal label belongs to a tmux viewer, not to it."""
+    return bool((agent.get("tmux") or {}).get("viewer"))
 
 
 def listed_agents(listing: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -230,7 +237,7 @@ def upcoming(agents: List[Dict[str, Any]], threshold_s: float, until_next_s: Opt
     out: List[Dict[str, Any]] = []
     for a in agents:
         idle = a.get("last_human_input_seconds")
-        if a.get("kind") != "interactive" or not a.get("terminal_label"):
+        if a.get("kind") != "interactive" or not a.get("terminal_label") or _viewer_only(a):
             continue
         if not isinstance(idle, (int, float)) or isinstance(idle, bool):
             continue

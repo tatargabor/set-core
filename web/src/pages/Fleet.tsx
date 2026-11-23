@@ -909,7 +909,7 @@ function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProjec
            it about whether this seat is cold. */
         const heat = cacheMark(a.cache)
         const why = [
-          a.terminal_label ?? a.name ?? 'unnamed',
+          (shownLabel(a) ?? 'unnamed'),
           a.state,
           a.branch ?? 'no branch',
           `pid ${a.pid}`,
@@ -970,7 +970,7 @@ function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProjec
               </span>
             )}
             <span className={`truncate max-w-[10rem]${heat.kind === 'cold' ? ' text-red-400' : ''}`}>
-              {a.terminal_label ?? a.name ?? 'unnamed'}
+              {(shownLabel(a) ?? 'unnamed')}
             </span>
             {/* The price, once it decides something. While the cache lives its
                 read cost is what the reader pays whatever they do; once it is
@@ -1514,7 +1514,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
             </span>
           )}
           <FleetRename agent={agent} onRenamed={onRenamed}>
-            {agent.terminal_label ?? agent.name ?? <span className="text-fg-muted">unnamed</span>}
+            {shownLabel(agent) ?? <span className="text-fg-muted">unnamed</span>}
           </FleetRename>
           {/* No guessing path exists today, so this marker should never appear —
               which is exactly why it is rendered rather than assumed away. */}
@@ -1680,6 +1680,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
       {terminalOpen && offer.kind === 'available' && (
         <FleetTerminal
           label={offer.label}
+          tmuxViewer={offer.via === 'tmux'}
           onClose={() => onTerminal(null)}
           full={focused}
           onToggleFull={onFocus}
@@ -1717,6 +1718,16 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
  * join this service's control group and die with the next deploy.
  */
 interface OwnerHealth { available: boolean; reason?: string; held?: number }
+
+/**
+ * The name a tile or tab shows. A held agent's label IS its name; a tmux
+ * VIEWER's label is not — it names our `tmux attach` terminal, while the agent
+ * is foreign and keeps the runtime's own name.
+ */
+function shownLabel(a: Pick<FleetAgent, 'terminal_label' | 'name' | 'tmux'>): string | null {
+  if (a.tmux?.viewer) return a.name ?? null
+  return a.terminal_label ?? a.name ?? null
+}
 
 function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: (label: string) => void }) {
   const [owner, setOwner] = useState<OwnerHealth | null>(null)

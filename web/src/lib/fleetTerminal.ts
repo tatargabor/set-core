@@ -40,8 +40,17 @@
 import type { FleetAgent } from './fleetTypes'
 
 export type TerminalOffer =
-  /** A terminal exists at `label`; the surface may open it. */
-  | { kind: 'available'; label: string }
+  /**
+   * A terminal exists at `label`; the surface may open it. `via: 'tmux'` marks a
+   * VIEWER on a foreign agent — the terminal is ours, the agent is not.
+   */
+  | { kind: 'available'; label: string; via?: 'tmux' }
+  /**
+   * Foreign, but running inside a tmux pane: no terminal is held yet, and the
+   * owner CAN start a viewer (`tmux attach`) on request. Not a shade of
+   * `foreign` — it leads to an action, and `foreign` leads to none.
+   */
+  | { kind: 'tmux'; pid: number; pane: string }
   /** No terminal, and none can exist. A statement, and it is measured. */
   | { kind: 'foreign'; reason: string }
   /**
@@ -60,6 +69,9 @@ export type TerminalOffer =
 
 export const FOREIGN_REASON =
   'the framework neither started nor holds it — a terminal cannot be attached to a running foreign session'
+
+export const TMUX_REASON =
+  'not started by the framework, but it runs inside tmux — open a viewer (tmux attach); closing it detaches only the viewer'
 
 export const OWNER_DOWN_REASON =
   'the owner service did not answer, so we do not know whether it has a terminal'
@@ -82,7 +94,11 @@ const NO_LABEL_REASON =
  * owner is up" is not evidence about a process the owner did not list.
  */
 export function terminalOffer(
-  agent: Pick<FleetAgent, 'population' | 'terminal_label'> & { scope?: string | null },
+  agent: Pick<FleetAgent, 'population' | 'terminal_label'> & {
+    scope?: string | null
+    pid?: number
+    tmux?: FleetAgent['tmux']
+  },
   ownerReachable?: boolean,
 ): TerminalOffer {
   if (agent.population === 'started-here') {
@@ -103,6 +119,16 @@ export function terminalOffer(
     return { kind: 'unknown', reason: NO_LABEL_REASON }
   }
   if (agent.population === 'foreign') {
+    // tmux is the one way a foreign agent gets a terminal, and it is a VIEWER:
+    // offered only when the producer measured the pane, opened only under the
+    // label the producer reports the owner holding.
+    const tmux = agent.tmux
+    if (tmux && typeof tmux.pane === 'string' && typeof agent.pid === 'number') {
+      if (typeof tmux.viewer === 'string' && tmux.viewer !== '' && agent.terminal_label === tmux.viewer) {
+        return { kind: 'available', label: tmux.viewer, via: 'tmux' }
+      }
+      return { kind: 'tmux', pid: agent.pid, pane: tmux.pane }
+    }
     return { kind: 'foreign', reason: FOREIGN_REASON }
   }
   return {

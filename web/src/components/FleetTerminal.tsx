@@ -91,6 +91,12 @@ interface Props {
    * word-jump.
    */
   releaseTabKeys?: boolean
+  /**
+   * This terminal is a tmux VIEWER on an agent the framework did not start.
+   * Its stop control then ends the viewer (one tmux client) and says so — the
+   * agent keeps running in tmux, and a label promising otherwise would lie.
+   */
+  tmuxViewer?: boolean
   /** Called when the reader closes the view. Detach only — never a stop. */
   onClose: () => void
   /**
@@ -247,7 +253,7 @@ type Phase =
   | { kind: 'refused'; reason: string }
   | { kind: 'closed'; reason: string }
 
-export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput, headerSlot, projectRoot, knownFiles, agentCwd, onOpenFile, checkouts, home, onReveal, releaseTabKeys = false }: Props) {
+export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput, headerSlot, projectRoot, knownFiles, agentCwd, onOpenFile, checkouts, home, onReveal, releaseTabKeys = false, tmuxViewer = false }: Props) {
   const host = useRef<HTMLDivElement | null>(null)
   // Held in a ref because the effect below depends on `[label]` alone: the
   // handler is captured once, so a parent passing a fresh closure each render
@@ -1389,7 +1395,9 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
               testId="stop-confirm"
               active
               mark={{ 'data-fleet-terminal-stop-confirm': 'armed' }}
-              label={stopping ? 'stopping…' : 'sure? stop it — the process ends, which is not the same as closing this view'}
+              label={stopping ? 'stopping…' : tmuxViewer
+                ? 'sure? end the tmux viewer — only this tmux client exits; the agent keeps running in tmux'
+                : 'sure? stop it — the process ends, which is not the same as closing this view'}
               onClick={() => { if (!stopping) void stop() }}
             />
           ) : (
@@ -1397,7 +1405,9 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
               icon={CircleStop}
               testId="stop"
               mark={{ 'data-fleet-terminal-stop': 'armable' }}
-              label="stop the agent — a separate, explicit act"
+              label={tmuxViewer
+                ? 'end the tmux viewer — the agent is not ours and keeps running in tmux'
+                : 'stop the agent — a separate, explicit act'}
               onClick={() => setStopConfirm(true)}
             />
           )}

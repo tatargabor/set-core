@@ -62,8 +62,12 @@ export type Ownership = 'ours' | 'orphaned' | 'foreign' | 'unknown'
  * can be attached, the framework holds it — that IS the ownership question.
  */
 export function ownershipOf(agent: Partial<FleetAgent>, ownerReachable?: boolean): Ownership {
-  const kind = terminalOffer(agent, ownerReachable).kind
-  if (kind === 'available') return 'ours'
+  const offer = terminalOffer(agent, ownerReachable)
+  const kind = offer.kind
+  // A tmux viewer is a terminal WE hold on an agent we did not start: the edge
+  // answers "who holds the agent", so it stays foreign.
+  if (kind === 'available') return offer.via === 'tmux' ? 'foreign' : 'ours'
+  if (kind === 'tmux') return 'foreign'
   if (kind === 'orphaned') return 'orphaned'
   if (kind === 'foreign') return 'foreign'
   return 'unknown'

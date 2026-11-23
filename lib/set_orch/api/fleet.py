@@ -49,6 +49,7 @@ from ..fleet.discovery import (
     resolve_project,
 )
 from ..fleet import scopes as fleet_scopes
+from ..fleet import tmux_view as fleet_tmux_view
 from ..fleet import instruct as fleet_instruct
 from ..fleet import channels as fleet_channels_mod
 from ..fleet import purpose as fleet_purpose
@@ -167,11 +168,15 @@ def _cache_payload(agent) -> Dict[str, Any]:
     }}
 
 
-def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = None,
-                   seats: Optional[Dict[str, Any]] = None,
-                   purposes: Optional[List[Any]] = None,
-                   descendants: Optional[Dict[str, List[int]]] = None,
-                   declared: Optional[tuple] = None) -> Dict[str, Any]:
+def _terminal_population(
+    pid: int, owned: Optional[Dict[int, Dict[str, Any]]],
+) -> tuple:
+    """(population, terminal_label, scope, tmux_row) for one agent pid.
+
+    Separated from `_agent_payload` so the decision can be tested on its own —
+    it is the one that decides whether the screen offers a recovery that STOPS
+    a scope, so it is the one that has to be held by a test.
+    """
     # Three values, not two, and the third is why this is not a boolean. A
     # terminal exists only for a process the framework started and still holds
     # (task 5.2), so:
@@ -182,8 +187,8 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
     # about an agent that has one, whenever the owner is merely restarting.
     if owned is None:
         population, terminal_label, scope = "unknown", None, None
-    elif agent.pid in owned:
-        population, terminal_label = "started-here", owned[agent.pid].get("label")
+    elif pid in owned:
+        population, terminal_label = "started-here", owned[pid].get("label")
         scope = None
     else:
         # FOUR values, and the fourth is task 5.5. Measured: a pty-attached
@@ -199,9 +204,56 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # Asked of the PROCESS's own cgroup rather than of anything we wrote
         # down: a record of what we started is a record of our intent, and after
         # a crash the two differ precisely when it matters.
-        scope = fleet_scopes.scope_of(agent.pid)
+        scope = fleet_scopes.scope_of(pid)
+        # A scope the owner HOLDS RIGHT NOW is not an orphan's. Measured
+        # 2026-11-23: a held agent ran `tmux new-session -d …` to start a child
+        # agent; the tmux server forks inside the caller's cgroup, so the child
+        # sat in the PARENT's scope and was reported `orphaned` — and the offered
+        # recovery stops that scope, which kills the live parent along with it.
+        # The direction is the destructive one, so the held-unit check comes
+        # first: such a child is somebody else's process inside our scope, which
+        # is `foreign` as far as a terminal is concerned.
+        held_units = {str(a.get("unit")) for a in owned.values() if a.get("unit")}
+        if scope and scope in held_units:
+            logger.debug(
+                "fleet api: pid %s sits in held scope %s — a child of a held agent, not an orphan",
+                pid, scope,
+            )
+            scope = None
         population = "orphaned" if scope else "foreign"
         terminal_label = None
+
+    # A foreign agent inside tmux can still be WATCHED: the owner can hold a
+    # viewer (`tmux attach-session`) on a pty of its own. The population stays
+    # `foreign` — that is a statement about who started the agent, and a viewer
+    # does not change it. See `fleet/tmux_view.py` for what is measured.
+    tmux_row = None
+    if population == "foreign":
+        pane = fleet_tmux_view.pane_of(pid)
+        if pane is not None:
+            tmux_row = {"pane": pane.pane, "viewer": None}
+            held_viewers = {
+                str(a.get("label")) for a in (owned or {}).values()
+                if str(a.get("label") or "").startswith(fleet_tmux_view.VIEWER_PREFIX)
+            }
+            # The session name costs a subprocess, so it is asked only when a
+            # viewer is held at all — the common case is none.
+            if held_viewers:
+                session = fleet_tmux_view.session_of(pane)
+                label = fleet_tmux_view.viewer_label(session) if session else None
+                if label in held_viewers:
+                    tmux_row["viewer"] = label
+                    terminal_label = label
+
+    return population, terminal_label, scope, tmux_row
+
+
+def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = None,
+                   seats: Optional[Dict[str, Any]] = None,
+                   purposes: Optional[List[Any]] = None,
+                   descendants: Optional[Dict[str, List[int]]] = None,
+                   declared: Optional[tuple] = None) -> Dict[str, Any]:
+    population, terminal_label, scope, tmux_row = _terminal_population(agent.pid, owned)
 
     held = (owned or {}).get(agent.pid, {})
     requested_by = held.get("requested_by")
@@ -239,7 +291,7 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # `unknown` — the owner could not be asked — keeps the runtime's name
         # rather than blanking: not knowing who holds an agent is not a reason to
         # stop being able to refer to it.
-        "name": terminal_label or agent.name,
+        "name": (terminal_label if population == "started-here" else None) or agent.name,
         # Kept, and deliberately under a name that says whose it is. It is what
         # the runtime calls the session, which is worth having in a diagnosis and
         # is never what a held agent is called.
@@ -327,6 +379,10 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # for `started-here`, and only under the label named here.
         "population": population,
         "terminal_label": terminal_label,
+        # Present only for a `foreign` agent measured to run inside a tmux pane:
+        # `viewer` is the label of the owner-held `tmux attach` terminal when one
+        # exists (then `terminal_label` names it too), null when none is held yet.
+        "tmux": tmux_row,
         # The scope this agent runs in, when the framework started it and no
         # longer holds it. Present ONLY for `orphaned`: it is what `recover`
         # must stop before resuming, and that ordering is load-bearing —
@@ -1393,6 +1449,71 @@ def fleet_start_agent(body: StartAgentBody) -> Dict[str, Any]:
         agent["label"], cwd, why, agent.get("pid"),
     )
     return agent
+
+
+class TmuxViewBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rows: int = 40
+    cols: int = 120
+
+
+@router.post("/api/fleet/agents/{pid}/tmux-view")
+def fleet_tmux_view_start(pid: int, body: Optional[TmuxViewBody] = None) -> Dict[str, Any]:
+    """Open a VIEWER on a foreign agent that runs inside tmux.
+
+    The owner starts `tmux attach-session` on a pty it holds, and the answer's
+    `label` is opened like any other held terminal. Nothing about the agent
+    changes: it is not adopted, resumed or moved, and stopping the viewer
+    detaches one tmux client.
+
+    Everything is re-derived from the pid here — the browser names an agent, it
+    never supplies a socket, a target or an argv. And the pid must be a live
+    agent discovery knows: this route is not a way to attach to arbitrary tmux
+    sessions on the machine.
+
+    Idempotent: a viewer already held for the pane's session is returned, not
+    started twice.
+    """
+    body = body or TmuxViewBody()
+    agent = discover_agent(pid)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"no live agent with pid {pid}")
+    pane = fleet_tmux_view.pane_of(pid)
+    if pane is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"pid {pid} does not run inside a tmux pane this machine can reach",
+        )
+    session = fleet_tmux_view.session_of(pane)
+    argv = fleet_tmux_view.viewer_argv(pane)
+    if session is None or argv is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"the tmux server {pane.server_pid} does not answer for pane {pane.pane}",
+        )
+    label = fleet_tmux_view.viewer_label(session)
+    client = OwnerClient()
+    try:
+        held = {str(a.get("label")) for a in client.list_agents()}
+        if label in held:
+            logger.info("fleet api: tmux viewer %s already held for pid %s", label, pid)
+            return {"label": label, "pid": pid, "pane": pane.pane, "started": False}
+        started = client.start(
+            label=label, cwd=agent.cwd or os.path.expanduser("~"), argv=argv,
+            rows=body.rows, cols=body.cols,
+        )
+    except OwnerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except OwnerClientError as exc:
+        kind = getattr(exc, "kind", None)
+        if kind in _KIND_STATUS:
+            raise HTTPException(status_code=_KIND_STATUS[kind], detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    logger.info(
+        "fleet api: started tmux viewer %s for pid %s (server %s, pane %s, viewer pid %s)",
+        label, pid, pane.server_pid, pane.pane, started.get("pid"),
+    )
+    return {"label": label, "pid": pid, "pane": pane.pane, "started": True}
 
 
 @router.post("/api/fleet/agents/{label}/stop")

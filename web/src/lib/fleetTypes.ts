@@ -139,8 +139,17 @@ export interface FleetAgent {
    * than as yes.
    */
   project_root?: string | null
-  /** The terminal's address. Non-null only for `started-here`. */
+  /**
+   * The terminal's address. Non-null for `started-here`, and for a `foreign`
+   * agent inside tmux while the owner holds a viewer on it (`tmux.viewer`).
+   */
   terminal_label?: string | null
+  /**
+   * Present only for a `foreign` agent measured to run inside a tmux pane. The
+   * agent stays foreign; what the owner can hold is a VIEWER (`tmux attach`),
+   * and `viewer` is its label once one is held, null before.
+   */
+  tmux?: { pane: string; viewer: string | null } | null
   /**
    * The last thing said in this session — task 7.3, so the tile answers "what
    * is going on" without being opened.
