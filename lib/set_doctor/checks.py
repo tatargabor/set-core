@@ -447,7 +447,8 @@ def bus_status(sac_by_path: Optional[dict], path: str, skip_reason: Optional[str
 
 
 def check_project(ctx: Context, name: str, entry: dict, claude_projects, sac_by_path,
-                  kb_command: Optional[list] = None, module_skip: Optional[str] = None) -> list:
+                  kb_command: Optional[list] = None, module_skip: Optional[str] = None,
+                  registry: Optional[dict] = None) -> list:
     path = os.path.expanduser(str(entry.get("path") or ""))
     tag = lambda cs: [setattr(c, "project", name) or c for c in cs]  # noqa: E731
     if not path or not os.path.isdir(path):
@@ -462,7 +463,7 @@ def check_project(ctx: Context, name: str, entry: dict, claude_projects, sac_by_
     out = [Check("project", "path", "ok", path)]
     if entry.get("deploy") is False:
         reason = "data repository (deploy: false)"
-        out += [Check("project", n, "skip", reason) for n in ("deploy", "mcp", "bus")]
+        out += [Check("project", n, "skip", reason) for n in ("deploy", "mcp", "bus", "auto-clear")]
     else:
         out.append(deployed_version(ctx, path))
         if ctx.deep:
@@ -470,6 +471,8 @@ def check_project(ctx: Context, name: str, entry: dict, claude_projects, sac_by_
         out.append(mcp_registration(ctx, claude_projects, path))
         out += bus_status(sac_by_path, path, module_skip)
         out.append(role_rule(ctx, name, path))
+        from set_doctor import auto_clear
+        out.append(auto_clear.check(name, entry, path, registry, ctx.home, ctx.env))
     if module_skip:
         out.append(Check("project", "kb", "skip", module_skip, module="set-kb"))
     else:
@@ -727,7 +730,7 @@ def run_all(ctx: Context, workers: int = 8) -> list:
         alive = {n: e for n, e in registry.items() if n not in gone and n not in archived}
         mod_future = pool.submit(run_modules, ctx, decls, alive, workers) if decls and not ctx.child else None
         for cs in pool.map(lambda n: check_project(ctx, n, registry[n], claude_projects, sac_by_path,
-                                                   kb_command, module_skip), names):
+                                                   kb_command, module_skip, registry), names):
             checks += cs
         if mod_future is not None:
             wanted = set(names)

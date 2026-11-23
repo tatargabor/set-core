@@ -16,10 +16,11 @@
 - [ ] 3.2 Own-mechanism detection: skip the reload entry when a `SessionStart` command containing `reinject` covers the clear source, the arm entry when a `PostToolUse` command contains `handoff-arm`; print the skip [REQ: a-projects-own-reload-or-arm-mechanism-is-not-duplicated]
 - [ ] 3.3 Keep both entries out of the base set's "already canonical" check [REQ: a-projects-own-reload-or-arm-mechanism-is-not-duplicated]
 - [ ] 3.4 Tests: empty settings → both added; a settings file already carrying the package strings → unchanged (dedup); a project reload script → package reload not added; project hooks preserved in every case [REQ: a-projects-own-reload-or-arm-mechanism-is-not-duplicated]
+- [ ] 3.5 Write `<tree>/.set/handoff/.reload-wired-at` (ISO-8601 UTC, `Z`) when the reload entry is first added or its command changes; never on a no-op merge (D3 stamp contract)
 
 ## 4. The watcher unit (D3, D4)
 
-- [ ] 4.1 `templates/systemd/auto-clear.service`: watcher path, `--dir`, `--interval 60`, `--auto-continue default`, PATH environment; no threshold, background or `--started-after` flag — the start filter reads the package's wiring stamp (precondition: the package's `started-after-self-exclusion` is shipped; check before starting this task) [REQ: init-installs-auto-clear-by-default]
+- [ ] 4.1 `templates/systemd/auto-clear.service`: watcher path, `--dir`, `--interval 60`, `--auto-continue default`, PATH environment; no threshold or background flag. Until the package's `started-after-self-exclusion` ships, the unit passes `--started-after` with the time in the tree's `.set/handoff/.reload-wired-at`; after it ships, the flag goes (D3) [REQ: init-installs-auto-clear-by-default]
 - [ ] 4.2 Existing-unit detection by name or by an `ExecStart` that runs this project's watcher; leave it byte-identical and name each overriding flag with the edit that removes it [REQ: an-existing-watcher-unit-is-never-rewritten]
 - [ ] 4.3 Create, `daemon-reload`, `enable --now` only after the reload hook is wired (package or project); skip with a line when `systemctl --user` is unavailable [REQ: init-installs-auto-clear-by-default]
 - [ ] 4.4 Tests with a fake `systemctl` on PATH and a sandbox unit dir: created + started; existing hand unit untouched and flags reported; second run does not restart [REQ: an-existing-watcher-unit-is-never-rewritten]
@@ -31,9 +32,9 @@
 
 ## 6. Doctor check (D5)
 
-- [ ] 6.1 `lib/set_doctor/checks.py`: `auto_clear(ctx, name, path)` in `check_project`'s non-data branch; skip for archived / `deploy: false` / `auto_clear: false` [REQ: each-project-is-checked-for-auto-clear]
-- [ ] 6.2 WARN cases with fixes: templates missing or not current → `set-project init --project <name>`; reload or arm wired by nobody → same; no unit → same; unit inactive → `systemctl --user start <unit>`; a threshold in the unit or a keep-going hook above 0.9 × the effective `autoCompactWindow` → names the flag and where it sits [REQ: each-project-is-checked-for-auto-clear]
-- [ ] 6.3 Tests per scenario, with a sandbox HOME (settings.json carrying both window keys) and a fake `systemctl`; update the tests that enumerate check names [REQ: each-project-is-checked-for-auto-clear]
+- [x] 6.1 `lib/set_doctor/checks.py`: `auto_clear(ctx, name, path)` in `check_project`'s non-data branch; skip for archived / `deploy: false` / `auto_clear: false` [REQ: each-project-is-checked-for-auto-clear]
+- [x] 6.2 WARN cases with fixes: templates missing or not current → `set-project init --project <name>`; reload or arm wired by nobody → same; no unit → same; unit inactive → `systemctl --user start <unit>`; a threshold in the unit or a keep-going hook above 0.9 × the effective `autoCompactWindow` → names the flag and where it sits [REQ: each-project-is-checked-for-auto-clear]
+- [x] 6.3 Tests per scenario, with a sandbox HOME (settings.json carrying both window keys) and a fake `systemctl`; update the tests that enumerate check names [REQ: each-project-is-checked-for-auto-clear]
 
 ## 7. Close
 
@@ -66,10 +67,27 @@
 - [ ] AC-9: WHEN the package checkout cannot be resolved THEN init exits 0, says auto-clear was skipped and why, writes nothing for it [REQ: a-missing-package-checkout-is-announced-not-fatal, scenario: no-package-checkout]
 
 ### each-project-is-checked-for-auto-clear
-- [ ] AC-10: WHEN templates and hooks exist but no unit THEN warn, detail "unit missing", fix `set-project init --project <name>` [REQ: each-project-is-checked-for-auto-clear, scenario: a-project-without-a-unit]
-- [ ] AC-11: WHEN the unit exists but is inactive THEN warn with `systemctl --user start <unit>` [REQ: each-project-is-checked-for-auto-clear, scenario: an-inactive-unit]
-- [ ] AC-12: WHEN a unit or keep-going hook passes 500000 THEN warn naming the flag and where it sits [REQ: each-project-is-checked-for-auto-clear, scenario: a-threshold-above-the-native-trigger]
-- [ ] AC-13: WHEN everything is current, wired and active THEN ok [REQ: each-project-is-checked-for-auto-clear, scenario: a-complete-install]
-- [ ] AC-14: WHEN the project is archived THEN skip, nothing read [REQ: each-project-is-checked-for-auto-clear, scenario: an-archived-project]
+- [x] AC-10: WHEN templates and hooks exist but no unit THEN warn, detail "unit missing", fix `set-project init --project <name>` [REQ: each-project-is-checked-for-auto-clear, scenario: a-project-without-a-unit]
+- [x] AC-11: WHEN the unit exists but is inactive THEN warn with `systemctl --user start <unit>` [REQ: each-project-is-checked-for-auto-clear, scenario: an-inactive-unit]
+- [x] AC-12: WHEN a unit or keep-going hook passes 500000 THEN warn naming the flag and where it sits [REQ: each-project-is-checked-for-auto-clear, scenario: a-threshold-above-the-native-trigger]
+- [x] AC-13: WHEN everything is current, wired and active THEN ok [REQ: each-project-is-checked-for-auto-clear, scenario: a-complete-install]
+- [x] AC-14: WHEN the project is archived THEN skip, nothing read [REQ: each-project-is-checked-for-auto-clear, scenario: an-archived-project]
 
 ## Notes
+
+- 2026-11-23, group 6 (doctor check): `lib/set_doctor/auto_clear.py`, wired in `check_project`'s
+  deploy branch; `deploy: false` adds `auto-clear` to its skip set; archived projects never reach
+  `check_project` (`archived_entries`, covered by `test_archived_entries_are_left_out_of_a_full_run`).
+  `tests/unit/test_doctor_auto_clear.py` 14 tests; three mutants (unit always active, ExecStart not
+  matched to the tree, native trigger ignored) each fail one test; restore checked with `cmp`.
+  Until group 2 ships, the fix `set-project init --project <name>` does not yet install anything —
+  the doctor and init are meant to ship as one release.
+- Run against four real projects the same day: the package checkout is AHEAD of what the projects
+  carry (an unpushed package commit changed `clear-gate.mjs` and `watch-auto-clear.sh`), so all
+  three installed projects read "templates not current"; one project lacks the arm hook; two pin
+  keep-going `--threshold 500000`; the framework repo itself has nothing installed.
+- Package interface (answered on the bus 2026-11-23): hook command strings are stable; the unit
+  needs no new required flag (`--idle-minutes`/`--idle-floor` default on); a package-owned
+  `versions --json` manifest is planned but not built — keep the git-history walk until it is;
+  keep-going may stop needing `--threshold` once it reads the gate's default — do not merge it with
+  a pinned value then.

@@ -64,7 +64,16 @@ hook was wired) is the package's: its `started-after-self-exclusion` change has 
 write a wiring stamp, `.set/handoff/.reload-wired-at`, that the default filter reads. A unit-level
 `--started-after <install time>` was the first design here and is rejected: measured by the package
 session on 2026-11-23, a fixed start moment silently excludes the session that armed auto-clear
-(2858 and 4926 skips in two trees). **Precondition for task 4.1:** that package change is shipped. An existing unit is
+(2858 and 4926 skips in two trees). **Precondition for task 4.1:** that package change is shipped.
+**Until it is, the unit MUST pass `--started-after <wiring time>` explicitly** — the package session
+confirmed on 2026-11-23 that today's watcher ignores the stamp, so a unit without the flag has no
+start filter at all, and a session older than its reload wiring is cleared and reloads nothing
+(measured on the package side 2026-09-13). The stamp contract agreed on the bus the same day: path
+`<tree>/.set/handoff/.reload-wired-at`; one line, ISO-8601 UTC with `Z`; written by whoever wires the
+reload entry (the hook merge here) when the entry is first added or its command string changes, and
+never on a no-op merge — otherwise every merge would re-exclude live sessions; read per tree, falling
+back to `--dir`; an explicit `--started-after` overrides it. Every existing hand unit on the machine
+carried `--started-after` when checked that day. An existing unit is
 recognised by name OR by any user unit whose `ExecStart` runs that project's watcher (a hand unit may
 be named differently); it is never rewritten, and its overriding flags are named with the edit that
 would remove them.
@@ -80,7 +89,11 @@ prevents.
 measured trigger sat at 366–372k for a 400k window). Hard-coding 370k would be wrong the day the
 window changes; the per-model key is the one that actually applied in the measurement (the
 top-level key read 600000 at the same time, which is why a reader of only that key concluded the
-opposite).
+opposite). The `model` setting may be an alias (`fable`), which names no `modelSettings` key; it
+resolves to the newest `claude-<alias>-*` key that sets a window, else the top-level key. A pinned
+value is also reported when it is merely above the package default, because that is a drift from
+the owner's setting even where the native trigger is higher — the detail says which of the two it
+exceeds.
 
 ### D6 — Recorded constraints, not built here
 One `/clear` executor per session: a fleet-side rotation, when built, supplies a reading and calls

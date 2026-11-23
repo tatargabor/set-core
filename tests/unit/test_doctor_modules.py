@@ -207,7 +207,7 @@ def test_no_declaration_no_regression(box):
     ctx, tmp, ddir, bindir = box
     proj = git_init(tmp / "proj")
     out = check_project(ctx, "proj", {"path": str(proj)}, {}, {})
-    assert {c.name for c in out} == {"path", "deploy", "mcp", "bus", "role", "kb"}
+    assert {c.name for c in out} == {"path", "deploy", "mcp", "bus", "role", "auto-clear", "kb"}
     assert by(out, name="bus")[0].module == "sac" and by(out, name="kb")[0].module == "set-kb"
 
 

@@ -202,7 +202,7 @@ def test_a_data_repository_skips_deploy_mcp_and_bus(machine):
     ctx, tmp = machine
     proj = project_repo(tmp, "corpus")
     checks = check_project(ctx, "corpus", {"path": str(proj), "deploy": False}, {}, {})
-    for name in ("deploy", "mcp", "bus"):
+    for name in ("deploy", "mcp", "bus", "auto-clear"):
         c = by(checks, name)
         assert c.status == "skip" and "data repository" in c.detail
     assert by(checks, "path").status == "ok"
@@ -213,7 +213,7 @@ def test_a_consumer_is_checked_on_every_count(machine):
     ctx, tmp = machine
     proj = project_repo(tmp)
     checks = check_project(ctx, "proj", {"path": str(proj)}, {}, {})
-    assert {c.name for c in checks} == {"path", "deploy", "mcp", "bus", "role", "kb"}
+    assert {c.name for c in checks} == {"path", "deploy", "mcp", "bus", "role", "auto-clear", "kb"}
     assert by(checks, "bus").status == "warn" and by(checks, "bus").fix == f"cd {proj} && sac install"
 
 
