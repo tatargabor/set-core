@@ -44,7 +44,7 @@
 
 ## 6. Public/private split and roadmap
 
-- [ ] 6.1 Inventory operator-specific code and config currently in the public repository and list, per item, whether it moves to the private package or becomes a generic seam [REQ: operator-specific-integrations-live-behind-plugin-seams]
+- [x] 6.1 Inventory operator-specific code and config currently in the public repository and list, per item, whether it moves to the private package or becomes a generic seam [REQ: operator-specific-integrations-live-behind-plugin-seams]
 - [ ] 6.2 Verify the public core runs without the private package: start set-web and run the public CLIs, and expect no error and no WARNING naming it [REQ: operator-specific-integrations-live-behind-plugin-seams]
 - [x] 6.3 Rewrite the README positioning and `.claude/rules/capability-guide.md` to describe the fleet and tooling layer first, and mark the orchestration commands as being retired [REQ: operator-specific-integrations-live-behind-plugin-seams]
 - [x] 6.4 Create the stage 3–6 follow-up changes as proposals only (`hook-diet`, `retire-orchestration-cli`, `retire-orchestration-engine`, `profile-layer-decision`), each with the precondition named in design.md [REQ: operator-specific-integrations-live-behind-plugin-seams]
@@ -146,3 +146,18 @@
   stderr only, which lands in the session transcript, not in a log that can be counted per day;
   `set-hook-{activity,checkout-guard,leakscan,skill,stop}` log nothing. Totals after this:
   set-web 0, set-agent-owner 1 (actionable), relay 0 expected. 5.4 still owes the 24-hour re-measure.
+- **6.1 (2026-11-23).** Inventory in design.md D8: three MOVE groups, three SEAMs (+1 soft),
+  the rest KEEP; spot-checked by `git grep`/`ls` before writing. Leaks found on the way are
+  B-151's (re-measured there), not scrubbed here. New roadmap row `operator-plugin-split`.
+- **6.2 — measured, still OPEN.** Sandbox: a `sitecustomize` that blocks the installed Layer-3
+  module and filters its entry point (verified: import raises, `set_tools.project_types` lists
+  base/dungeon/web only), plus a copy of the config dir without that package's doctor
+  declaration. In it: the set-web app built in-process (the service's own interpreter), every
+  parameterless GET `/api` route called (30) → 0 × 5xx, 0 WARNING records; `set-doctor --json`,
+  `set-project roles --check|--dry-run`, `set-project list`, `set-leakscan --list-patterns`,
+  `set-kb --help`, `set-wave-board --help` → all rc 0, no warning/error line, no mention of the
+  package. (The CLIs' interpreter does not see the package even without the sandbox.)
+  **Not covered:** the app ran WITHOUT its lifespan (watchers, chat bot, agent-owner loops), on
+  purpose — a second live instance would act on the real fleet. Closing it needs one real
+  set-web start with the sandbox `PYTHONPATH` (a systemd drop-in for one restart, then reverted)
+  and a journal read; that restart drops open dashboard terminals, so it waits for a quiet moment.

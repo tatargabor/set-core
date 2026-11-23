@@ -92,6 +92,33 @@ A poll that finds the same absence every cycle logs it once when the state chang
 worktree-list fix already shipped for the dashboard (a missing directory answers empty at
 debug) is the pattern; the sweep applies it per service, with before/after counts.
 
+### D8 — The inventory behind D6 (task 6.1, measured 2026-11-23)
+Read across the tracked tree; each MOVE/SEAM claim below was re-checked by `git grep` or
+`ls` before it was written here. The main finding: **the earlier cleanups already did most of
+the split.** Accounts, board editors, chat-bot guild, the relay's outbound command, the "now"
+card's publisher and provider keys all come from `~/.config/set-core/*` at run time; the
+timers that publish the operator's data live in the operator's own repositories, not here.
+So most items are KEEP or SEAM, and only a few are MOVE.
+
+| call | item | why |
+|---|---|---|
+| MOVE | a client-project question/issue board template | Hungarian consulting workflow; nothing outside its folder refers to it |
+| MOVE | the social-feed lead watcher (module, CLI, template, plugin pane, its change) | sales tooling lifted from one consumer; already opt-in, and no project on this machine opts in |
+| MOVE | the integration living record and its bus handoff note; a machine-specific reboot checklist at the repo root | one integration's working log and one machine's checklist — operator material, not framework documentation |
+| SEAM | the built-in parser for one product family's doctor contract in `lib/set_doctor` | becomes an adapter entry point that the family's Layer-3 package registers |
+| SEAM | the bus room hard-coded in the tracked `.claude/settings.json` and the agent-comm skill | the room is named after a client project; read it from env or local config |
+| SEAM | the wave board installed as a base Stop hook in every consumer | the engine is generic and config-driven; only one project family uses it, so the hook becomes opt-in |
+| SEAM (soft) | the "now" card's Calls/Goals tab content and its Hungarian dictionary | the publisher contract stays; the one-person content moves with the publisher |
+| KEEP | usage bars, provider tools, chat bot, question/notify relay, email notifier, leak gate, fleet plumbing, the Hungarian stemmer and template locale | generic; every operator value is already machine-local |
+| KEEP, translate | the handoff profile (Hungarian prose) and quoted chat in fleet-screen comments | English-product rule; the code stays |
+
+**Not a feature but a leak, and not this change's to fix.** The same read found names from
+the private side in tracked prose: test fixtures, bug-log lines, specs, research notes and
+`CLAUDE.md` itself. `set-leakscan --tree` the same day: 3 consumer-name and 90 deny-term
+findings in the tree, plus 1 + 22 in commit messages, all already published. That is B-151's
+territory (open, a user decision: scrub the tree in a change of its own; history is not
+rewritten). The owner's own company terms are allow-listed on purpose and are not findings.
+
 ## Roadmap — the later stages, each its own change
 
 | stage | change (proposed name) | precondition |
@@ -100,6 +127,7 @@ debug) is the pattern; the sweep applies it per service, with before/after count
 | 4 | `retire-orchestration-cli` — the orchestration bins and their slash commands' specs | `set-project init` calls none of them |
 | 5 | `retire-orchestration-engine` — engine, planner, dispatcher, verifier, merger, sentinel, their API routes and web pages | a week of route-hit counts; a regression-baseline set diff |
 | 6 | `profile-layer-decision` — what of the modules and profile deploy `init` still needs | stage 5 done |
+| — | `operator-plugin-split` — the D8 MOVE items go to the operator's private package, the D8 SEAMs get their entry point or config key | the private package exists and is registered; 6.2 holds (the core runs without it) |
 
 ## Risks / Trade-offs
 
