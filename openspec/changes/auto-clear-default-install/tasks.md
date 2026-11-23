@@ -19,7 +19,7 @@
 
 ## 4. The watcher unit (D3, D4)
 
-- [ ] 4.1 `templates/systemd/auto-clear.service`: watcher path, `--dir`, `--interval 60`, `--started-after <install time>`, `--auto-continue default`, PATH environment; no threshold or background flags [REQ: init-installs-auto-clear-by-default]
+- [ ] 4.1 `templates/systemd/auto-clear.service`: watcher path, `--dir`, `--interval 60`, `--auto-continue default`, PATH environment; no threshold, background or `--started-after` flag — the start filter reads the package's wiring stamp (precondition: the package's `started-after-self-exclusion` is shipped; check before starting this task) [REQ: init-installs-auto-clear-by-default]
 - [ ] 4.2 Existing-unit detection by name or by an `ExecStart` that runs this project's watcher; leave it byte-identical and name each overriding flag with the edit that removes it [REQ: an-existing-watcher-unit-is-never-rewritten]
 - [ ] 4.3 Create, `daemon-reload`, `enable --now` only after the reload hook is wired (package or project); skip with a line when `systemctl --user` is unavailable [REQ: init-installs-auto-clear-by-default]
 - [ ] 4.4 Tests with a fake `systemctl` on PATH and a sandbox unit dir: created + started; existing hand unit untouched and flags reported; second run does not restart [REQ: an-existing-watcher-unit-is-never-rewritten]

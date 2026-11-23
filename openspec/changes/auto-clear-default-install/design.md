@@ -58,9 +58,13 @@ project with its own reload must not look non-canonical on every run.
 
 ### D3 — A unit is created only where none exists, from a framework template
 `templates/systemd/auto-clear.service` runs `<project>/.claude/hooks/watch-auto-clear.sh --dir
-<project> --interval 60 --started-after <install time> --auto-continue default`, with no threshold or
-background flags. `--started-after` is the watcher's own guard against the one dangerous
-combination (clearing a session that started before its reload hook was wired). An existing unit is
+<project> --interval 60 --auto-continue default`, with no threshold, background or `--started-after`
+flag. The start filter (the watcher's guard against clearing a session that started before its reload
+hook was wired) is the package's: its `started-after-self-exclusion` change has `init --auto-clear`
+write a wiring stamp, `.set/handoff/.reload-wired-at`, that the default filter reads. A unit-level
+`--started-after <install time>` was the first design here and is rejected: measured by the package
+session on 2026-11-23, a fixed start moment silently excludes the session that armed auto-clear
+(2858 and 4926 skips in two trees). **Precondition for task 4.1:** that package change is shipped. An existing unit is
 recognised by name OR by any user unit whose `ExecStart` runs that project's watcher (a hand unit may
 be named differently); it is never rewritten, and its overriding flags are named with the edit that
 would remove them.
