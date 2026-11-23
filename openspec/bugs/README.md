@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-196 — the fleet offers `sonnet-5-5` from the catalogue, but the agent owner that launches it runs code older than the name map, so the session starts on a model name the CLI rejects
+- **state:** open — the fix is a restart of `set-agent-owner`, which ends every agent it holds (13 on 2026-11-23); it waits for a moment the owner chooses.
+- **reported:** 2026-11-23 by this session: a fleet start with `{"provider":"anthropic","model":"sonnet-5-5"}` opened a session that answered `There's an issue with the selected model (sonnet-5-5). It may not exist or you may not have access to it.`
+- **measured:** `GET /api/fleet/providers` lists `sonnet-5-5` (set-web's code); `DEFAULT_MODEL_IDS["sonnet-5-5"] = "claude-sonnet-5-5"` was added in `677ad872` (2026-11-22 19:35); the owner pid 20374 started `Thu Nov 19 08:49:18 2026` (`ps -o lstart=`), so it resolves names with the earlier map, which has no `sonnet-5-5` entry and passed the name through. The same age means the plain `sonnet` alias it resolves is the pre-B-191 one. Same class as B-192: a shipped commit is not a running system.
+- **fail direction:** the catalogue offered a choice the launcher could not honour — the session starts, then sits on an error screen; `sonnet` silently starts an older model than its name says today.
+- **fixed when:** after an owner restart, a fleet start with `sonnet-5-5` reaches a working prompt and the session reports `claude-sonnet-5-5`; better, set-web refuses (or the owner reports) a catalogue name the running owner cannot translate.
+
 ### B-195 — `set-project init --dry-run` plans `Would scaffold project-knowledge.yaml`, which the real run never does
 - **state:** closed 2026-11-23 in the commit that adds this line: the dry-run now prints the same "missing — init does not create it" line as the real run.
 - **reported:** 2026-11-23 by this session, aggregating 48 dry-runs (the line appeared in all 48).
