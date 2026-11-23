@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-193 — `set-doctor` reports a project that is off the bus while a live session burns tokens there as one `warn` among ~90, so nobody acts on it
+- **state:** open
+- **reported:** 2026-11-23 by the user, pasting a session that re-armed a 30-minute `Monitor` five times in two hours with *„itt ég el az ilyen sessionökben mert a busz figyelés nem működik jól"*; the user's direction: *„ez a set doctor része kell legyen"*.
+- **measured:** `sac doctor --project <it>`: `hooks: session-start=— stop=— heartbeat=— watch-guard=—`, `live: <seat>`, `OFF the bus`. With no `session-start` hook the session never got the `sac wait --once` instruction, and with no `watch-guard` nothing declined its hand-written `Monitor` (26 `Monitor` calls in its transcript, each expiry a wake at ~230k context). `set-doctor` already saw it: `WARN bus not on the agent bus (no sac hooks)`, but in a run that ends `21 fail, 90 warn` (48 `deploy` warns, 34 `bus` warns, 21 `path` fails from deleted E2E run dirs), and the line does not say a session is live there. A second gap: `watch-guard=—` on seven projects that do have the other hooks, which `set-doctor` does not single out.
+- **fail direction:** silence wearing a report — the check ran and printed the right fact, at a severity and in a crowd that guarantees it is not read, and without the one fact (a live session) that makes it urgent.
+- **fixed when:** a project with a live seat and no `session-start` or no `watch-guard` hook is a `fail` naming the live seat, and stale registry entries no longer outnumber real findings in the summary.
+
 ### B-182 — the question relay reports `ready` while a registered project's sessions bypass it, and nothing marks that project
 - **state:** closed (`ad45b0d7`, OpenSpec `2026-11-17-relay-unwired-projects`) — after a rebuild and a set-web restart, `GET /api/fleet/question-relay` carries `unwired` with 3 registered projects, and the closed header shows an amber 3 beside the switch, looked at in the browser. The project from the report was wired the same evening (two additive hook entries in its own repo, committed there, not pushed). The per-agent marker in the fixed-when line was dropped: the header list names the project, at the place the reader looks while the relay is on.
 - **reported:** 2026-11-17 by the user (*„ez miért nem ment ki értesítésben?”*), with a screenshot of a session's AskUserQuestion picker shown only in its terminal while the relay was on.
