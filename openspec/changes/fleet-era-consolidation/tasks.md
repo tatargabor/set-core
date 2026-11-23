@@ -33,7 +33,7 @@
 - [x] 4.6 `set-project init` regenerates the rule for the project it deploys into [REQ: one-generated-rule-per-registered-project]
 - [x] 4.7 The doctor's role check: missing or older than the role file is `warn` with `set-project roles` as the fix; no role file is `skip` with the reason [REQ: the-project-role-rule-is-checked]
 - [x] 4.8 Tests for every scenario in the project-role-rule spec, each failing with the change stashed [REQ: one-generated-rule-per-registered-project]
-- [ ] 4.9 Operator step, local only: fill the role file from the private project map and run `set-project roles`; open one public and one archived project and read the generated rule [REQ: roles-come-from-a-private-machine-local-file]
+- [x] 4.9 Operator step, local only: fill the role file from the private project map and run `set-project roles`; open one public and one archived project and read the generated rule [REQ: roles-come-from-a-private-machine-local-file]
 
 ## 5. Log hygiene sweep
 
@@ -83,8 +83,11 @@
   that enumerate check names.
 - 3.3 — sandbox: archive → the notice appears, unarchive → it is gone, `git status` clean.
   The sandbox needed `HOME` overridden as well as `SET_CONFIG_DIR`: B-200.
-- 4.9 stays open: it needs the owner's role content (and, proposed to the family umbrella, the
-  umbrella owns the family's entries).
+- 4.9 — owner decided the family umbrella owns the family's 17 entries (written there first,
+  `--check` valid); set-core then added 29 non-family entries from its local map, `--check`
+  valid; `set-project roles`: 32 written, 15 unchanged, 23 skipped (2 data repositories, 21
+  registry entries whose path is gone). Every repository checked kept an empty `git status`.
+  First look found B-201 (a public repository rendered "private" from a stale leak-scan cache).
 - 5.x so far (2026-11-23) — set-web: 92 551 WARNING in the last 24 h, 92 538 of them the
   worktree-list line B-198 already fixed; 0 WARNING in the 17 min after its restart. The other
   repeat item was a startup traceback from the chat-bot integration (`import discord` resolved to
