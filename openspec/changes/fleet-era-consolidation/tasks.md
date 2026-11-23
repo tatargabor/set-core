@@ -46,8 +46,8 @@
 
 - [ ] 6.1 Inventory operator-specific code and config currently in the public repository and list, per item, whether it moves to the private package or becomes a generic seam [REQ: operator-specific-integrations-live-behind-plugin-seams]
 - [ ] 6.2 Verify the public core runs without the private package: start set-web and run the public CLIs, and expect no error and no WARNING naming it [REQ: operator-specific-integrations-live-behind-plugin-seams]
-- [ ] 6.3 Rewrite the README positioning and `.claude/rules/capability-guide.md` to describe the fleet and tooling layer first, and mark the orchestration commands as being retired [REQ: operator-specific-integrations-live-behind-plugin-seams]
-- [ ] 6.4 Create the stage 3–6 follow-up changes as proposals only (`hook-diet`, `retire-orchestration-cli`, `retire-orchestration-engine`, `profile-layer-decision`), each with the precondition named in design.md [REQ: operator-specific-integrations-live-behind-plugin-seams]
+- [x] 6.3 Rewrite the README positioning and `.claude/rules/capability-guide.md` to describe the fleet and tooling layer first, and mark the orchestration commands as being retired [REQ: operator-specific-integrations-live-behind-plugin-seams]
+- [x] 6.4 Create the stage 3–6 follow-up changes as proposals only (`hook-diet`, `retire-orchestration-cli`, `retire-orchestration-engine`, `profile-layer-decision`), each with the precondition named in design.md [REQ: operator-specific-integrations-live-behind-plugin-seams]
 
 ## 7. Close
 
@@ -130,3 +130,10 @@
 ### opensource
 - [ ] AC-19: WHEN the public core runs without the private package THEN commands and the dashboard run with no error or WARNING naming it [REQ: operator-specific-integrations-live-behind-plugin-seams, scenario: the-operator-plugin-is-not-installed]
 - [ ] AC-20: WHEN an operator-only feature is proposed THEN it goes into the private package and the public change adds at most a generic seam [REQ: operator-specific-integrations-live-behind-plugin-seams, scenario: a-new-operator-specific-feature]
+- **6.3/6.4 (`ceb4675d`).** README opens with "What set-core is today (2026-11)" and a
+  being-retired notice on the orchestration pipeline; the capability guide lists the deployed
+  tools and names the retired `/set:*` commands. Both linked repos were checked PUBLIC with
+  `gh repo view` before being named. `.claude/rules/readme-updates.md` points at
+  `docs/readme-guide.md`, which does NOT exist — so the guide's checklist could not be run;
+  the rewrite followed the existing section order instead. The four follow-ups carry
+  proposal.md only, each naming its precondition.

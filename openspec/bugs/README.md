@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-202 — `.claude/rules/readme-updates.md` makes `docs/readme-guide.md` "the authoritative source" for every README update, and that file does not exist
+- **state:** open.
+- **reported:** 2026-11-23 by this session, rewriting the README for `fleet-era-consolidation` 6.3.
+- **measured:** `ls docs/readme-guide.md` → `No such file or directory`; `git log --all -- docs/readme-guide.md` shows it was MOVED to `docs/archive/readme-guide.md` by `36aa47e7` (2026-03-28, "archive old") — the rule was never updated, so for eight months it has pointed at an archived, eight-month-stale guide by a path that no longer resolves. The rule loads into every session that touches the README and names a checklist nobody can run.
+- **fail direction:** silent — a README update "follows the guide" by following nothing, and the rule still reads as a gate.
+- **fixed when:** either the guide exists again with the section order the README actually has, or the rule is rewritten to name the order itself; `ls` of every path the rule names succeeds.
+
 ### B-201 — `set-leakscan` cached a remote's visibility FOR EVER, so a repository made public after its first scan stayed "private" and the gate passed private names into it on every push
 - **state:** closed 2026-11-23 in the commit that adds this line: a cached verdict now carries a timestamp and is asked again after a day (`VIS_TTL`); a legacy bare-string entry counts as expired; a re-ask that fails yields unknown, which blocks. New test (expired + legacy) fails with the TTL condition mutated to `True` (restore verified with `cmp`); the whole leakscan suite passes (108).
 - **reported:** 2026-11-23 by the family umbrella session: a generated project role rule said "Visibility: private" for a repository that is public.
