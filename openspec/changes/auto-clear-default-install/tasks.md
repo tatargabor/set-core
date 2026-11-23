@@ -160,3 +160,8 @@
   fail against the pre-fix code; sandbox run against the real package: upgraded to its HEAD, no
   `.bak`, backup equals the pre-merge file). Open: re-roll the templates to the fleet once the
   package's started-after reader lands.
+- 2026-11-23 22:04: set-core ITSELF had been left out of the rollout (the rollout script skipped
+  the framework's own tree, which is not a reason under the owner's "every project" decision).
+  Noticed because a 410k-token session here was never asked for a handoff. Installed now with the
+  same step; the unit's `--started-after` is the install time, so the live set-core sessions are
+  not cleared — only sessions started after it.
