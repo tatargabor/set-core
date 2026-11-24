@@ -755,6 +755,7 @@ def test_with_a_delegation_the_prompt_tells_the_model_to_decide_not_to_wait():
     standing = [("/x/CLAUDE.md", "## ▶ In-project steps never wait\\nDo it, then report it.")]
     p = aa.build_prompt(aa.KIND_ASK, [q()], [], [], standing=standing)
     assert "DELEGATION" in p and "do NOT abstain for lack of the operator's own words" in p
+    assert "only asks whether there is more to do" in p, "a closing 'anything else?' is closed, not parked"
     assert "DELEGATION" not in aa.build_prompt(aa.KIND_ASK, [q()], [], [])
 
 

@@ -852,6 +852,9 @@ with tier "decided" and a "decision" reference quoting the standing decision ver
 Abstain only when the question falls under what the standing decision says to still ask, when it
 is a matter of strategy or taste the operator must weigh (a release version, what to say in
 public, money, people), or when the options conflict with something the operator said.
+A question that only asks whether there is more to do after the agent reported its work finished
+("anything else?", „van még valami?") is covered by the delegation: choose the option that ends
+the thread ("that's all", „ennyi"), tier "decided", citing the standing decision.
 For a finished turn (KIND continuation) whose suggestions are not worth doing now — the thread is
 complete, or the suggestions only re-check finished work — answer {"key": ..., "choice": null,
 "done": true, "reason": "..."}: the session is left idle and nobody is woken.
