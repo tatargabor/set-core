@@ -136,3 +136,13 @@ Same shape as M8; the desk was stopped 25 s after the request.
 The successor named the predecessor's seat and session, and said it had read the end of the
 predecessor's transcript first. The request's own step (`sleep 90`) did not run — the
 successor's runtime refuses a foreground sleep — which is the test payload, not the mechanism.
+
+## Verify and archive (2026-11-24)
+
+`/opsx:verify`: 18/18 tasks, 17/17 ACs, 9/9 requirements traced; `CRITICAL_COUNT: 0`, `VERIFY_RESULT: PASS`.
+Tests at that moment: `test_fleet_takeover.py` 40, `test_fleet_takeover_liveness.py` 13, `test_fleet_ask_cli.py` 21 — 74 passed.
+set-web started 12:19:30, after `5fef1a24` (11:45:32). Live log since 11:16: 8 takeover decisions, each with the expected reason
+(`journalctl --user -u set-web | grep "fleet takeover:"`). One warning (the operator route
+`POST /api/fleet/engagements/takeover-round` is not named in the spec — a trigger for task 3.1's round) and one gap
+registered as B-224 (a mandate with no recorded unit is ended unmeasured; latent, 22/22 started mandates carry a unit).
+Main spec `openspec/specs/engagement-takeover/spec.md` created from the delta (9 requirements, 17 scenarios, identical text).

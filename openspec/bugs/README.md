@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-224 — `end_missing` ends a desk mandate that has no recorded unit without measuring anything
+- **state:** open
+- **reported:** 2026-11-24 by this session (set-core#8d47865a), during `/opsx:verify fleet-engagement-takeover`.
+- **measured:** `lib/set_orch/fleet/mandate.py` `end_missing` consults `unit_alive` only `if unit_alive is not None and record["unit"]`; a started mandate with an empty `unit` falls through to `ended`. The spec `engagement-takeover` ("A mandate is ended for a missing agent only when its unit is measured gone") says a mandate whose unit state cannot be measured is kept. Latent today: `~/.local/state/set-core/fleet-mandates.json` holds 22 `source: start` records and all 22 carry a `unit` (counted 2026-11-24 ~13:00).
+- **fail direction:** pass toward ending — a live desk without a recorded unit would lose its mandate on one missed listing, the `desk-not-ready` failure the change was written after.
+- **fixed when:** a started mandate with no unit, absent from one listing, is kept with a log line (or the spec is narrowed on purpose), held by a test in `tests/unit/test_fleet_takeover_liveness.py` that fails against the current code.
+
 ### B-223 — the wait detector re-asks a desk's finished report, which asked the owner nothing
 - **state:** open
 - **reported:** 2026-11-24 by this session (set-core#dccdba56, a fleet desk), at the turn end that triggered it.
