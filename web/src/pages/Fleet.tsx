@@ -41,6 +41,7 @@ import FleetWirePanel from '../components/FleetWirePanel'
 import type { ChannelsPayload } from '../lib/fleetWireLayout'
 import FleetUsageStrip from '../components/FleetUsageStrip'
 import FleetWaves from '../components/FleetWaves'
+import FleetRepoSync from '../components/FleetRepoSync'
 import FleetMap from '../components/FleetMap'
 import FleetRelay from '../components/FleetRelay'
 import FleetAutoAnswer, { FleetAutoAnswerMark } from '../components/FleetAutoAnswer'
@@ -4041,6 +4042,11 @@ export default function Fleet() {
             blocked and unreadable counts ride on the closed chip, and the list
             it opens floats under the header and pushes nothing. */}
         <FleetWaves selected={latestOn ? null : active?.name ?? null} onSelectProject={selectProject} />
+
+        {/* Is every recently active project committed and pushed? Measured only when the
+            table is opened; the chip carries the last measurement's problem count and its
+            age, or "not measured" before the first one (openspec fleet-repo-sync). */}
+        <FleetRepoSync />
 
         {/* Who exists for what, and who is asking whom. The closed control
             carries the count of agents with no mandate and of requests that

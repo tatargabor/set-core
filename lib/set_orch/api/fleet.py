@@ -3236,6 +3236,30 @@ def fleet_idle_close() -> Dict[str, Any]:
     return _idle_close_status()
 
 
+@router.get("/api/fleet/repo-sync")
+def fleet_repo_sync(days: Optional[float] = Query(None, ge=1, le=365)) -> Dict[str, Any]:
+    """Every recently active project's commit, push and worktree state (openspec fleet-repo-sync).
+
+    Computed per request and never cached: the screen asks only when the table is opened or
+    refreshed, and no route or cycle calls this on its own.
+    """
+    from ..fleet import repo_sync
+    return repo_sync.collect(days)
+
+
+class RepoSyncFetchBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    projects: Optional[List[str]] = None
+    days: Optional[float] = None
+
+
+@router.post("/api/fleet/repo-sync/fetch")
+def fleet_repo_sync_fetch(body: RepoSyncFetchBody) -> Dict[str, Any]:
+    """`git fetch --all --prune` across the listed (or named) projects — the only network act."""
+    from ..fleet import repo_sync
+    return repo_sync.fetch(body.projects, body.days)
+
+
 @router.post("/api/fleet/idle-close")
 def fleet_idle_close_set(body: IdleCloseBody) -> Dict[str, Any]:
     """Switch the daily run on or off and/or change the threshold. Answers the new status."""

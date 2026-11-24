@@ -63,7 +63,9 @@ module concern: CI files and hosting link files exist for any stack.
   `deploy` or its `environment` (name) contains `prod`. It runs on the current branch if a `rules`
   entry's `if` compares `$CI_COMMIT_BRANCH` to that branch literal (or to `$CI_DEFAULT_BRANCH` and
   the branch is the default) and that entry's `when` is not `manual`/`never`, or an `only` list
-  names the branch. A job-level `when: manual` with no rule-level `when` counts as manual.
+  names the branch. A job-level `when` beside `rules`, with no rule-level `when`, is `unknown`:
+  how the two combine is not settled by the file, and reading it as "manual" would be the
+  deploying misread (changed during apply, 2026-11-24 — the first draft said "counts as manual").
 - GitHub (`.github/workflows/*.yml`): a workflow triggered by `push` on the branch (or on all
   branches) with a job whose `environment` contains `prod` or whose name contains `deploy`.
 - Hosting link files (`.vercel/`, `vercel.json`, `netlify.toml`, `wrangler.toml`, `fly.toml`,
