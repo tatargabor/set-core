@@ -346,6 +346,43 @@ class TestCollectAndFetch:
         by = {r["name"]: r["result"] for r in out["results"]}
         assert by == {"slow": "timeout", "ok": "ok"}
 
+    def test_the_fetch_ssh_command_is_always_non_interactive(self):
+        assert rs.batch_ssh_command(None) == "ssh -o BatchMode=yes -o ConnectTimeout=10"
+        assert rs.batch_ssh_command("ssh -i ~/.ssh/deploy -p 2222") == \
+            "ssh -i ~/.ssh/deploy -p 2222 -o BatchMode=yes -o ConnectTimeout=10"
+        assert rs.batch_ssh_command("ssh -o BatchMode=no") == "ssh -o BatchMode=no"
+
+    def test_a_preset_git_ssh_command_gets_batch_mode(self, pair, monkeypatch):
+        work, _ = pair
+        seen = {}
+        real = rs.subprocess.run
+
+        def spy(cmd, **kw):
+            if "fetch" in cmd:
+                seen["ssh"] = kw["env"]["GIT_SSH_COMMAND"]
+            return real(cmd, **kw)
+
+        monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -i /k")
+        monkeypatch.setattr(rs.subprocess, "run", spy)
+        rs._fetch_one("p", str(work), 30)
+        assert seen["ssh"] == "ssh -i /k -o BatchMode=yes -o ConnectTimeout=10"
+
+    def test_a_repository_ssh_command_is_kept_not_replaced(self, pair, monkeypatch):
+        work, _ = pair
+        git(work, "config", "core.sshCommand", "ssh -i /repo-key")
+        seen = {}
+        real = rs.subprocess.run
+
+        def spy(cmd, **kw):
+            if "fetch" in cmd:
+                seen["ssh"] = kw["env"]["GIT_SSH_COMMAND"]
+            return real(cmd, **kw)
+
+        monkeypatch.delenv("GIT_SSH_COMMAND", raising=False)
+        monkeypatch.setattr(rs.subprocess, "run", spy)
+        rs._fetch_one("p", str(work), 30)
+        assert seen["ssh"] == "ssh -i /repo-key -o BatchMode=yes -o ConnectTimeout=10"
+
     def test_a_fetch_that_times_out_is_reported_timeout(self, tmp_path, monkeypatch):
         def slow(*a, **k):
             raise subprocess.TimeoutExpired(cmd="git", timeout=1)

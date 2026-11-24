@@ -704,9 +704,31 @@ def collect(days: Optional[float] = None, *, projects: Optional[List[Dict[str, A
             "hidden": sorted(n for n in hidden if n in {p.get("name") for p in projects})}
 
 
+_SSH_BATCH_OPTS = "-o BatchMode=yes -o ConnectTimeout=10"
+
+
+def batch_ssh_command(configured: Optional[str]) -> str:
+    """The ssh command a fetch runs: the configured one, made non-interactive.
+
+    A fetch must never stop at a passphrase or host-key prompt nobody can see. Whatever ssh
+    command is in force — the environment's `GIT_SSH_COMMAND`, else the repository's
+    `core.sshCommand` — keeps its own options (a deploy key, a port) and gets `BatchMode`
+    appended, unless it already says it. Setting a bare default instead would silently
+    replace a repository's `core.sshCommand`, because the environment variable outranks it.
+    """
+    base = (configured or "").strip() or "ssh"
+    if "batchmode" in base.lower():
+        return base
+    return f"{base} {_SSH_BATCH_OPTS}"
+
+
 def _fetch_one(name: str, path: str, timeout: float) -> Dict[str, Any]:
     env = _git_env()
-    env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=10")
+    configured = env.get("GIT_SSH_COMMAND")
+    if not configured:
+        ok, out, _ = _git(Path(path), "config", "--get", "core.sshCommand")
+        configured = out.strip() if ok else None
+    env["GIT_SSH_COMMAND"] = batch_ssh_command(configured)
     try:
         p = subprocess.run(["git", "-C", path, "fetch", "--all", "--prune", "--quiet"],
                            capture_output=True, text=True, timeout=timeout, env=env)
