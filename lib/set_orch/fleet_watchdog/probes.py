@@ -298,7 +298,35 @@ def probe_auto_clear_miss(ctx: Context) -> List[Finding]:
 RELAY_HOLD_S = 15 * 60
 
 
-def probe_relay_hold(ctx: Context) -> List[Finding]:
+def typed_since(records: List[Dict[str, Any]], since: float) -> int:
+    """Prompts queued from the terminal at or after `since` (B-222).
+
+    While a relayed question holds the turn inside its hook, a message typed in the terminal
+    only queues; the transcript records it as a `queue-operation` `enqueue` (measured
+    2026-11-24 on the B-214 session: the operator's message at 07:42 inside a 07:40-07:56 hold).
+    The harness queues its own task notifications the same way; those start with a tag. Only
+    the first character is looked at, and only a count leaves this function.
+    """
+    n = 0
+    for rec in records:
+        if rec.get("type") != "queue-operation" or rec.get("operation") != "enqueue":
+            continue
+        ts = _parse_ts(rec.get("timestamp"))
+        content = rec.get("content")
+        if ts is None or ts < since or not isinstance(content, str):
+            continue
+        if content.strip() and not content.lstrip().startswith("<"):
+            n += 1
+    return n
+
+
+def probe_relay_hold(ctx: Context, home: Optional[str] = None) -> List[Finding]:
+    """A held question is a defect only when somebody typed into its terminal (B-214).
+
+    A hold with no typed prompt is the owner not having answered yet: the relay already put
+    that question on their phone, and reporting it here filed pending owner decisions under
+    a known framework bug (B-222). A transcript that cannot be read is still reported.
+    """
     from ..fleet import question_relay as qr
     bound = _int(ctx.get, "watchdog.relay_hold.bound_s", RELAY_HOLD_S)
     try:
@@ -313,10 +341,22 @@ def probe_relay_hold(ctx: Context) -> List[Finding]:
         if not isinstance(started, (int, float)) or ctx.now - started < bound:
             continue
         sid = str(rec.get("session_id") or "")
-        out.append(Finding("relay-hold", "warn", f"session:{sid}",
-                           f"a relayed question held for {int((ctx.now - started) // 60)} min",
-                           {"minutes": int((ctx.now - started) // 60), "questions": rec.get("questions"),
-                            "kind": rec.get("kind") or "ask"}, owner_hint="set-core"))
+        minutes = int((ctx.now - started) // 60)
+        typed: Optional[int] = None
+        cwd = rec.get("cwd")
+        if isinstance(cwd, str) and cwd and sid:
+            try:
+                typed = typed_since(read_tail(transcript_path(cwd, sid, home)), float(started))
+            except OSError as exc:
+                logger.warning("watchdog relay-hold: transcript of %s unreadable (%s)", sid, type(exc).__name__)
+        if typed == 0:
+            logger.debug("watchdog relay-hold: %s held %d min, nothing typed: waiting on the owner", sid, minutes)
+            continue
+        summary = (f"a relayed question held for {minutes} min although {typed} prompt(s) were typed in its terminal"
+                   if typed else f"a relayed question held for {minutes} min; terminal input unmeasured")
+        out.append(Finding("relay-hold", "warn", f"session:{sid}", summary,
+                           {"minutes": minutes, "questions": rec.get("questions"),
+                            "kind": rec.get("kind") or "ask", "typed_in_terminal": typed}, owner_hint="set-core"))
     return out
 
 
@@ -352,6 +392,29 @@ def unit_owner(unit: str, registry: Dict[str, Any], home: Optional[str] = None) 
     return None
 
 
+def unit_exit(unit: str) -> Dict[str, Any]:
+    """`result` (systemd `Result`, e.g. `exit-code`, `timeout`) and `exit_status` of a unit.
+
+    Shape only, and enough for the triage to tell an expired sign-in (exit 1) from a deliberate
+    stop (a documented exit code) from a timeout (B-221). Unreadable → both None.
+    """
+    out: Dict[str, Any] = {"result": None, "exit_status": None}
+    try:
+        res = _systemctl("show", unit, "-p", "Result", "-p", "ExecMainStatus")
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("watchdog service-health: systemctl show %s failed (%s)", unit, type(exc).__name__)
+        return out
+    for line in res.stdout.splitlines():
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        if key == "Result" and value and len(value) <= 40:
+            out["result"] = value
+        elif key == "ExecMainStatus" and value.strip().lstrip("-").isdigit():
+            out["exit_status"] = int(value)
+    return out
+
+
 def probe_service_health(ctx: Context) -> List[Finding]:
     out: List[Finding] = []
     ok, payload = fleet_payload(ctx)
@@ -373,7 +436,7 @@ def probe_service_health(ctx: Context) -> List[Finding]:
             if unit:
                 owner = unit_owner(unit, registry)
                 out.append(Finding("service-health", "fail", f"unit:{unit}", f"user unit {unit} is failed",
-                                   {"unit": unit, "project": owner}, owner_hint=owner))
+                                   {"unit": unit, "project": owner, **unit_exit(unit)}, owner_hint=owner))
     except (OSError, subprocess.TimeoutExpired) as exc:
         out.append(unmeasured("service-health", "systemctl --failed", type(exc).__name__))
     # Armed auto-clear watchers that are not running.

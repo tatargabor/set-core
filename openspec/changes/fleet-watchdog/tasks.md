@@ -58,3 +58,14 @@
 - [x] AC-13: WHEN a muted fingerprint recurs THEN it is stored muted, not counted, and listed under muted [REQ: the-fleet-header-shows-the-watchdog-s-state-and-a-dead-watchdog-never-looks-calm, scenario: a-muted-fingerprint-recurs]
 - [x] AC-14: WHEN the timer is enabled and the last tick is two hours old THEN the doctor's `watchdog` record is fail naming the last tick [REQ: the-watchdog-itself-is-checked, scenario: timer-installed-but-ticks-stopped]
 - [x] AC-15: WHEN no timer unit exists THEN the `watchdog` record is warn with the install command [REQ: the-watchdog-itself-is-checked, scenario: not-installed]
+
+## 7. Measured after the first live day (B-221, B-222)
+
+- [x] 7.1 `probes.py` `probe_relay_hold`: count the prompts queued from the terminal since the hold started (transcript `queue-operation` `enqueue` records whose content is not a harness tag); report only a hold with a typed prompt, or one whose transcript cannot be read [REQ: built-in-probes-cover-the-set-features-that-fail-quietly]
+- [x] 7.2 `probes.py` `probe_service_health`: a failed unit's finding carries `result` and `exit_status` from `systemctl show` [REQ: built-in-probes-cover-the-set-features-that-fail-quietly]
+- [x] 7.3 `triage.py`: a brief that names another finding of the same call first, or only another one, leaves the finding `untriaged` [REQ: new-findings-are-triaged-by-glm-within-a-budget-from-shape-only-input]
+- [x] 7.4 Tests for 7.1-7.3, each shown to fail without its fix; docs updated [REQ: built-in-probes-cover-the-set-features-that-fail-quietly]
+- [x] AC-16: WHEN a hold of 40 min has no prompt typed into its terminal THEN `relay-hold` reports nothing [REQ: built-in-probes-cover-the-set-features-that-fail-quietly, scenario: a-held-question-the-owner-has-not-answered-yet]
+- [x] AC-17: WHEN a hold of 20 min has a prompt typed into its terminal THEN `relay-hold` reports a warn with the typed count [REQ: built-in-probes-cover-the-set-features-that-fail-quietly, scenario: a-prompt-typed-into-the-terminal-does-not-release-the-held-question]
+- [x] AC-18: WHEN a unit is failed THEN its finding carries `result` and `exit_status` [REQ: built-in-probes-cover-the-set-features-that-fail-quietly, scenario: a-failed-unit-carries-its-exit]
+- [x] AC-19: WHEN the brief answered for finding A names finding B first THEN A stays untriaged [REQ: new-findings-are-triaged-by-glm-within-a-budget-from-shape-only-input, scenario: a-brief-written-for-another-finding]

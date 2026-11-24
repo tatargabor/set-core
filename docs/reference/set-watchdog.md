@@ -35,8 +35,8 @@ active, last tick fresh).
 |---|---|---|
 | `wake-storm` | 10 min | an idle session (no typed prompt for ≥ 60 min) woken by the bus ≥ 3× in 2 h, while it has no open request of its own. Read from the transcript's turn-start markers (`origin.kind`, the inbox-watch task notification, the bus Stop-hook continuation); it warns when it cannot classify turn starts at all |
 | `auto-clear-miss` | 5 min | a live session at or above its auto-clear threshold (the unit's `--threshold`, else the watcher package's default) for longer than 15 min with the same session id, i.e. no clear |
-| `relay-hold` | 5 min | a relayed question (not a continuation) held longer than 15 min |
-| `service-health` | 5 min | set-web not answering, the agent owner or the bus unreachable, any user unit `failed` (owner resolved from its `ExecStart` path), an armed auto-clear watcher not active |
+| `relay-hold` | 5 min | a relayed question (not a continuation) held longer than 15 min **although a prompt was typed into its terminal** (counted from the transcript's queued-prompt records). A hold with nothing typed is the owner not having answered yet, which the relay already surfaces, so it is not reported; an unreadable transcript is reported with the count unknown |
+| `service-health` | 5 min | set-web not answering, the agent owner or the bus unreachable, any user unit `failed` (owner resolved from its `ExecStart` path; the finding carries the unit's `Result` and exit status), an armed auto-clear watcher not active |
 | `doctor-delta` | 30 min | a `fail` record in `set-doctor --json` (module doctors included) that was not failing at the probe's first run. That is how a project family adds its own invariants: declare a module doctor in `doctors.d`, and the watchdog needs no second extension point |
 
 A probe that cannot read its source reports a `warn`. It never reports silence. One finding is
@@ -50,8 +50,10 @@ no session persisted). Its input is shape-only: probe, severity, subject, summar
 (counts, durations, ids, unit names, project slugs), and the titles of the open bug-register
 entries. It carries no transcript text, no message body, and no file content. The answer per
 finding is `real`, `noise` or `known:B-<n>`, plus an owner and a fix brief. A finding stays
-`untriaged`, and visible, whenever the daily cap is reached, GLM is unreachable, or the answer
-cannot be parsed. Untriaged is never treated as noise.
+`untriaged`, and visible, whenever the daily cap is reached, GLM is unreachable, the answer
+cannot be parsed, or the brief answered for a finding names another finding of the same call first
+(the answer is keyed by the fingerprint the model returns, and on the first live day two briefs
+came back swapped). Untriaged is never treated as noise.
 
 A `real` finding is handed to its **owning project's** agent through `set-fleet-ask` (seat
 `set-watchdog`). The fleet starts a desk if none is live, and the desk runs on the project's

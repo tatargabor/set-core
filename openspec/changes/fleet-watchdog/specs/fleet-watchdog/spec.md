@@ -53,7 +53,11 @@ The system SHALL ship these probes:
 - `auto-clear-miss`: a live session's measured context fill stays at or above its project's
   auto-clear threshold for longer than a grace period (default 15 min), with no handoff and no
   clear in that time;
-- `relay-hold`: a relayed question has been held longer than a bound (default 15 min);
+- `relay-hold`: a relayed question has been held longer than a bound (default 15 min) although a
+  prompt was typed into the asking session's terminal during the hold, counted from the
+  transcript's queued-prompt records. A hold with no typed prompt is the owner not having answered
+  yet, which the relay itself surfaces, and MUST NOT be reported. A hold whose transcript cannot
+  be read MUST be reported, with the typed count unknown;
 - `service-health`: set-web does not answer, the agent owner is unreachable, an auto-clear unit is
   inactive for a registered project that has auto-clear armed, or a user unit is in the `failed` state;
 - `doctor-delta`: `set-doctor --json` (module doctors included) reports a `fail` record that was
@@ -63,6 +67,18 @@ A probe that cannot measure its input MUST report that as a `warn` finding. It M
 #### Scenario: The auto-clear watcher stops acting
 - **WHEN** a live session has been at 92 % fill for 20 minutes, its project's threshold is 85 %, and no handoff file or clear happened since it crossed
 - **THEN** `auto-clear-miss` reports a `fail` finding with that session as its subject, the fill, the threshold and the minutes above it
+
+#### Scenario: A held question the owner has not answered yet
+- **WHEN** a relayed question has been held for 40 minutes and its transcript records no prompt queued from the terminal since the hold started
+- **THEN** `relay-hold` reports no finding for that session
+
+#### Scenario: A prompt typed into the terminal does not release the held question
+- **WHEN** a relayed question has been held for 20 minutes and its transcript records a prompt queued from the terminal after the hold started
+- **THEN** `relay-hold` reports a `warn` finding with that session as its subject and the count of typed prompts in its evidence
+
+#### Scenario: A failed unit carries its exit
+- **WHEN** a user unit is in the `failed` state
+- **THEN** its `service-health` finding carries the unit's systemd `Result` and main exit status, so the triage can name the cause
 
 #### Scenario: The fleet payload cannot be read
 - **WHEN** set-web is down and the probes that read the fleet payload cannot get it
@@ -86,11 +102,17 @@ transcript text, message body, or file content from a project. For each finding,
 verdict (`real`, `noise`, or `known:<entry id>`), an owning project, and a fix brief of at most
 600 characters. The daily number of triage calls MUST be capped (`watchdog.triage_daily_calls`,
 default 60). Over the cap, with GLM unreachable, or with an answer that cannot be parsed, the
-finding MUST stay `untriaged` and stay visible.
+finding MUST stay `untriaged` and stay visible. The answer is keyed by the fingerprint the model
+returns, so a brief MUST be checked against the finding it is stored on: a brief that names another
+finding of the same call first, or names only another one, MUST leave the finding `untriaged`.
 
 #### Scenario: Budget exhausted
 - **WHEN** the day's triage calls have reached the cap and a new finding opens
 - **THEN** the finding is stored as `untriaged`, the fleet badge counts it, and no GLM call is made
+
+#### Scenario: A brief written for another finding
+- **WHEN** one triage call covers two findings and the brief answered for the first names the second finding's subject before its own, or names only the second's
+- **THEN** the first finding stays `untriaged` and the mismatch is logged with both fingerprints
 
 #### Scenario: Known defect
 - **WHEN** triage answers `known:B-214` for a `relay-hold` finding

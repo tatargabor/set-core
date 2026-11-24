@@ -138,6 +138,52 @@ def parse_answer(text: Optional[str]) -> Dict[str, Dict[str, Any]]:
     return out
 
 
+_UNIT_SUFFIX = re.compile(r"\.(service|timer|socket|path|target|mount)$")
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def subject_names(subject: str) -> List[str]:
+    """The spellings a brief may use for a finding's subject: `unit:x.service` → x.service, x."""
+    key = (subject.split(":", 1)[1] if ":" in subject else subject).strip().lower()
+    if not key:
+        return []
+    names = {key, _UNIT_SUFFIX.sub("", key)}
+    if _UUID.match(key):
+        names.add(key[:8])
+    return [n for n in names if len(n) >= 3]
+
+
+def _first_mention(text: str, names: List[str]) -> Optional[int]:
+    best = None
+    for name in names:
+        m = re.search(r"(?<![a-z0-9_-])" + re.escape(name) + r"(?![a-z0-9_-])", text)
+        if m and (best is None or m.start() < best):
+            best = m.start()
+    return best
+
+
+def brief_names_another(brief: str, rec: Dict[str, Any], recs: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The other finding of the same call this brief was written for, or None (B-221).
+
+    The answer is keyed by the fingerprint the model returns, so nothing ties a brief to the
+    finding it lands on. Measured 2026-11-24: two failed units of one project got each
+    other's brief. A brief that names another finding's subject before its own (or only
+    another's) is taken as mispaired. A brief naming no subject at all is accepted.
+    """
+    text = brief.lower()
+    own = _first_mention(text, subject_names(str(rec.get("subject") or "")))
+    first = None
+    for other in recs:
+        if other is rec or other.get("subject") == rec.get("subject"):
+            continue
+        pos = _first_mention(text, subject_names(str(other.get("subject") or "")))
+        if pos is None or (own is not None and pos >= own):
+            continue
+        if first is None or pos < first[0]:
+            first = (pos, other)
+    return first[1] if first else None
+
+
 def build_prompt(recs: List[Dict[str, Any]], max_chars: int, registry: Dict[str, Any]) -> Optional[str]:
     trees = {"set-core": str(Path(__file__).resolve().parents[3])}
     for rec in recs:
@@ -188,6 +234,11 @@ def triage_new(store: Store, fps: List[str], *, now: float, get=local_config.get
     for rec in recs:
         verdict = answer.get(rec["fp"])
         if not verdict:
+            continue
+        other = brief_names_another(verdict.get("brief") or "", rec, recs)
+        if other is not None:
+            logger.warning("watchdog triage: the brief answered for %s (%s) names %s (%s) first; left untriaged",
+                           rec["fp"], rec.get("subject"), other["fp"], other.get("subject"))
             continue
         rec["triage"] = {**verdict, "at": now}
         done += 1

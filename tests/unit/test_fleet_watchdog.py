@@ -330,6 +330,19 @@ def test_service_health_reports_failed_units(monkeypatch):
     assert subjects == {"unit:set-agent-owner", "unit:mail-sync.service"}
 
 
+def test_a_failed_unit_carries_its_result_and_exit_status(monkeypatch):
+    """AC-18 (B-221): the triage can name the cause only if the evidence carries it."""
+    c = ctx_with({"projects": [], "owner_reachable": True, "bus_reachable": True})
+
+    def systemctl(*a):
+        out = "Result=timeout\nExecMainStatus=15\n" if a[0] == "show" else "mail-sync.service loaded failed failed Mail\n"
+        return subprocess.CompletedProcess(a, 0, out, "")
+    monkeypatch.setattr(P, "_systemctl", systemctl)
+    monkeypatch.setattr(P, "_registry", lambda get: {})
+    [unit] = [x for x in P.probe_service_health(c) if x.subject == "unit:mail-sync.service"]
+    assert unit.evidence["result"] == "timeout" and unit.evidence["exit_status"] == 15
+
+
 # ---- auto-clear-miss ----------------------------------------------------------------
 
 def test_auto_clear_miss_after_the_grace(tmp_path, monkeypatch):
@@ -375,7 +388,42 @@ def test_relay_hold_ignores_continuations(monkeypatch):
         {"session_id": "b", "started": NOW - 3600, "kind": "continuation"},
         {"session_id": "c", "started": NOW - 60, "kind": None}])
     out = P.probe_relay_hold(Context(now=NOW, get=cfg()))
+    # No cwd: the terminal input cannot be measured, so the hold is still shown (B-222).
     assert [x.subject for x in out] == ["session:a"] and out[0].evidence["minutes"] == 60
+    assert out[0].evidence["typed_in_terminal"] is None
+
+
+def _iso(t):
+    return datetime.fromtimestamp(t, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _held(tmp_path, monkeypatch, queued):
+    """One ask held 40 min in /w/proj, whose transcript carries `queued` (offset s, content)."""
+    from set_orch.fleet import question_relay as qr
+    started = NOW - 40 * 60
+    monkeypatch.setattr(qr, "list_waiting", lambda: [
+        {"session_id": "s1", "started": started, "questions": 2, "cwd": "/w/proj"}])
+    path = P.transcript_path("/w/proj", "s1", home=str(tmp_path))
+    path.parent.mkdir(parents=True)
+    rows = [{"type": "user", "timestamp": _iso(started - 5), "message": {"content": "earlier"}}]
+    rows += [{"type": "queue-operation", "operation": "enqueue", "timestamp": _iso(started + off), "content": c}
+             for off, c in queued]
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    return P.probe_relay_hold(Context(now=NOW, get=cfg()), home=str(tmp_path))
+
+
+def test_relay_hold_with_nothing_typed_is_the_owner_not_a_defect(tmp_path, monkeypatch):
+    """AC-16 (B-222): a harness notification queued, or a prompt typed BEFORE the hold, is not B-214."""
+    assert _held(tmp_path, monkeypatch, [(60, "<task-notification>x</task-notification>"),
+                                          (-30, "typed before the hold")]) == []
+
+
+def test_relay_hold_with_a_prompt_typed_into_the_terminal_is_reported(tmp_path, monkeypatch):
+    """AC-17 (B-214's symptom, measured on a real session)."""
+    out = _held(tmp_path, monkeypatch, [(120, "/dd"), (300, "<task-notification>x</task-notification>")])
+    assert [x.subject for x in out] == ["session:s1"]
+    assert out[0].evidence["typed_in_terminal"] == 1 and out[0].evidence["minutes"] == 40
+    assert "typed in its terminal" in out[0].summary
 
 
 # ---- doctor-delta -------------------------------------------------------------------
@@ -451,6 +499,33 @@ def test_triage_known_is_recorded_and_not_dispatched(base):
     assert s.findings[fp]["triage"]["verdict"] == "known:B-214"
     asked = []
     assert wd_dispatch.dispatch_ready(s, now=NOW, get=cfg(), asker=lambda *a: asked.append(a)) == 0 and asked == []
+
+
+def test_a_brief_written_for_another_finding_leaves_it_untriaged(base):
+    """AC-19 (B-221): the measured swap: each unit's brief opens with the other unit."""
+    a = Finding("service-health", "fail", "unit:alpha-stats.service", "failed", {"unit": "alpha-stats.service"})
+    b = Finding("service-health", "fail", "unit:beta-videos.service", "failed", {"unit": "beta-videos.service"})
+    c = Finding("service-health", "fail", "unit:gamma.service", "failed", {"unit": "gamma.service"})
+    s = _store_with(base, a, b, c)
+    answer = {"findings": [
+        {"fp": a.fp, "verdict": "real", "owner": "proj",
+         "brief": "unit beta-videos.service is failed. Companion unit alpha-stats.service failed too."},
+        {"fp": b.fp, "verdict": "real", "owner": "proj", "brief": "unit alpha-stats is failed; check it."},
+        {"fp": c.fp, "verdict": "real", "owner": "proj",
+         "brief": "gamma.service is failed; beta-videos.service failed at the same time."}]}
+    n = wd_triage.triage_new(s, [a.fp, b.fp, c.fp], now=NOW, get=cfg(), registry={},
+                             runner=lambda p: json.dumps(answer))
+    assert n == 1
+    assert s.findings[a.fp]["triage"] is None and s.findings[b.fp]["triage"] is None
+    assert s.findings[c.fp]["triage"]["verdict"] == "real"
+
+
+def test_a_brief_naming_no_subject_is_accepted():
+    rec = {"fp": "1", "subject": "session:0d56fb05-5e5c-49fe-9501-8e8781585b97"}
+    other = {"fp": "2", "subject": "unit:x.service"}
+    assert wd_triage.brief_names_another("a held question; check the relay log", rec, [rec, other]) is None
+    assert wd_triage.brief_names_another("session 0d56fb05 holds; x.service too", rec, [rec, other]) is None
+    assert wd_triage.brief_names_another("x.service failed", rec, [rec, other]) is other
 
 
 def test_register_titles_reads_only_the_open_section(tmp_path):
