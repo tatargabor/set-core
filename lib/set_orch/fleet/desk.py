@@ -229,8 +229,17 @@ class DeskResolver:
                 continue
             held = mandate.join(records, pid=row.get("pid"), unit=row.get("unit"),
                                 session_id=row.get("session_id"))
-            if (held and held["ended"] is None and held["kind"] == "desk"
-                    and held["project"] == project):
+            if not (held and held["kind"] == "desk" and held["project"] == project):
+                continue
+            if held["ended"] is None:
+                return {**row, "mandate_id": held["id"]}
+            # The agent is in the live listing and carries this desk mandate, yet the record
+            # says it ended as missing: that end was written during a blind spot (measured
+            # 2026-11-24 — the running desk kept its label, so no new desk could start and the
+            # request failed `desk-not-ready`). Being live outranks the record; re-open it.
+            if (held["ended"] or {}).get("reason") == "ended" and self.mandates.reopen(held["id"]):
+                logger.info("fleet desk: re-adopted a live desk whose mandate had ended as missing "
+                            "(mandate %s, pid %s)", held["id"], row.get("pid"))
                 return {**row, "mandate_id": held["id"]}
         return None
 
@@ -320,16 +329,22 @@ KEEP = "keep"
 STOP = "stop"
 
 
-def _keep_reason(row: Dict[str, Any], live_engagements: Optional[int]) -> Optional[str]:
+def _keep_reason(row: Dict[str, Any], live_engagements: Optional[int],
+                 asking: Optional[int] = 0) -> Optional[str]:
     """Why the desk is kept on every condition EXCEPT the elapsed quiet time; None when none.
 
     Shared by the sweep and the close forecast, so the countdown a reader sees can never
-    disagree with what the sweep will do.
+    disagree with what the sweep will do. `asking` counts the live engagements this desk
+    itself asked of another project: a desk waiting on an answer is quiet, not finished
+    (measured 2026-11-24: one was swept while its own request was open, so the answer had
+    nobody to come back to).
     """
-    if live_engagements is None:
+    if live_engagements is None or asking is None:
         return "engagements-unmeasured"
     if live_engagements > 0:
         return "engagement-open"
+    if asking > 0:
+        return "asking-open"
     state = row.get("state")
     if state is None or state == "unknown":
         return "state-unmeasured"
@@ -342,7 +357,7 @@ def _keep_reason(row: Dict[str, Any], live_engagements: Optional[int]) -> Option
 
 
 def sweep_decision(row: Dict[str, Any], *, live_engagements: Optional[int],
-                   quiet_after: float) -> tuple:
+                   quiet_after: float, asking: Optional[int] = 0) -> tuple:
     """(decision, why) for one live desk row.
 
     Stopped only when everything that could argue for keeping it was MEASURED and says quiet:
@@ -350,7 +365,7 @@ def sweep_decision(row: Dict[str, Any], *, live_engagements: Optional[int],
     bound. Anything unmeasured keeps the desk — a desk left running costs a seat, a desk
     stopped mid-answer costs the answer.
     """
-    why = _keep_reason(row, live_engagements)
+    why = _keep_reason(row, live_engagements, asking)
     if why:
         return KEEP, why
     if row["last_movement_seconds"] <= quiet_after:
@@ -359,14 +374,14 @@ def sweep_decision(row: Dict[str, Any], *, live_engagements: Optional[int],
 
 
 def close_forecast(row: Dict[str, Any], *, live_engagements: Optional[int],
-                   quiet_after: float) -> Optional[Dict[str, float]]:
+                   quiet_after: float, asking: Optional[int] = 0) -> Optional[Dict[str, float]]:
     """`{closes_in_seconds, bound_seconds}` when only the quiet time still keeps the desk.
 
     None when anything else keeps it — an open engagement, a working state, an unmeasured
     input — because a countdown that is not going to run out is a false value. The seconds
     are never negative: past the bound the sweep acts on its next round.
     """
-    if _keep_reason(row, live_engagements):
+    if _keep_reason(row, live_engagements, asking):
         return None
     remaining = max(0.0, float(quiet_after) - float(row["last_movement_seconds"]))
     return {"closes_in_seconds": round(remaining, 1), "bound_seconds": float(quiet_after)}

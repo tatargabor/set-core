@@ -1,9 +1,9 @@
 ## 1. Liveness defects (Layer 1 core + service)
 
-- [ ] 1.1 CORE — `MandateStore.end_missing` takes `unit_alive(unit) -> Optional[bool]`; a mandate whose unit is active or unmeasured is kept, with a log line; `api/fleet.py` `_settle_mandates` passes the systemd measurement. [REQ: a-mandate-is-ended-for-a-missing-agent-only-when-its-unit-is-measured-gone]
-- [ ] 1.2 CORE — `MandateStore.reopen_desk(project, label, unit_alive)` re-opens the newest ended desk mandate under the label whose unit is active; `DeskResolver.resolve` calls it on `LabelHeld` before waiting for the seat. [REQ: a-running-desk-whose-mandate-was-ended-is-re-adopted-not-blocked]
-- [ ] 1.3 CORE — The sweep keeps a desk whose seat asks an open engagement (`asking-open`); the close forecast agrees. [REQ: a-desk-waiting-on-its-own-request-is-not-swept]
-- [ ] 1.4 TEST — Unit tests for 1.1-1.3, each proven by stash-and-rerun (fails without the fix). [REQ: a-mandate-is-ended-for-a-missing-agent-only-when-its-unit-is-measured-gone]
+- [x] 1.1 CORE — `MandateStore.end_missing` takes `unit_alive(unit) -> Optional[bool]`; a mandate whose unit is active or unmeasured is kept, with a log line; `api/fleet.py` `_settle_mandates` passes the systemd measurement. [REQ: a-mandate-is-ended-for-a-missing-agent-only-when-its-unit-is-measured-gone]
+- [x] 1.2 CORE — `MandateStore.reopen(id, only_reasons=("ended",))`; `DeskResolver._live_desk_row` re-opens a live desk's mandate that ended as missing and resolves to it. [REQ: a-running-desk-whose-mandate-was-ended-is-re-adopted-not-blocked]
+- [x] 1.3 CORE — The sweep keeps a desk whose seat asks an open engagement (`asking-open`); the close forecast agrees. [REQ: a-desk-waiting-on-its-own-request-is-not-swept]
+- [x] 1.4 TEST — Unit tests for 1.1-1.3, each proven by stash-and-rerun (fails without the fix). [REQ: a-mandate-is-ended-for-a-missing-agent-only-when-its-unit-is-measured-gone]
 
 ## 2. Stall measurement and the ladder (Layer 1 core)
 
@@ -39,7 +39,8 @@
 - [ ] AC-8: WHEN a takeover desk starts a session THEN its context names room, timestamp, asker, predecessor seat and session, and the continue + handover-FACT instructions [REQ: the-taking-over-desk-is-told-where-the-work-got-and-says-on-the-bus-that-it-took-over, scenario: context-of-a-taking-over-desk]
 - [ ] AC-9: WHEN the new desk posts an unlinked handover FACT THEN the engagement stays open until a linked reply [REQ: the-taking-over-desk-is-told-where-the-work-got-and-says-on-the-bus-that-it-took-over, scenario: the-handover-notice-does-not-close-the-request]
 - [ ] AC-10: WHEN an engagement at the takeover maximum has a stalled desk THEN nothing is interrupted or started and it is listed waiting [REQ: takeovers-per-request-are-bounded, scenario: the-bound-is-reached]
-- [ ] AC-11: WHEN a listing misses a desk whose unit is active THEN its mandate stays open [REQ: a-mandate-is-ended-for-a-missing-agent-only-when-its-unit-is-measured-gone, scenario: a-listing-misses-a-running-desk]
-- [ ] AC-12: WHEN a listing misses a desk whose unit is inactive THEN its mandate is ended [REQ: a-mandate-is-ended-for-a-missing-agent-only-when-its-unit-is-measured-gone, scenario: the-desk-really-exited]
-- [ ] AC-13: WHEN the start is refused for a held label and the newest desk mandate under it is ended with an active unit THEN it is re-opened and the request resolves to that desk [REQ: a-running-desk-whose-mandate-was-ended-is-re-adopted-not-blocked, scenario: held-label-ended-mandate]
-- [ ] AC-14: WHEN a quiet desk has an open engagement it asked THEN the sweep keeps it with `asking-open` [REQ: a-desk-waiting-on-its-own-request-is-not-swept, scenario: desk-asked-another-project]
+- [x] AC-11: WHEN a listing misses a desk whose unit is active THEN its mandate stays open [REQ: a-mandate-is-ended-for-a-missing-agent-only-when-its-unit-is-measured-gone, scenario: a-listing-misses-a-running-desk]
+- [x] AC-12: WHEN a listing misses a desk whose unit is inactive THEN its mandate is ended [REQ: a-mandate-is-ended-for-a-missing-agent-only-when-its-unit-is-measured-gone, scenario: the-desk-really-exited]
+- [x] AC-13: WHEN the project's running desk carries a mandate ended as missing THEN it is re-opened and the request resolves to it [REQ: a-running-desk-whose-mandate-was-ended-is-re-adopted-not-blocked, scenario: held-label-ended-mandate]
+- [x] AC-13b: WHEN a live agent carries a desk mandate ended `replaced` THEN it is not re-opened nor resolved as the desk [REQ: a-running-desk-whose-mandate-was-ended-is-re-adopted-not-blocked, scenario: a-deliberately-stopped-desk-is-not-revived]
+- [x] AC-14: WHEN a quiet desk has an open engagement it asked THEN the sweep keeps it with `asking-open` [REQ: a-desk-waiting-on-its-own-request-is-not-swept, scenario: desk-asked-another-project]

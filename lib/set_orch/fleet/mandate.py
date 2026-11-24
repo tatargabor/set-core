@@ -44,7 +44,9 @@ SOURCES = ("start", "declared")
 #: over (fleet-work-agent-done). Like the others it says the mandate ended, never that it
 #: was fulfilled; checking that is `agent-goal-closure`'s job.
 #: `work-idle`: the work sweep closed a work agent that never ran its done step.
-END_REASONS = ("stopped", "ended", "desk-quiet", "agent-done", "work-idle")
+#: `replaced`: the takeover watch stopped a stalled or gone desk and started another for its
+#: open request (fleet-engagement-takeover).
+END_REASONS = ("stopped", "ended", "desk-quiet", "agent-done", "work-idle", "replaced")
 
 #: Why an agent has no mandate. `not-started-here`: the framework did not start it.
 #: `not-declared`: the framework started it and nobody gave it a goal.
@@ -69,7 +71,7 @@ __all__ = [
     "payload_for", "open_by_label", "for_session", "reserved_desk_project",
     "MandateError", "MandateStoreUnreadable", "MandateStore",
     "default_store_path", "new_id", "desk_label", "mandate_id_of_pid", "join", "absence", "public",
-    "atomic_write_json", "file_lock",
+    "atomic_write_json", "file_lock", "unit_alive", "TAKEOVER_FIELDS",
 ]
 
 
@@ -153,6 +155,19 @@ def _scope(raw: Any) -> Dict[str, Any]:
     return {"paths": paths, "change": _text(raw.get("change"))}
 
 
+#: The fields a takeover mandate carries: where the request is on the bus, who asked, and
+#: which session held it before. Pointers only — never the request's text.
+TAKEOVER_FIELDS = ("room", "ts", "asker", "from_seat", "from_session", "engagement_id")
+
+
+def _takeover(raw: Any) -> Optional[Dict[str, Optional[str]]]:
+    if not isinstance(raw, dict):
+        return None
+    out = {key: _text(raw.get(key)) for key in TAKEOVER_FIELDS}
+    # A takeover without the request's place on the bus points nowhere.
+    return out if out["room"] and out["ts"] else None
+
+
 def _normalise(raw: Any) -> Optional[Dict[str, Any]]:
     """One stored record made safe to use, or None for something that is not a record."""
     if not isinstance(raw, dict) or not _text(raw.get("id")):
@@ -180,6 +195,7 @@ def _normalise(raw: Any) -> Optional[Dict[str, Any]]:
         "carrier": bool(raw.get("carrier")),
         "declared_at": raw.get("declared_at") if isinstance(raw.get("declared_at"), (int, float)) else None,
         "ended": ended,
+        "takeover": _takeover(raw.get("takeover")),
     }
 
 
@@ -189,7 +205,7 @@ def public(record: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         return None
     return {k: record[k] for k in (
         "id", "kind", "goal", "scope", "done_when", "requested_by", "requester_is_claim",
-        "project", "label", "source", "delivered", "declared_at", "ended",
+        "project", "label", "source", "delivered", "declared_at", "ended", "takeover",
     )}
 
 
@@ -272,6 +288,7 @@ class MandateStore:
         carrier: bool = False,
         session_id: Optional[str] = None,
         mandate_id: Optional[str] = None,
+        takeover: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Write a new mandate. A mandate without a goal is not a mandate and is refused.
 
@@ -290,7 +307,7 @@ class MandateStore:
             "requested_by": requested_by, "project": project, "cwd": cwd, "label": label,
             "unit": unit, "session_ids": [session_id] if session_id else [],
             "source": source, "delivered": False, "carrier": carrier,
-            "declared_at": self._clock(), "ended": None,
+            "declared_at": self._clock(), "ended": None, "takeover": takeover,
         })
         assert record is not None
         with self._mutate() as records:
@@ -386,12 +403,37 @@ class MandateStore:
             logger.info("fleet mandate: %s continued on a restored agent (was ended=%s)", record["id"], was)
             return dict(record)
 
-    def end_missing(self, alive_ids: Iterable[str], *, grace_seconds: float = 120.0) -> List[str]:
+    def reopen(self, mandate_id: str, *, only_reasons: Iterable[str] = ("ended",)) -> Optional[Dict[str, Any]]:
+        """Re-open a mandate that was ended for one of `only_reasons`. Returns it, or None.
+
+        For the case where the end was written during a blind spot — a listing that did not
+        see a live agent ends it as `ended` — and the agent is then measured alive. Any other
+        reason (stopped, replaced, done) was an act, and is not undone here.
+        """
+        allowed = set(only_reasons)
+        with self._mutate() as records:
+            record = records.get(mandate_id)
+            if record is None or record["ended"] is None or record["ended"].get("reason") not in allowed:
+                return None
+            was = record["ended"]["reason"]
+            record["ended"] = None
+        logger.info("fleet mandate: %s re-opened (was ended=%s) — its agent is measured alive",
+                    mandate_id, was)
+        return dict(record)
+
+    def end_missing(self, alive_ids: Iterable[str], *, grace_seconds: float = 120.0,
+                    unit_alive: Optional[Callable[[str], Optional[bool]]] = None) -> List[str]:
         """End every open, started mandate whose agent is gone. Returns the ids ended.
 
         `alive_ids` are the mandates joined to a live agent in the round just measured. A
         mandate younger than `grace_seconds` is left alone: its agent may not be visible yet,
         and ending it would be a false absence about a process that is starting.
+
+        `unit_alive(unit)` measures the agent's scope directly. Absence from one listing is a
+        gap, not a zero (measured 2026-11-24: a listing taken while the service was stopping
+        ended a desk that ran on for fifteen minutes and kept its label, and the next request
+        to that project failed). A unit measured alive — or whose state cannot be measured —
+        keeps its mandate.
         """
         alive = set(alive_ids)
         now = self._clock()
@@ -402,11 +444,34 @@ class MandateStore:
                     continue
                 if now - float(record["declared_at"] or now) < grace_seconds:
                     continue
+                if unit_alive is not None and record["unit"]:
+                    try:
+                        live = unit_alive(record["unit"])
+                    except Exception as exc:  # noqa: BLE001 — unmeasured, never "gone"
+                        logger.warning("fleet mandate: unit state of %s unreadable (%s)",
+                                       record["unit"], type(exc).__name__)
+                        live = None
+                    if live is not False:
+                        logger.info("fleet mandate: %s kept although absent from the listing "
+                                    "(unit %s %s)", record["id"], record["unit"],
+                                    "alive" if live else "unmeasured")
+                        continue
                 record["ended"] = {"at": now, "reason": "ended"}
                 ended.append(record["id"])
         if ended:
             logger.info("fleet mandate: %d mandate(s) ended — their agents are gone", len(ended))
         return ended
+
+
+def unit_alive(unit: str) -> Optional[bool]:
+    """Whether a framework scope still holds a live agent. None when it cannot be measured."""
+    try:
+        from . import scopes
+        return not scopes.scope_is_gone(scopes.get(scopes.as_unit_name(unit)))
+    except Exception as exc:  # noqa: BLE001 — a failed measurement is not an absence
+        logger.warning("fleet mandate: scope state of %s could not be measured (%s)",
+                       unit, type(exc).__name__)
+        return None
 
 
 # -- joining a record to a running agent ------------------------------------------------

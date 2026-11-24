@@ -357,9 +357,11 @@ def sweep_desks() -> Dict[str, Any]:
         label = row.get("terminal_label")
         try:
             live = engagements.live_for_desk(str(held.get("project")))
+            asking = engagements.live_asked_by(row.get("seat"))
         except Exception:  # noqa: BLE001
-            live = None
-        decision, why = fleet_desk.sweep_decision(row, live_engagements=live, quiet_after=quiet_after)
+            live, asking = None, None
+        decision, why = fleet_desk.sweep_decision(row, live_engagements=live, quiet_after=quiet_after,
+                                                  asking=asking)
         if decision != fleet_desk.STOP or not label:
             out["kept"].append({"label": label, "why": why})
             continue

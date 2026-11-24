@@ -222,6 +222,13 @@ class EngagementStore:
         return sum(1 for r in self._load().values()
                    if r["project"] == project and r["state"] in LIVE_STATES)
 
+    def live_asked_by(self, seat: Optional[str]) -> int:
+        """How many live engagements a seat itself asked — it is waiting on their answers."""
+        if not seat:
+            return 0
+        return sum(1 for r in self._load().values()
+                   if r["asker"] == seat and r["state"] in LIVE_STATES)
+
     # -- writing ----------------------------------------------------------------
 
     def open(self, *, asker: Optional[str], project: str, kind: str = "REQUEST",

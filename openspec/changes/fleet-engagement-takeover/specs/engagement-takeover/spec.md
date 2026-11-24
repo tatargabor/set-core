@@ -83,11 +83,15 @@ Ending the mandates of agents absent from a listing SHALL skip every mandate who
 - **THEN** its mandate is ended
 
 ### Requirement: A running desk whose mandate was ended is re-adopted, not blocked
-When a desk start is refused because the desk label is held and no live desk is found, resolution SHALL re-open the newest ended desk mandate recorded under that label for the project whose unit is measured active, and resolve to that agent.
+When desk resolution finds a live, framework-held agent that carries a desk mandate for the project whose record says it ended as missing (reason `ended`), it SHALL re-open that mandate and resolve to that agent. A mandate ended by an act (stopped, replaced, desk-quiet, done) SHALL NOT be re-opened this way.
 
 #### Scenario: Held label, ended mandate
-- **WHEN** a request is resolved, the owner refuses the start because the label is held, and the newest desk mandate under that label is ended while its unit is active
+- **WHEN** a request is resolved and the project's running desk carries a mandate that was ended as missing
 - **THEN** that mandate is re-opened and the request resolves to the running desk instead of failing `desk-not-ready`
+
+#### Scenario: A deliberately stopped desk is not revived
+- **WHEN** a live agent carries a desk mandate that ended with reason `replaced`
+- **THEN** it is not re-opened and is not resolved as the desk
 
 ### Requirement: A desk waiting on its own request is not swept
 The quiet sweep SHALL keep a desk whose seat is the asker of a `resolving` or `open` engagement, with the reason `asking-open`, and SHALL not show a close countdown for it.

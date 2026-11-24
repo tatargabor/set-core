@@ -212,7 +212,9 @@ def _settle_mandates(grouped: List[Dict[str, Any]],
         gone = [r for r in mandates.values()
                 if r["ended"] is None and r["source"] == "start" and r["id"] not in alive]
         if gone:
-            store.end_missing(alive.keys())
+            # The unit is measured before a mandate is ended: a listing that missed a live
+            # agent is a gap, not an absence (fleet-engagement-takeover, measurements M0).
+            store.end_missing(alive.keys(), unit_alive=fleet_mandate.unit_alive)
     except Exception as exc:  # noqa: BLE001 — a listing must not fail on its bookkeeping
         logger.warning("fleet api: the mandate store was not updated (%s)", type(exc).__name__)
 
@@ -243,9 +245,11 @@ def _attach_desk_forecasts(grouped: List[Dict[str, Any]]) -> None:
     for row in desks:
         try:
             live = store.live_for_desk(str(row["mandate"].get("project")))
+            asking = store.live_asked_by(row.get("seat"))
         except Exception:  # noqa: BLE001
-            live = None
-        row["desk_close"] = fleet_desk.close_forecast(row, live_engagements=live, quiet_after=quiet_after)
+            live, asking = None, None
+        row["desk_close"] = fleet_desk.close_forecast(row, live_engagements=live, quiet_after=quiet_after,
+                                                      asking=asking)
 
 
 def _terminal_population(

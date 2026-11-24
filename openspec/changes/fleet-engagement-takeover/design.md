@@ -81,10 +81,11 @@ waiting, which is the state the map already marks.
 - **End on measured absence.** `end_missing` gets a `unit_alive(unit) -> Optional[bool]`
   measurement (`systemctl --user is-active`); `True` or `None` keeps the mandate. A listing that
   failed to see an agent is a gap, not a zero.
-- **Re-adopt a held label.** When the start is refused for a held label and no live desk row is
-  found, the newest ended desk mandate under that label whose unit is active is re-opened; the
-  join then finds the agent. Without an active unit the old behaviour (wait, then
-  `desk-not-ready`) stands.
+- **Re-adopt a live desk.** The join already returns the mandate a live process carries in its
+  environment, even when the record says ended. When that is a desk mandate of the project ended
+  as missing (`ended`), resolution re-opens it and resolves to the agent — being in the live
+  listing is the measurement. A mandate ended by an act (`replaced`, `stopped`, …) is not
+  revived, so a replaced desk that is still dying is never picked.
 - **Keep an asking desk.** The sweep counts `resolving`/`open` engagements whose asker is the
   desk's seat; a positive count keeps it (`asking-open`).
 
