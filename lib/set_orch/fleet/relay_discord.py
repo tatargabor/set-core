@@ -23,6 +23,7 @@ answer's text.
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import logging
 import os
@@ -66,6 +67,7 @@ REPLY_PAGES = 10
 #: Discord limits reactions per channel to roughly four a second; a burst of 4–6 on one post
 #: answers 429. Spacing them keeps the post's exit code clean.
 REACTION_GAP_S = 0.3
+RATE_LIMIT_TRIES = 3
 
 KIND_LABELS = {"ask": "question", "permission": "permission prompt", "continuation": "what next?"}
 
@@ -272,9 +274,11 @@ def waiting_ids(base: Optional[Path] = None) -> Optional[set]:
     folder = (base or qr.state_dir()) / "waiting"
     try:
         names = [n for n in os.listdir(folder) if n.endswith(".json")]
-    except FileNotFoundError:
-        return set()
     except OSError:
+        # A MISSING folder is unknown too, not "nothing waits": a post exists only because the
+        # relay handed a call over, and the relay writes `waiting/` for it. A missing folder
+        # means this process looks at a different state dir than the hook did (an env var the
+        # timer lacks), and reading it as empty would close every live post.
         return None
     ids = set()
     for name in names:
@@ -296,13 +300,24 @@ def write_answer(rec: Dict[str, Any], text: str) -> bool:
     """`{"valasz": text}`, mode 600, never over an existing file. False when one already exists."""
     path = answer_path(rec)
     path.parent.mkdir(parents=True, exist_ok=True)
+    # Written whole into a private temp file, then linked into place: the link is atomic and
+    # fails if the answer exists, so a crash never leaves an empty answer file that the relay
+    # cannot read and the next poll would take for "answered elsewhere".
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        return False
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write(json.dumps({"valasz": text}, ensure_ascii=False))
-    return True
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"valasz": text}, ensure_ascii=False))
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            return False
+        return True
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
 
 
 # --------------------------------------------------------------------------- #
@@ -335,16 +350,16 @@ class Discord:
     def call(self, method: str, path: str, body: Optional[Dict[str, Any]] = None) -> Any:
         where = f"{method} {re.sub(r'/[0-9]{6,}', '/<id>', path.split('?')[0])}"
         data = json.dumps(body).encode() if body is not None else None
-        for attempt in (1, 2):
+        for attempt in range(1, RATE_LIMIT_TRIES + 1):
             req = urllib.request.Request(API + path, data=data, method=method, headers={
                 "Authorization": f"Bot {self.token}", "User-Agent": USER_AGENT,
                 **({"Content-Type": "application/json"} if data is not None else {})})
             try:
                 status, raw, headers = self.opener(req, HTTP_TIMEOUT_S)
-            except (OSError, urllib.error.URLError) as exc:
+            except (OSError, urllib.error.URLError, http.client.HTTPException) as exc:
                 logger.warning("relay discord: %s failed (%s)", where, type(exc).__name__)
                 raise DiscordError(0, where) from exc
-            if status == 429 and attempt == 1:
+            if status == 429 and attempt < RATE_LIMIT_TRIES:
                 try:
                     wait = float(json.loads(raw or b"{}").get("retry_after", 1.0))
                 except ValueError:
@@ -354,7 +369,11 @@ class Discord:
             if status >= 300:
                 logger.warning("relay discord: %s → %s", where, status)
                 raise DiscordError(status, where)
-            return json.loads(raw) if raw else None
+            try:
+                return json.loads(raw) if raw else None
+            except ValueError as exc:
+                logger.warning("relay discord: %s → %s with a body that is not JSON", where, status)
+                raise DiscordError(status, where) from exc
         raise DiscordError(429, where)
 
     def me(self) -> Dict[str, Any]:
@@ -434,6 +453,14 @@ def post(payload: str, kind: str, w: World) -> int:
         options = [str(o) for o in e.get("optionsList") or []]
         multi = bool(e.get("multi"))
         try:
+            already = json.loads(record_path(cid, key, w.base).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            already = None
+        if isinstance(already, dict) and already.get("state") == "open":
+            # A retried envelope (an earlier run failed on a later question): this one is up.
+            logger.info("relay discord post [%s#%s]: already posted; not posted again", cid, key)
+            continue
+        try:
             msg = d.send(channel, message_text(e, kind))
         except DiscordError as exc:
             logger.warning("relay discord post [%s#%s]: not posted (%s)", cid, key, exc.status)
@@ -489,37 +516,136 @@ def _end(rec: Dict[str, Any], state: str, w: World, how: str = "") -> None:
     save_record(rec, w.base)
 
 
+def _emoji_key(name: str) -> str:
+    """One form for a unicode emoji: variation selectors dropped (1️⃣ and 1⃣ are the same key)."""
+    return name.replace("\ufe0f", "").replace("\ufe0e", "")
+
+
+_WANTED = {_emoji_key(e): e for e in (*NUMBERS, DEFER, CLOSE)}
+
+
 def gather(d: Discord, rec: Dict[str, Any], message: Dict[str, Any]) -> Dict[str, List[str]]:
-    """Who added which of the bridge's emoji. Only emoji somebody besides the bot added are fetched."""
-    wanted = {*NUMBERS[:len(rec["options"])], DEFER, CLOSE}
+    """Who added which of the bridge's emoji, keyed by the bridge's own form.
+
+    Matched on the normalised name and nothing looser — a custom emoji (it has an id) never
+    counts — and the users are fetched with the name exactly as Discord stored it; two stored
+    forms of one key are unioned. Only emoji somebody besides the bot added are fetched.
+    """
+    wanted = {_emoji_key(e) for e in (*NUMBERS[:len(rec["options"])], DEFER, CLOSE)}
     out: Dict[str, List[str]] = {}
     for r in message.get("reactions") or []:
-        name = _text((r.get("emoji") or {}).get("name"))
-        match = next((e for e in wanted if name and (name == e or e.startswith(name) or name.startswith(e))), None)
-        if match and int(r.get("count") or 0) - (1 if r.get("me") else 0) > 0:
-            out[match] = d.reactors(rec["channel_id"], rec["message_id"], match)
+        emoji = r.get("emoji") or {}
+        if emoji.get("id"):
+            continue
+        raw = _text(emoji.get("name"))
+        key = _emoji_key(raw)
+        if not raw or key not in wanted:
+            continue
+        if int(r.get("count") or 0) - (1 if r.get("me") else 0) <= 0:
+            continue
+        users = d.reactors(rec["channel_id"], rec["message_id"], raw)
+        out.setdefault(_WANTED[key], [])
+        out[_WANTED[key]] += [u for u in users if u not in out[_WANTED[key]]]
     return out
 
 
+_RECORD_KEYS = ("id", "key", "channel_id", "message_id", "options", "answer_dir")
+
+
+def _poll_one(rec: Dict[str, Any], w: World, d: Discord, waiting: Optional[set], allowed: List[str],
+              bot_id: str, replies: Dict[str, List[Dict[str, str]]], empty_refs: set) -> str:
+    """One open post → its outcome name. Raises DiscordError for a failed read."""
+    tag = f"{rec['id']}#{rec['key']}"
+    if answer_path(rec).exists():
+        _reply(d, rec, "✔ Answered elsewhere (the fleet, the terminal or the automatic answer); "
+                       "nothing was taken from here.")
+        _end(rec, "answered", w, "elsewhere")
+        logger.info("relay discord [%s]: answered elsewhere", tag)
+        return "answered-elsewhere"
+    if waiting is not None and rec["id"] not in waiting and w.now() - float(rec.get("posted") or 0) > GRACE_S:
+        _reply(d, rec, "🔒 Closed — this question no longer waits (it was answered at the terminal, "
+                       "released, or timed out). An answer written here would reach nobody.")
+        _end(rec, "closed", w, "no longer waits")
+        logger.info("relay discord [%s]: closed, no longer waits", tag)
+        return "closed"
+    try:
+        message = d.message(rec["channel_id"], rec["message_id"])
+    except DiscordError as exc:
+        if exc.status == 404:
+            _end(rec, "closed", w, "post deleted")
+            logger.info("relay discord [%s]: the post is gone; closed", tag)
+            return "closed"
+        raise
+    reactions = gather(d, rec, message)
+    if rec["message_id"] in empty_refs and not rec.get("empty_said"):
+        _reply(d, rec, "⚠ A reply here arrived with no readable text: the bot's Message Content intent "
+                       "is off (Developer Portal → Bot). Reactions still work; or reply with the ping on.")
+        rec["empty_said"] = True
+        save_record(rec, w.base)
+    verdict = decide(rec["options"], bool(rec.get("multi")), reactions,
+                     replies.get(rec["message_id"], []), allowed, bot_id)
+    if verdict.state != "answer":
+        if verdict.state == "unclear" and rec.get("unclear_said") != verdict.how:
+            _reply(d, rec, f"⚠ Not taken as an answer: {verdict.how}. Change the reactions or reply with text.")
+            rec["unclear_said"] = verdict.how
+            save_record(rec, w.base)
+        if verdict.state == "defer" and not rec.get("defer_said"):
+            _reply(d, rec, "⏸ Left for later (❌). Remove the ❌ to answer it here.")
+            rec["defer_said"] = True
+            save_record(rec, w.base)
+        return verdict.state
+    if not write_answer(rec, verdict.text):
+        _end(rec, "answered", w, "elsewhere")
+        return "answered-elsewhere"
+    try:
+        d.react(rec["channel_id"], rec["message_id"], RECORDED)
+    except DiscordError:
+        pass
+    _reply(d, rec, f"{RECORDED} Recorded ({verdict.how}): {verdict.text}")
+    _end(rec, "answered", w, verdict.how)
+    logger.info("relay discord [%s]: answer written (%s)", tag, verdict.how)
+    return "answered"
+
+
 def poll(w: World) -> Dict[str, int]:
-    """One pass over the open posts. Returns counts by outcome (ids only reach the log)."""
+    """One pass over the open posts. Returns counts by outcome (ids only reach the log).
+
+    One bad record or one failed read never stops the others; a refused token (401/403) is
+    counted as `auth-failed`, which makes the CLI exit non-zero so the timer shows as failed.
+    """
     counts: Dict[str, int] = {}
+
+    def bump(name: str) -> None:
+        counts[name] = counts.get(name, 0) + 1
+
     allowed = allowed_users(w.get)
     if missing(w.get, token=None if w.client is None else "injected"):
         logger.warning("relay discord poll: not configured; nothing read")
         return {"not-configured": 1}
-    open_recs = [r for r in load_records(w.base) if r.get("state") == "open"]
+    records = load_records(w.base)
+    open_recs = []
+    for r in records:
+        if r.get("state") != "open":
+            continue
+        if any(k not in r for k in _RECORD_KEYS):
+            logger.warning("relay discord poll: a post record lacks fields (%s); skipped", r.get("id"))
+            bump("bad-record")
+            continue
+        open_recs.append(r)
     prune(w.base, w.now())
     if not open_recs:
         return counts
     d = w.discord()
     bot_id = _text(w.get(KEY_BOT_ID))
     waiting = waiting_ids(w.base)
+    if waiting is None:
+        logger.info("relay discord poll: the relay's waiting records are unreadable in %s; nothing is "
+                    "closed this run", w.base or qr.state_dir())
     by_channel: Dict[str, List[Dict[str, Any]]] = {}
     for rec in open_recs:
         by_channel.setdefault(rec["channel_id"], []).append(rec)
     replies: Dict[str, List[Dict[str, str]]] = {}
-    empty_seen = False
+    empty_refs: set = set()
     for channel, recs in by_channel.items():
         try:
             after = str(min(int(r["message_id"]) for r in recs) - 1)
@@ -529,65 +655,26 @@ def poll(w: World) -> Dict[str, int]:
                 if not ref:
                     continue
                 if author in allowed and not _text(m.get("content")) and not m.get("attachments"):
-                    empty_seen = True
+                    empty_refs.add(ref)
                 replies.setdefault(ref, []).append({"author": author, "text": _text(m.get("content"))})
-        except DiscordError:
-            logger.warning("relay discord poll: replies in a channel unreadable this run")
-    if empty_seen:
+        except DiscordError as exc:
+            logger.warning("relay discord poll: replies in a channel unreadable this run (%s)", exc.status)
+            if exc.status in (401, 403):
+                bump("auth-failed")
+        except ValueError:
+            logger.warning("relay discord poll: a post record holds a bad message id")
+    if empty_refs:
         logger.warning("relay discord poll: an allowed reply arrived with no text — is the bot's "
                        "Message Content intent on?")
-
-    def bump(name: str) -> None:
-        counts[name] = counts.get(name, 0) + 1
-
     for rec in open_recs:
-        tag = f"{rec['id']}#{rec['key']}"
-        if answer_path(rec).exists():
-            _reply(d, rec, "✔ Answered elsewhere (the fleet, the terminal or the automatic answer); "
-                           "nothing was taken from here.")
-            _end(rec, "answered", w, "elsewhere")
-            logger.info("relay discord [%s]: answered elsewhere", tag)
-            bump("answered-elsewhere")
-            continue
-        if waiting is not None and rec["id"] not in waiting and w.now() - float(rec.get("posted") or 0) > GRACE_S:
-            _reply(d, rec, "🔒 Closed — this question no longer waits (it was answered at the terminal, "
-                           "released, or timed out). An answer written here would reach nobody.")
-            _end(rec, "closed", w, "no longer waits")
-            logger.info("relay discord [%s]: closed, no longer waits", tag)
-            bump("closed")
-            continue
         try:
-            message = d.message(rec["channel_id"], rec["message_id"])
-            reactions = gather(d, rec, message)
+            bump(_poll_one(rec, w, d, waiting, allowed, bot_id, replies, empty_refs))
         except DiscordError as exc:
-            if exc.status == 404:
-                _end(rec, "closed", w, "post deleted")
-                logger.info("relay discord [%s]: the post is gone; closed", tag)
-                bump("closed")
-            else:
-                bump("unreadable")
-            continue
-        verdict = decide(rec["options"], bool(rec.get("multi")), reactions,
-                         replies.get(rec["message_id"], []), allowed, bot_id)
-        if verdict.state != "answer":
-            bump(verdict.state)
-            if verdict.state == "unclear" and rec.get("unclear_said") != verdict.how:
-                _reply(d, rec, f"⚠ Not taken as an answer: {verdict.how}. Change the reactions or reply with text.")
-                rec["unclear_said"] = verdict.how
-                save_record(rec, w.base)
-            continue
-        if not write_answer(rec, verdict.text):
-            _end(rec, "answered", w, "elsewhere")
-            bump("answered-elsewhere")
-            continue
-        try:
-            d.react(rec["channel_id"], rec["message_id"], RECORDED)
-        except DiscordError:
-            pass
-        _reply(d, rec, f"{RECORDED} Recorded ({verdict.how}): {verdict.text}")
-        _end(rec, "answered", w, verdict.how)
-        logger.info("relay discord [%s]: answer written (%s)", tag, verdict.how)
-        bump("answered")
+            bump("auth-failed" if exc.status in (401, 403) else "unreadable")
+        except Exception as exc:  # one record must never stop the rest
+            logger.warning("relay discord [%s#%s]: skipped this run (%s)", rec.get("id"), rec.get("key"),
+                           type(exc).__name__)
+            bump("error")
     return counts
 
 
@@ -615,12 +702,19 @@ def wiring_key(get: Getter = local_config.get) -> str:
     return KEY_AA_FORWARD if Path(first).name == "set-auto-answer" else qr.KEY_COMMAND
 
 
-def unit_texts(command: str) -> Dict[str, str]:
+#: Carried into the unit when set at setup time, so the timer reads the same state and config
+#: the relay hook does (a timer started by systemd has none of the shell's environment).
+CARRIED_ENV = ("SET_QUESTION_RELAY_DIR", "SET_CONFIG_DIR")
+
+
+def unit_texts(command: str, env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    env = {k: v for k, v in (env if env is not None else os.environ).items() if k in CARRIED_ENV and v}
+    lines = "".join(f'Environment="{k}={v}"\n' for k, v in sorted(env.items()))
     service = ("[Unit]\nDescription=Take question-relay answers from Discord\n\n"
                "[Service]\nType=oneshot\n"
-               f"ExecStart={command}\n")
+               f"{lines}ExecStart={command}\n")
     timer = ("[Unit]\nDescription=Read question-relay answers from Discord every minute\n\n"
-             "[Timer]\nOnBootSec=60\nOnUnitActiveSec=60\nAccuracySec=5\n\n"
+             "[Timer]\nOnActiveSec=30\nOnBootSec=60\nOnUnitActiveSec=60\nAccuracySec=5\n\n"
              "[Install]\nWantedBy=timers.target\n")
     return {f"{UNIT_NAME}.service": service, f"{UNIT_NAME}.timer": timer}
 
@@ -655,20 +749,33 @@ def setup(args: argparse.Namespace, w: World, *, set_value: Callable[[str, Any],
           systemctl: Callable[..., Any] = subprocess.run, out: Callable[[str], None] = print,
           token_file: Optional[Path] = None, units: Optional[Path] = None) -> int:
     token_file = token_file or token_path()
+    try:
+        previous = json.loads(_text(w.get(KEY_PREVIOUS)) or "{}")
+    except ValueError:
+        previous = {}
+    previous = previous if isinstance(previous, dict) else {}
     if args.remove:
-        prev = _text(w.get(KEY_PREVIOUS))
-        try:
-            p = json.loads(prev) if prev else {}
-        except ValueError:
-            p = {}
-        for key, value in (p.items() if isinstance(p, dict) else []):
+        # Every relay key setup ever changed goes back to what it was before the FIRST setup;
+        # a key that was empty is unset again, so nothing keeps posting with no timer to read.
+        for key, value in previous.items():
             set_value(key, value)
-            out(f"restored {key}")
+            out(f"restored {key}" if value is not None else f"unset {key}")
+        set_value(KEY_PREVIOUS, None)
         remove_timer(systemctl, units)
         out(f"timer {UNIT_NAME}.timer removed; the token file and the channel settings were kept")
         return 0
+
+    def change(key: str, value: Any) -> None:
+        """Set a relay key, remembering its value from before the first setup (merged, never lost)."""
+        if key not in previous:
+            previous[key] = w.get(key)
+            set_value(KEY_PREVIOUS, json.dumps(previous, ensure_ascii=False))
+        set_value(key, value)
+
     if args.token_stdin:
         token = sys.stdin.readline().strip()
+        if token.lower().startswith("bot "):
+            token = token[4:].strip()
         if not token:
             out("✗ no token on stdin")
             return 1
@@ -705,40 +812,41 @@ def setup(args: argparse.Namespace, w: World, *, set_value: Callable[[str, Any],
         # the decider forwards every envelope unchanged, so this costs nothing until wanted.
         front = auto_answer_command()
         if front:
-            set_value(qr.KEY_COMMAND, front)
-            set_value(qr.KEY_TARGET, "command")
+            change(qr.KEY_COMMAND, front)
+            change(qr.KEY_TARGET, "command")
             out(f"✓ {qr.KEY_COMMAND} → {front} (the automatic-answer switch sits in front; off by default)")
     key = wiring_key(w.get)
     current = _text(w.get(key))
     want = bridge_command("post")
-    previous: Dict[str, Any] = {}
-    if current and current != want:
-        if not args.replace:
-            out(f"✗ {key} already points to another command:\n    {current}\n"
-                "  Nothing was rewired. Run setup again with --replace to use this bridge instead.")
-            return 2
-        previous[key] = current
-    set_value(key, want)
+    if current and current != want and not args.replace:
+        out(f"✗ {key} already points to another command:\n    {current}\n"
+            "  Nothing was rewired. Run setup again with --replace to use this bridge instead.")
+        return 2
+    change(key, want)
     out(f"✓ {key} → {want}")
     if key == qr.KEY_COMMAND:
-        set_value(qr.KEY_TARGET, "command")
+        change(qr.KEY_TARGET, "command")
     notify_cmd = _text(w.get(qr.KEY_NOTIFY_COMMAND))
     want_notify = bridge_command("notify")
     if not notify_cmd or (args.replace and notify_cmd != want_notify):
-        if notify_cmd:
-            previous[qr.KEY_NOTIFY_COMMAND] = notify_cmd
-        set_value(qr.KEY_NOTIFY_COMMAND, want_notify)
+        change(qr.KEY_NOTIFY_COMMAND, want_notify)
         out(f"✓ {qr.KEY_NOTIFY_COMMAND} → {want_notify}")
     elif notify_cmd != want_notify:
         out(f"· {qr.KEY_NOTIFY_COMMAND} kept (another command; --replace to change it)")
-    if previous:
-        set_value(KEY_PREVIOUS, json.dumps(previous, ensure_ascii=False))
     if not _text(w.get(qr.KEY_AUDIENCE)):
-        set_value(qr.KEY_AUDIENCE, "DEV")
+        change(qr.KEY_AUDIENCE, "DEV")
         out(f"✓ {qr.KEY_AUDIENCE} = DEV (the relay needs one)")
     try:
         folder = install_timer(systemctl, units)
         out(f"✓ timer {UNIT_NAME}.timer installed in {folder}, every minute")
+        try:
+            res = systemctl(["loginctl", "show-user", os.environ.get("USER", ""), "-p", "Linger"],
+                            capture_output=True, text=True, check=False)
+            if res is not None and "Linger=no" in (getattr(res, "stdout", "") or ""):
+                out("· A user timer stops when you log out. To keep answers flowing while logged "
+                    "out: loginctl enable-linger $USER")
+        except OSError:
+            pass
     except (OSError, subprocess.CalledProcessError) as exc:
         logger.warning("relay discord: the timer could not be installed (%s)", type(exc).__name__)
         out(f"⚠ no user systemd here ({type(exc).__name__}): answers are read only when "
@@ -796,6 +904,11 @@ def test(w: World, out: Callable[[str], None] = print) -> int:
     except DiscordError as exc:
         out(f"✗ the probe was not posted ({exc.status})")
         return 1
+    try:
+        w.discord().react(_text(w.get(KEY_CHANNEL)), str(msg["id"]), CLOSE)
+    except DiscordError as exc:
+        out(f"✗ the bot may post but not react ({exc.status}): give it the Add Reactions permission")
+        return 1
     _private_write((w.base or qr.state_dir()) / "discord" / "probe.json",
                    {"channel_id": _text(w.get(KEY_CHANNEL)), "message_id": str(msg["id"])})
     out("✓ probe posted — reply to it, then run `set-relay-discord test --check`")
@@ -844,6 +957,11 @@ def _log_to_file() -> None:
     root.setLevel(logging.INFO)
 
 
+def poll_exit(counts: Dict[str, int]) -> int:
+    """Non-zero when the poll could not do its job at all, so the timer unit shows as failed."""
+    return 1 if counts.get("auth-failed") or counts.get("not-configured") else 0
+
+
 SETUP_GUIDE = """\
 first setup, once per machine:
   1. discord.com/developers/applications → New Application → Bot:
@@ -852,11 +970,13 @@ first setup, once per machine:
      Read Message History, Add Reactions → open the URL, add the bot to your server.
   3. In Discord: Settings → Advanced → Developer Mode ON; right-click the channel →
      Copy Channel ID; right-click your own name → Copy User ID.
-  4. echo "<token>" | set-relay-discord setup --token-stdin --channel <channel id> --allow <user id>
+  4. read -rs T   (paste the token, Enter — it stays out of the shell history), then
+     printf %s "$T" | set-relay-discord setup --token-stdin --channel <channel id> --allow <user id>
      (add --replace if another bridge is configured; setup --remove undoes it)
   5. set-relay-discord test → reply to the probe → set-relay-discord test --check
   6. Switch the question relay on: the fleet header, or
      set-config set question_relay.enabled true
+  check: systemctl --user start set-relay-discord.service; journalctl --user -u set-relay-discord
 """
 
 
@@ -887,7 +1007,7 @@ def main(argv: Optional[List[str]] = None, w: Optional[World] = None) -> int:
         counts = poll(w)
         if counts:
             logger.info("relay discord poll: %s", ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
-        return 0
+        return poll_exit(counts)
     if args.cmd == "setup":
         return setup(args, w)
     if args.cmd == "status":

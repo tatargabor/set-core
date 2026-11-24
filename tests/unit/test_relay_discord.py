@@ -423,3 +423,130 @@ def test_another_bridge_is_not_replaced_without_the_flag(tmp_path):
     code, out, _ = run_setup(tmp_path, get, remove=True, token_stdin=False)
     assert code == 0 and get[rd.KEY_AA_FORWARD] == "node other-bridge.mjs be"
     assert not (tmp_path / "units" / "set-relay-discord.timer").exists()
+
+
+# ----------------------------------------------------------------------------- review fixes (2026-11-25)
+
+def test_remove_on_a_fresh_machine_unsets_everything_setup_set(tmp_path, monkeypatch):
+    """A fresh machine had no previous values; --remove must not leave the relay posting with no timer."""
+    monkeypatch.setattr(rd, "auto_answer_command", lambda: "/opt/set/bin/set-auto-answer")
+    get = Store()
+    assert run_setup(tmp_path, get)[0] == 0
+    code, out, _ = run_setup(tmp_path, get, remove=True, token_stdin=False)
+    assert code == 0, out
+    for key in ("question_relay.command", "question_relay.target", rd.KEY_AA_FORWARD,
+                "question_relay.notify_command", "question_relay.audience"):
+        assert get(key) is None, key
+
+
+def test_a_second_setup_keeps_the_value_from_before_the_first(tmp_path):
+    get = Store({"question_relay.command": "set-auto-answer", rd.KEY_AA_FORWARD: "node other-bridge.mjs be"})
+    assert run_setup(tmp_path, get, replace=True)[0] == 0
+    assert run_setup(tmp_path, get, replace=True)[0] == 0
+    run_setup(tmp_path, get, remove=True, token_stdin=False)
+    assert get(rd.KEY_AA_FORWARD) == "node other-bridge.mjs be"
+
+
+def test_a_pasted_bot_prefix_is_stripped(tmp_path):
+    get = Store({"question_relay.command": "set-auto-answer"})
+    args = argparse.Namespace(channel=CHANNEL, allow=[ME], token_stdin=True, replace=False, remove=False)
+    old = rd.sys.stdin
+    rd.sys.stdin = io.StringIO("Bot abc.def\n")
+    try:
+        rd.setup(args, rd.World(get=get, client=FakeDiscord(), base=tmp_path), set_value=get.set_value,
+                 systemctl=lambda cmd, **k: None, out=lambda s: None,
+                 token_file=tmp_path / "cfg" / rd.TOKEN_NAME, units=tmp_path / "units")
+    finally:
+        rd.sys.stdin = old
+    assert (tmp_path / "cfg" / rd.TOKEN_NAME).read_text().strip() == "abc.def"
+
+
+def test_a_missing_waiting_folder_closes_nothing(tmp_path):
+    """A different state dir under the timer must never read as 'nothing waits'."""
+    d, _, rec = posted(tmp_path)
+    assert not (tmp_path / "waiting").exists()
+    assert rd.waiting_ids(tmp_path) is None
+    assert rd.poll(world(tmp_path, d, now=NOW + 3600)) == {"wait": 1}
+
+
+def test_the_answer_file_is_linked_whole_and_never_overwritten(tmp_path):
+    d, w, rec = posted(tmp_path)
+    assert rd.write_answer(rec, "first") is True
+    assert rd.write_answer(rec, "second") is False
+    assert json.loads(rd.answer_path(rec).read_text()) == {"valasz": "first"}
+    assert [p.name for p in rd.answer_path(rec).parent.iterdir()] == [rd.answer_path(rec).name], "no temp left"
+
+
+def test_keycaps_match_with_or_without_the_selector_and_custom_emoji_never(tmp_path):
+    d, w, rec = posted(tmp_path)
+    waiting(tmp_path)
+    d.user_reacts(rec["message_id"], "2⃣")          # 2⃣ without U+FE0F
+    custom = d.reactions[rec["message_id"]].setdefault("1", [])
+    custom.append(ME)                                     # a custom emoji named "1"
+    real_message = d.message
+
+    def message(c, m):
+        out = real_message(c, m)
+        for r in out["reactions"]:
+            if r["emoji"]["name"] == "1":
+                r["emoji"]["id"] = "777777777777"
+        return out
+
+    d.message = message
+    assert rd.poll(w) == {"answered": 1}
+    assert json.loads(rd.answer_path(rec).read_text()) == {"valasz": "No"}
+
+
+def test_one_bad_record_does_not_stop_the_others(tmp_path):
+    d, w, rec = posted(tmp_path)
+    waiting(tmp_path)
+    rd._private_write(rd.posts_dir(tmp_path) / "broken.json", {"id": "relay-broken", "state": "open"})
+    d.user_reacts(rec["message_id"], "1️⃣")
+    assert rd.poll(w) == {"bad-record": 1, "answered": 1}
+
+
+def test_a_refused_token_fails_the_poll(tmp_path):
+    d, w, rec = posted(tmp_path)
+    waiting(tmp_path)
+
+    def refused(*a, **k):
+        raise rd.DiscordError(401, "GET")
+
+    d.messages_after = refused
+    d.message = refused
+    counts = rd.poll(w)
+    assert counts.get("auth-failed") and rd.poll_exit(counts) == 1
+    assert rd.poll_exit({"answered": 1, "wait": 2}) == 0
+
+
+def test_a_retried_envelope_is_not_posted_twice(tmp_path):
+    d, w, rec = posted(tmp_path)
+    n = len(d.sent)
+    assert rd.post(envelope(tmp_path), "ask", w) == 0
+    assert len(d.sent) == n
+
+
+def test_an_empty_reply_says_the_intent_is_off_once(tmp_path):
+    d, w, rec = posted(tmp_path)
+    waiting(tmp_path)
+    d.user_replies(rec["message_id"], "")
+    rd.poll(w)
+    rd.poll(w)
+    assert sum("Message Content" in c for c, _ in d.sent) == 1
+
+
+def test_the_timer_unit_carries_the_relay_env():
+    units = rd.unit_texts("/x/set-relay-discord poll", env={"SET_QUESTION_RELAY_DIR": "/s", "HOME": "/h"})
+    assert 'Environment="SET_QUESTION_RELAY_DIR=/s"' in units["set-relay-discord.service"]
+    assert "HOME" not in units["set-relay-discord.service"]
+    assert "OnActiveSec=30" in units["set-relay-discord.timer"]
+
+
+def test_a_burst_of_429_gets_three_tries():
+    calls = []
+
+    def opener(req, timeout):
+        calls.append(1)
+        return (429, b'{"retry_after": 0.01}', {}) if len(calls) < 3 else (200, b'{"id": "1"}', {})
+
+    assert rd.Discord("t", opener=opener, sleep=lambda s: None).me() == {"id": "1"} and len(calls) == 3

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """set-relay-discord — a two-way Discord bridge for the question relay.
 
-Set up one machine (a bot in your server, with the Message Content intent on):
+Set up one machine (a bot in your server, with the Message Content intent on;
+`set-relay-discord --help` lists the Discord steps):
 
-    echo "$BOT_TOKEN" | set-relay-discord setup --token-stdin --channel <channel id> --allow <your user id>
+    read -rs T      # paste the bot token; it stays out of the shell history
+    printf %s "$T" | set-relay-discord setup --token-stdin --channel <channel id> --allow <your user id>
     set-relay-discord test            # posts a probe; reply to it, then:
     set-relay-discord test --check    # can the bot read replies?
     set-relay-discord status
