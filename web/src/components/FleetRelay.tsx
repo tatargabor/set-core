@@ -21,13 +21,15 @@ import { Hourglass, Send, TriangleAlert, X } from 'lucide-react'
 
 import { age } from '../lib/fleetAge'
 import {
-  canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, showUnwired, type RelayState,
+  canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, showUnwired, verdictLine, type RelayState,
 } from '../lib/fleetRelay'
+import { agentName, kindLabel, useAgentNames } from '../lib/fleetAutoAnswer'
 
 /** Waiting questions come and go on the scale of seconds; the hook polls every 3 s. */
 const READ_INTERVAL_MS = 5_000
 
 export default function FleetRelay() {
+  useAgentNames()
   const [state, setState] = useState<RelayState | null>(null)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -147,7 +149,7 @@ export default function FleetRelay() {
       )}
 
       {open && (
-        <div className="absolute left-2 md:left-6 top-full mt-1 z-30 w-[min(34rem,calc(100vw-1rem))]
+        <div className="absolute left-2 md:left-6 top-full mt-1 z-30 w-[min(42rem,calc(100vw-1rem))]
                         rounded border border-surface-line bg-surface-raised px-3 py-2 shadow-lg text-xs"
              role="dialog" aria-label="Question relay" data-fleet-relay-detail={mode}>
           <div className="flex items-center gap-2 pb-1 border-b border-surface-line">
@@ -191,27 +193,39 @@ export default function FleetRelay() {
             ? <p className="mt-1.5 text-fg-muted">No question is waiting on the channel.</p>
             : (
               <ul className="mt-1 divide-y divide-surface-line/60">
-                {waiting.map(w => (
-                  <li key={w.session_id} className="flex items-center gap-2 py-1.5"
-                      data-fleet-relay-row={w.session_id}>
-                    <span className="text-fg-strong truncate">{w.project ?? 'unknown project'}</span>
-                    <span className="text-fg-muted tabular-nums">{w.session_id.slice(0, 8)}</span>
-                    <span className="text-fg-muted tabular-nums">
-                      {w.questions ?? '?'} question{w.questions === 1 ? '' : 's'} · {age(w.seconds)}
-                    </span>
-                    {w.release_requested
-                      ? <span className="ml-auto text-fg-muted">releasing…</span>
-                      : (
-                        <button type="button" disabled={busy}
-                                onClick={() => post(`/api/fleet/question-relay/release/${encodeURIComponent(w.session_id)}`)}
-                                className="ml-auto underline decoration-dotted text-fg-muted hover:text-fg-strong"
-                                title="Stop waiting on the channel: the question appears at the agent's terminal within a few seconds"
-                                data-fleet-relay-release={w.session_id}>
-                          answer here instead
-                        </button>
-                      )}
+                {waiting.map(w => {
+                  const n = agentName(w.session_id, w.project ? `${w.project} · ${w.session_id.slice(0, 8)}` : null, w.project)
+                  const v = verdictLine(w.auto_answer)
+                  return (
+                  <li key={w.session_id} className="py-1.5" data-fleet-relay-row={w.session_id}>
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 truncate" data-fleet-relay-agent={n.live ? 'live' : 'gone'}
+                            title={`${n.project ?? ''} · ${n.label ?? ''} — session ${w.session_id.slice(0, 8)}`}>
+                        {n.project && <span className="text-fg-muted">{n.project} · </span>}
+                        <span className={n.live ? 'text-fg-loud font-semibold' : 'text-fg-strong'}>{n.label ?? 'unknown agent'}</span>
+                      </span>
+                      <span className="text-fg-muted whitespace-nowrap">{kindLabel(w.kind === 'question' ? 'ask' : w.kind ?? 'ask')} · {age(w.seconds)}</span>
+                      {w.release_requested
+                        ? <span className="ml-auto text-fg-muted">releasing…</span>
+                        : (
+                          <button type="button" disabled={busy}
+                                  onClick={() => post(`/api/fleet/question-relay/release/${encodeURIComponent(w.session_id)}`)}
+                                  className="ml-auto whitespace-nowrap underline decoration-dotted text-fg-muted hover:text-fg-strong"
+                                  title="Stop waiting on the channel: the question appears at the agent's terminal within a few seconds"
+                                  data-fleet-relay-release={w.session_id}>
+                            answer here instead
+                          </button>
+                        )}
+                    </div>
+                    {v && (
+                      <p className={`mt-0.5 truncate ${v.tone === 'due' ? 'text-amber-300' : v.tone === 'held' ? 'text-amber-400/80' : 'text-fg-muted'}`}
+                         title={v.text} data-fleet-relay-auto={w.auto_answer?.outcome ?? 'none'}>
+                        {v.text}
+                      </p>
+                    )}
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             )}
         </div>

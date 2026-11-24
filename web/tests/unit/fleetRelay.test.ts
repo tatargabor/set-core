@@ -3,7 +3,7 @@
  * and the waiting order.
  */
 import { describe, expect, it } from 'vitest'
-import { canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, showUnwired, type RelayState } from '../../src/lib/fleetRelay'
+import { canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, showUnwired, verdictLine, type RelayState } from '../../src/lib/fleetRelay'
 
 const state = (over: Partial<RelayState> = {}): RelayState =>
   ({ enabled: false, target: 'command', missing: [], ready: true, waiting: [], unwired: [], ...over })
@@ -88,5 +88,21 @@ describe('unwired projects (B-182)', () => {
     const base = { enabled: true, ready: true, target: 'command', missing: [], waiting: [] }
     expect(parseRelayState({ ...base, unwired: [bare, { nope: 1 }] })?.unwired).toEqual([bare])
     expect(parseRelayState(base)?.unwired).toEqual([])
+  })
+})
+
+describe('the decider verdict on a waiting row (fleet-auto-answer, 2026-11-24)', () => {
+  const base = { state: 'forwarded', outcome: null, reason: '', choice: null, tier: null, seconds_left: null }
+  it('says why nothing will be written, and what it would have proposed', () => {
+    expect(verdictLine(null)).toBeNull()
+    expect(verdictLine({ ...base, outcome: 'excluded', reason: 'outward step: delete', choice: '→ Check the replies' }))
+      .toEqual({ text: 'auto: not written — outward step: delete; it proposed «Check the replies»', tone: 'held' })
+    expect(verdictLine({ ...base, outcome: 'no-decision' })!.tone).toBe('muted')
+  })
+  it('a due proposal carries its countdown, a cancelled one does not', () => {
+    expect(verdictLine({ ...base, state: 'proposed', outcome: 'allowed', choice: 'TEAL', seconds_left: 41.6 })!.text)
+      .toBe('auto: writes «TEAL» in 42s')
+    expect(verdictLine({ ...base, state: 'cancelled', outcome: 'allowed', choice: 'TEAL' })!.text)
+      .toBe('auto: cancelled — waits for you')
   })
 })

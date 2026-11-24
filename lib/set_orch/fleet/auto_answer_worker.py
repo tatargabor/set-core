@@ -226,6 +226,32 @@ def pending_view(now: float, base: Optional[Path] = None) -> List[Dict[str, Any]
     return out
 
 
+def verdict_view(now: float, base: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
+    """The decider's verdict per relayed call, for the relay's waiting list.
+
+    Asked for by the owner (2026-11-24): four questions sat on the relay panel with no sign
+    that the decider had looked at them — it had (two excluded, one abstained), and nothing
+    on the screen said so. One entry per call id: the first question's outcome, the proposal,
+    and the countdown only while an allowed proposal is still due to be written.
+    """
+    out: Dict[str, Dict[str, Any]] = {}
+    for rec in list_pending(base):
+        qs = rec.get("questions") or []
+        if not qs or not rec.get("id"):
+            continue
+        q = next((x for x in qs if x.get("outcome") == aa.OUTCOME_ALLOWED), qs[0])
+        write_at = rec.get("write_at")
+        due = (rec.get("state") == "proposed" and not rec.get("cancelled")
+               and q.get("outcome") == aa.OUTCOME_ALLOWED and isinstance(write_at, (int, float)))
+        out[str(rec["id"])] = {
+            "state": "cancelled" if rec.get("cancelled") else rec.get("state"),
+            "outcome": q.get("outcome"), "reason": q.get("reason") or "",
+            "choice": q.get("choice"), "tier": q.get("tier"),
+            "seconds_left": max(0.0, write_at - now) if due else None,
+        }
+    return out
+
+
 def status(get: Getter = local_config.get, base: Optional[Path] = None,
            now: Optional[float] = None) -> Dict[str, Any]:
     now = time.time() if now is None else now

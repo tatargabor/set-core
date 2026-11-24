@@ -110,3 +110,20 @@ def test_the_waiting_listing_carries_the_proposal(world):
     aw.pending_path(base, CID).unlink()
     row = next(w for w in api.fleet_question_relay()["waiting"] if w["session_id"] == SID)
     assert row["auto_answer"] is None
+
+
+def test_the_waiting_listing_says_why_an_answer_will_not_be_written(world):
+    """Seen live 2026-11-24: four questions on the relay panel, the decider had excluded two
+    and abstained on one, and the row said nothing. The verdict rides on the row, with no
+    countdown — nothing is due to be written."""
+    from set_orch.api import fleet as api
+    base = world / "state"
+    qr._write_json(qr.waiting_path(SID, base), {"session_id": SID, "id": CID, "project": "proj", "questions": 1,
+                                                 "target": "command", "started": time.time(), "pid": os.getpid()})
+    propose(base, time.time() + 30, state="forwarded", outcome="excluded")
+    rec = aw.read_pending(base, CID)
+    rec["questions"][0]["reason"] = "outward step: delete"
+    aw._private_write(aw.pending_path(base, CID), rec)
+    a = next(w for w in api.fleet_question_relay()["waiting"] if w["session_id"] == SID)["auto_answer"]
+    assert a["outcome"] == "excluded" and a["reason"] == "outward step: delete" and a["choice"] == "TEAL"
+    assert a["seconds_left"] is None and a["state"] == "forwarded"

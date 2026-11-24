@@ -2897,9 +2897,7 @@ def _relay_payload() -> Dict[str, Any]:
     proposals: Dict[Any, Dict[str, Any]] = {}
     try:
         from ..fleet import auto_answer_worker as aw
-        for p in aw.pending_view(now):
-            proposals.setdefault(p["id"], {"choice": p["choice"], "tier": p["tier"],
-                                           "seconds_left": p["seconds_left"]})
+        proposals = aw.verdict_view(now)
     except Exception as exc:  # a broken pending store must not hide the waiting list
         logger.warning("fleet api: auto-answer pending read failed: %s", type(exc).__name__)
     for rec in qr.list_waiting():
@@ -2914,7 +2912,8 @@ def _relay_payload() -> Dict[str, Any]:
             "target": rec.get("target"),
             "seconds": (now - started) if isinstance(started, (int, float)) else None,
             "release_requested": bool(rec.get("release_requested")),
-            # fleet-auto-answer: the proposal that will be written unless a human answers.
+            # fleet-auto-answer: the decider's verdict on this call — a proposal that will be
+            # written unless a human answers (`seconds_left`), or why it will not be.
             "auto_answer": proposals.get(rec.get("id")),
         })
     try:

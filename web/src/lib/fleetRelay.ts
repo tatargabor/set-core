@@ -14,6 +14,35 @@ export interface WaitingQuestion {
   target: string | null
   seconds: number | null
   release_requested: boolean
+  /** question | permission | continuation — absent on an older server. */
+  kind?: string | null
+  /** fleet-auto-answer: the decider's verdict on this call; absent when it has none. */
+  auto_answer?: AutoVerdict | null
+}
+
+export interface AutoVerdict {
+  state: string | null
+  outcome: string | null
+  reason: string
+  choice: string | null
+  tier: string | null
+  seconds_left: number | null
+}
+
+/** The verdict in a few words, and its tone. `null` when the decider has no record. */
+export function verdictLine(v: AutoVerdict | null | undefined): { text: string; tone: 'due' | 'held' | 'muted' } | null {
+  if (!v) return null
+  const choice = v.choice ? `«${v.choice.replace(/^\s*(?:→|->)\s*/, '')}»` : null
+  if (v.state === 'cancelled') return { text: 'auto: cancelled — waits for you', tone: 'muted' }
+  if (v.outcome === 'allowed' && v.seconds_left !== null)
+    return { text: `auto: writes ${choice ?? 'its answer'} in ${Math.max(0, Math.round(v.seconds_left))}s`, tone: 'due' }
+  if (v.outcome === 'excluded')
+    return { text: `auto: not written — ${v.reason || 'outward step'}${choice ? `; it proposed ${choice}` : ''}`, tone: 'held' }
+  if (v.outcome === 'below-bar')
+    return { text: `auto: below the bar${choice ? ` — ${choice}` : ''}`, tone: 'muted' }
+  if (v.outcome === 'no-decision') return { text: 'auto: no decision — the sources do not settle it', tone: 'muted' }
+  if (v.outcome === 'permission') return { text: 'auto: permissions are never answered', tone: 'muted' }
+  return { text: `auto: ${v.outcome ?? v.state ?? 'deciding'}`, tone: 'muted' }
 }
 
 /** A registered project whose settings do not wire one or both relay hooks (B-182). */

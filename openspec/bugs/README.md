@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-214 — a relayed AskUserQuestion is not released by a message typed in the terminal, so the session sits queued for up to 55 min
+- **state:** open
+- **reported:** 2026-11-24 by the user ("ez is már 16 perce várakozik"), with a screenshot of the session.
+- **measured:** session `a5bc0d35` (set-claude-handoff) re-asked through `AskUserQuestion` at 07:40:33 (`relay.log`: `1 question(s) handed over as relay-a5bc0d35-947efb64; waiting`). At ~07:56 its pane showed `running PreToolUse hook · 16m 5s` and the operator's terminal message under it as `Queued · ctrl+x ctrl+s to send now`. Nothing released the call until the fleet's "answer here instead" (`07:56:00 … released from the fleet`). The continuation path DOES notice a typed prompt (`superseded by a prompt typed in the terminal; released`), because there the turn has ended and the prompt is submitted. For an `AskUserQuestion` the turn is still inside the hook, so the message only queues and no hook fires. The hold is bounded by `DEFAULT_TIMEOUT_S = 3300`.
+- **fail direction:** calm — the terminal looks busy ("Computing…"), the queued message looks accepted, and the agent does nothing for up to 55 min.
+- **fixed when:** a message queued in the asking session's terminal while a relayed question is held releases the call (or the fleet marks the row "you typed in the terminal" and offers the release on the tile), proven on a real session: relay a question, type into the terminal, and measure the release in `relay.log` within seconds.
+
 ### B-213 — set-web's startup waits on a 15 s Discord connect timeout, so every dashboard reader gets connection refused for ~26 s after a restart
 - **state:** open
 - **reported:** 2026-11-23 by a set-core session, as a side finding of `fleet-mandate-and-desk` task 9.1 (`measurements.md` M8 there).
