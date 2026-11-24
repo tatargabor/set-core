@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-239 — the relay backfill pulled in an ALREADY ANSWERED question and typed its answer into the working agent again
+- **state:** closed 2026-11-25 (this commit)
+- **reported:** 2026-11-25 by this session (set-core#f7306bb0), on its own terminal: at 00:16:08 the relay was switched on, `relay backfill [14c6acba]: 1 question(s) pulled in`, and at 00:17:23 `answered on the channel; typed into set-core-autop2` — the question had been answered in that terminal at 23:07 and the work built on the answer was already pushed.
+- **measured:** `relay_backfill.call_is_open` searched the result through `question_relay.transcript_entries`, which reads the LAST 256 KB (`TRANSCRIPT_TAIL`). The session's transcript was 5 855 342 bytes and the call's `tool_result` sat at byte 4 577 629, outside the window, so the answered call read as open. The parked record survived, the switch-on pulled it in, and the carrier typed (Esc + line) into a session that was not waiting on it.
+- **fail direction:** the harmful one — a stale answer typed into a live agent, and the carrier's Esc can interrupt a running turn. Every long session was exposed.
+- **fixed when / fixed by:** `call_is_open` on a real path searches the whole transcript (`has_result`: a byte search for the id, then a parse of only the matching line); an unreadable transcript keeps the old "open" reading so a plain-terminal parked question is still named. `test_an_answer_far_above_the_tail_still_closes_the_call` builds a transcript larger than the window with the result at its top; it fails without the fix (stash-and-rerun) and passes with it; backfill suite 26 green.
+
 ### B-237 — `set-doctor` reports an auto-clear watcher "ok" while the running process predates its script, so a template update never takes effect
 - **state:** open
 - **reported:** 2026-11-24 by the user, after a session in this tree was idle-compacted by the runtime although warm-idle rotation had shipped that morning.

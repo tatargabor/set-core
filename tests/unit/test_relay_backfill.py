@@ -334,3 +334,24 @@ def test_an_answer_the_decider_writes_is_typed_the_same_way(tmp_path):
     from set_orch.fleet import auto_answer_worker as aw
     c = Carry(tmp_path, events={5: lambda c: aw._write_answer(c.base / "answers", c.record["id"], "Q1", "TEAL")})
     assert c.run() == "typed" and "“Banner”: TEAL" in c.typed[0][1]
+
+
+def test_an_answer_far_above_the_tail_still_closes_the_call(tmp_path):
+    """Measured 2026-11-25: a 5.9 MB transcript held the call's result at byte 4.6 MB, the tail
+    reader saw only the last 256 KB, and the answered call was pulled in at switch-on — its
+    answer was typed into the working agent a second time. The whole file is searched now."""
+    from set_orch.fleet import question_relay as qr
+    tid = "toolu_far_above_the_tail"
+    path = tmp_path / "session.jsonl"
+    lines = [json.dumps({"type": "assistant", "message": {"content": [
+                 {"type": "tool_use", "id": tid, "name": "AskUserQuestion", "input": {"questions": []}}]}}),
+             json.dumps({"type": "user", "message": {"content": [
+                 {"type": "tool_result", "tool_use_id": tid, "content": "answered"}]}})]
+    filler = json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "x" * 1000}]}})
+    lines += [filler] * (qr.TRANSCRIPT_TAIL // 1000 + 50)
+    path.write_text("\n".join(lines) + "\n")
+    assert path.stat().st_size > qr.TRANSCRIPT_TAIL
+    assert rb.call_is_open(str(path), tid) is False
+    assert rb.call_is_open(str(path), "toolu_never_answered") is True
+    assert rb.has_result(str(tmp_path / "missing.jsonl"), tid) is None
+    assert rb.call_is_open(None, tid) is True, "no transcript to read: still named as open, as before"

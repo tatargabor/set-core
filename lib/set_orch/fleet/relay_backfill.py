@@ -76,11 +76,42 @@ def call_is_open(transcript: Optional[str], tool_use_id: str,
     call whose hook did nothing is not in the transcript at all until it resolves, and then
     the `tool_use` and its result land together (measurements M3, M4).
     """
+    if read is qr.transcript_entries:
+        # The real file: search ALL of it. The tail reader sees the last 256 KB only, and in a
+        # long session the result sits megabytes earlier (measured 2026-11-25: a 5.9 MB
+        # transcript, the result at byte 4.6 MB — an answered call was pulled in at switch-on
+        # and its answer typed into the working agent a second time). An unreadable transcript
+        # stays "open", as before: a parked question in a terminal the fleet does not hold has
+        # no transcript to read, and it must still be named, not silently dropped.
+        return has_result(transcript, tool_use_id) is not True
     for entry in read(transcript):
         if isinstance(entry, dict) and not entry.get("isSidechain"):
             if any(str(b.get("tool_use_id")) == tool_use_id for b in qr._blocks(entry, "tool_result")):
                 return False
     return True
+
+
+def has_result(transcript: Optional[str], tool_use_id: str) -> Optional[bool]:
+    """Whether the whole transcript holds a main-thread result for the call; None when unreadable."""
+    if not transcript or not tool_use_id:
+        return None
+    needle = tool_use_id.encode("utf-8")
+    try:
+        with open(str(transcript), "rb") as handle:
+            for raw in handle:
+                if needle not in raw or b"tool_result" not in raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except ValueError:
+                    continue
+                if isinstance(entry, dict) and not entry.get("isSidechain") and any(
+                        str(b.get("tool_use_id")) == tool_use_id for b in qr._blocks(entry, "tool_result")):
+                    return True
+    except OSError as exc:
+        logger.warning("relay backfill: transcript unreadable (%s)", type(exc).__name__)
+        return None
+    return False
 
 
 @dataclass
