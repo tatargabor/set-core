@@ -57,3 +57,20 @@ and the stall decision waits one round (a gone desk still needs none).
 - The request the first automatic round interrupted (M4): `answered` at 864 s of age, i.e.
   within about four minutes of the interrupt. Its `nudged` flag is set and `handovers` is 0 —
   the cheapest step was enough, no desk was started.
+
+## M6 — 4.3 FAILED on its first live run: a busy desk was interrupted (11:24)
+
+The live test asked the framework's own desk to run a 420 s CPU loop, then `sleep 600`.
+At 11:24:26, five minutes into the CPU loop (one core at 100 %, measured with `ps`), the round
+decided `interrupt (stalled (movement-only); moved=305 cpu=unmeasured)`. The desk answered at
+11:24:33 that step 1 was interrupted before it finished.
+
+Cause: the sampler took the scope from the inventory row's `unit` field, and for a
+framework-held agent that field is `None` (measured on the same row: `{'pid': 540200,
+'unit': None, 'scope': None}`). Every round therefore read "unmeasured" and fell back to
+movement — the exact case the CPU signal exists for. The unit tests passed because their rows
+carried a `unit`: a test driving the thing with an input the live system does not produce.
+
+Fix: the cgroup is read from the process itself (`/proc/<pid>/cgroup` → `cpu.stat`), keyed by
+pid, no `systemctl` call. A test now drives the real readers with the live row shape (no unit,
+this process's pid) and fails on the previous code.

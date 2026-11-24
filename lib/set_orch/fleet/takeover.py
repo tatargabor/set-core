@@ -176,19 +176,25 @@ def decide(engagement: Dict[str, Any], desk_row: Optional[Dict[str, Any]], *,
 # -- background CPU --------------------------------------------------------------------
 
 
-def cgroup_usage_usec(unit: str) -> Optional[int]:
-    """CPU microseconds the scope's cgroup has used, or None when unreadable."""
+def cgroup_usage_usec(pid: int) -> Optional[int]:
+    """CPU microseconds used by the whole cgroup a process lives in, or None when unreadable.
+
+    The cgroup is read from the process itself (`/proc/<pid>/cgroup`), not from a unit name:
+    the inventory row carries no unit for a framework-held agent (measured 2026-11-24 — every
+    round therefore read "unmeasured", and a desk burning a full core in a test loop was
+    interrupted on movement alone).
+    """
     try:
-        done = subprocess.run(["systemctl", "--user", "show", "-p", "ControlGroup", "--value", unit],
-                              capture_output=True, text=True, timeout=10)
-        cgroup = (done.stdout or "").strip()
-        if done.returncode != 0 or not cgroup:
+        with open(f"/proc/{pid}/cgroup", encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+        path = next((line.split("::", 1)[1] for line in lines if line.startswith("0::")), None)
+        if not path:
             return None
-        with open(f"/sys/fs/cgroup{cgroup}/cpu.stat", encoding="ascii") as handle:
+        with open(f"/sys/fs/cgroup{path.strip()}/cpu.stat", encoding="ascii") as handle:
             for line in handle:
                 if line.startswith("usage_usec "):
                     return int(line.split()[1])
-    except (OSError, ValueError, subprocess.SubprocessError):
+    except (OSError, ValueError):
         return None
     return None
 
@@ -205,36 +211,40 @@ def process_cpu_usec(pid: int) -> Optional[int]:
 
 
 class CpuSampler:
-    """The background CPU rate of a scope between two calls, in percent of one core.
+    """The background CPU rate of an agent's cgroup between two calls, in percent of one core.
 
-    The previous sample is kept in memory per unit; the first call for a unit, a read failure,
-    or a counter that went backwards (a new scope under an old name) is None — unmeasured.
+    Keyed by the agent's pid; the previous sample is kept in memory. The first call for a pid
+    answers `PENDING`; a read failure or a counter that went backwards answers None.
     """
 
-    def __init__(self, *, cgroup: Callable[[str], Optional[int]] = cgroup_usage_usec,
+    def __init__(self, *, cgroup: Callable[[int], Optional[int]] = cgroup_usage_usec,
                  process: Callable[[int], Optional[int]] = process_cpu_usec,
                  clock: Callable[[], float] = time.monotonic) -> None:
         self._cgroup = cgroup
         self._process = process
         self._clock = clock
-        self._last: Dict[str, Tuple[float, int, int, int]] = {}
+        self._last: Dict[int, Tuple[float, int, int]] = {}
 
     def rate(self, unit: Optional[str], pid: Optional[int]) -> Any:
-        """Percent of one core, `PENDING` on a unit's first sample, None when unmeasurable."""
-        if not unit or not isinstance(pid, int):
+        """Percent of one core, `PENDING` on a pid's first sample, None when unmeasurable.
+
+        `unit` is accepted for the caller's convenience and not needed: the cgroup is read
+        from the process.
+        """
+        if not isinstance(pid, int) or isinstance(pid, bool):
             return None
-        total, own, now = self._cgroup(unit), self._process(pid), self._clock()
+        total, own, now = self._cgroup(pid), self._process(pid), self._clock()
         if total is None or own is None:
-            self._last.pop(unit, None)
+            self._last.pop(pid, None)
             return None
-        previous = self._last.get(unit)
-        self._last[unit] = (now, total, own, pid)
-        if previous is None or previous[3] != pid:
+        previous = self._last.get(pid)
+        self._last[pid] = (now, total, own)
+        if previous is None:
             return PENDING
         elapsed = now - previous[0]
-        background = (total - previous[1]) - (own - previous[2])
         if elapsed <= 0 or total < previous[1] or own < previous[2]:
             return None
+        background = (total - previous[1]) - (own - previous[2])
         return max(0.0, background) / (elapsed * 1_000_000) * 100.0
 
 

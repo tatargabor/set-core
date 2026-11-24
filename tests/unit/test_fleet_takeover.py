@@ -146,23 +146,38 @@ def test_cpu_rate_excludes_the_agent_s_own_process():
     clock = iter([100.0, 110.0])
     current = {}
 
-    def cg(unit):
+    def cg(pid):
         current["s"] = next(samples)
         return current["s"][0]
 
     sampler = tk.CpuSampler(cgroup=cg, process=lambda pid: current["s"][1], clock=lambda: next(clock))
-    assert sampler.rate("u", 42) == tk.PENDING    # first sample: ask again, never zero
+    assert sampler.rate(None, 42) == tk.PENDING    # first sample: ask again, never zero
     # measured on the hung desk: 258 ms cgroup, 90 ms the agent itself, over 10 s
-    assert sampler.rate("u", 42) == pytest.approx(1.68)
+    assert sampler.rate(None, 42) == pytest.approx(1.68)
 
 
-def test_a_failed_read_or_a_new_pid_is_unmeasured():
+def test_a_failed_read_or_a_new_pid_is_not_a_rate():
     vals = iter([10, None, 20, 30])
-    sampler = tk.CpuSampler(cgroup=lambda u: next(vals), process=lambda pid: 0, clock=iter([1.0, 2.0, 3.0, 4.0]).__next__)
-    assert sampler.rate("u", 1) == tk.PENDING
-    assert sampler.rate("u", 1) is None           # read failed: unmeasurable
-    assert sampler.rate("u", 1) == tk.PENDING     # first sample after the failure
-    assert sampler.rate("u", 2) == tk.PENDING     # a different process under the same unit
+    sampler = tk.CpuSampler(cgroup=lambda pid: next(vals), process=lambda pid: 0,
+                            clock=iter([1.0, 2.0, 3.0, 4.0]).__next__)
+    assert sampler.rate(None, 1) == tk.PENDING
+    assert sampler.rate(None, 1) is None           # read failed: unmeasurable
+    assert sampler.rate(None, 1) == tk.PENDING     # first sample after the failure
+    assert sampler.rate(None, 2) == tk.PENDING     # another process: its own first sample
+
+
+def test_the_live_row_shape_without_a_unit_is_measured(tmp_path):
+    """The inventory row of a framework-held desk has `unit: None` (measured 2026-11-24).
+    The real readers must still produce a rate from the pid alone."""
+    import os
+    pid = os.getpid()
+    assert tk.cgroup_usage_usec(pid) is not None, "cgroup v2 not readable here"
+    assert tk.process_cpu_usec(pid) is not None
+    clock = iter([0.0, 1.0])
+    sampler = tk.CpuSampler(clock=lambda: next(clock))
+    assert sampler.rate(None, pid) == tk.PENDING
+    rate = sampler.rate(None, pid)
+    assert isinstance(rate, float) and rate >= 0.0
 
 
 # -- the interrupt line ----------------------------------------------------------------
