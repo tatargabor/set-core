@@ -1,0 +1,12 @@
+[Unit]
+# Closes fleet agents that have had no owner input for longer than
+# `fleet_idle_close_hours` (set-config). Run once a day by the timer beside it.
+Description=Close fleet agents with no owner input for longer than the threshold
+Documentation=https://github.com/tatargabor/set-core
+After=set-web.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/set-fleet-idle-close
+Environment=PYTHONPATH=__SET_TOOLS_ROOT__/lib:__SET_TOOLS_ROOT__/modules/web
+Environment=PATH=__SERVICE_PATH__

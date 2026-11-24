@@ -1139,6 +1139,23 @@ install_systemd_service() {
     else
         warn "  Agent owner template not found: $owner_src"
     fi
+
+    # The daily idle-close. Without the timer nothing ever closes a long-idle
+    # agent on this machine: the dashboard does not schedule it, and the unit
+    # used to be placed by hand on the machine the feature was built on.
+    local idle_unit
+    for idle_unit in set-fleet-idle-close.service set-fleet-idle-close.timer; do
+        if [[ -f "$SCRIPT_DIR/templates/systemd/$idle_unit" ]]; then
+            sed -e "s|__SET_TOOLS_ROOT__|$SCRIPT_DIR|g" -e "s|__SERVICE_PATH__|$(service_path)|g" \
+                "$SCRIPT_DIR/templates/systemd/$idle_unit" > "$service_dir/$idle_unit"
+            success "  Installed: $service_dir/$idle_unit"
+        else
+            warn "  Idle-close template not found: $idle_unit"
+        fi
+    done
+    systemctl --user daemon-reload
+    systemctl --user enable --now set-fleet-idle-close.timer 2>/dev/null \
+        || warn "  set-fleet-idle-close.timer installed but not enabled (systemctl --user enable --now set-fleet-idle-close.timer)"
 }
 
 # Install set-web launchd user agent (macOS)

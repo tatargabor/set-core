@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily close of long-idle fleet agents
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

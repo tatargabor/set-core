@@ -272,9 +272,12 @@ See the [Writing Specs guide](docs/guide/writing-specs.md) for the full methodol
 ### Step 1: Install
 
 ```bash
-git clone ssh://git@git.setcode.dev:2222/root/set-core.git
+git clone https://github.com/tatargabor/set-core.git
 cd set-core && ./install.sh
 ```
+
+Setting up a further machine to run the fleet, the bus, the question relay and the
+auto-answer the way this one does: [bringing a second machine up to the fleet](docs/guide/fleet-machine-setup.md).
 
 After install, the **web dashboard** starts automatically as a background service (launchd on macOS, systemd on Linux). Open http://localhost:7400 — you should see the manager page.
 

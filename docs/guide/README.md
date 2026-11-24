@@ -7,6 +7,7 @@ How-to workflows for common tasks. Start with [Quick Start](quick-start.md) if t
 | Guide | Description |
 |-------|-------------|
 | [Quick Start](quick-start.md) | Install set-core and run your first autonomous orchestration |
+| [Second Machine Setup](fleet-machine-setup.md) | Bring another machine up to the fleet: dashboard, bus, question relay, auto-answer, desk, auto-clear |
 | **[Writing Specs](writing-specs.md)** | **How to write specs that produce apps matching your vision** |
 | [Design Integration](design-integration.md) | Bridge Figma designs to agents via `set-design-sync` |
 | [Orchestration](orchestration.md) | The full pipeline: digest, decompose, dispatch, verify, merge |
