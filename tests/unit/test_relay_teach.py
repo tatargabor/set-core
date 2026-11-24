@@ -112,6 +112,8 @@ def test_a_refusing_hook_leaves_the_rule_written_and_the_call_answered(repo, tmp
     assert res.answered and delivered(base) == "Igen"
     assert res.written and not res.commit.sha and "blocked by the project gate" in res.commit.reason
     assert (repo / rt.RULES_REL).is_file() and git(repo, "log", "--format=%s").count("taught") == 0
+    # The refusal leaves the index as it was: the rule is not left staged in the project.
+    assert git(repo, "diff", "--cached", "--name-only").strip() == ""
 
 
 def test_a_detached_head_is_written_but_not_committed(repo, tmp_path):

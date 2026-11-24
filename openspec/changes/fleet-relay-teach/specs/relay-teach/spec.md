@@ -78,4 +78,4 @@ The file SHALL then be committed alone, with a pathspec-limited commit that leav
 
 #### Scenario: A commit hook refuses
 - **WHEN** the project's pre-commit hook refuses the commit
-- **THEN** the rule stays in the file uncommitted, the call is still answered, and the overlay shows the hook's refusal as the reason there is no commit
+- **THEN** the rule stays in the file uncommitted, the call is still answered, and the overlay shows the hook's refusal as the reason there is no commit, and the project's index is left as it was: the rule is not left staged

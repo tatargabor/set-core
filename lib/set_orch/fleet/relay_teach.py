@@ -128,6 +128,9 @@ def commit_rule(root: Path, path: Path, today: str) -> CommitResult:
         if head.returncode != 0:
             return CommitResult(reason="the main checkout is on a detached HEAD; the rule is written but not committed")
         branch = head.stdout.strip()
+        # Whether the path was already staged before this commit: only a stage THIS function
+        # made is undone after a refusal, so somebody else's staged work stays staged.
+        staged_before = _git(["diff", "--cached", "--quiet", "--", rel], root).returncode != 0
         for attempt in range(_LOCK_RETRIES):
             add = _git(["add", "--", rel], root)
             out = add if add.returncode != 0 else _git(
@@ -139,6 +142,15 @@ def commit_rule(root: Path, path: Path, today: str) -> CommitResult:
             if "index.lock" in err and attempt < _LOCK_RETRIES - 1:
                 time.sleep(_LOCK_WAIT_S)
                 continue
+            if add.returncode == 0 and not staged_before:
+                # Measured 2026-11-24: a pre-commit leak gate refused the rule and the file
+                # stayed STAGED in that project's index, where the owning session's next
+                # commit would carry it or be blocked by it. A refusal leaves the index as
+                # it was; the rule stays in the working tree only.
+                reset = _git(["reset", "-q", "--", rel], root)
+                if reset.returncode != 0:
+                    logger.warning("relay teach: the refused rule could not be unstaged in %s (exit %s)",
+                                   root.name, reset.returncode)
             return CommitResult(branch=branch, reason="the commit was refused: " + (_short(err) or f"exit {out.returncode}"))
     except (OSError, subprocess.SubprocessError) as exc:
         logger.warning("relay teach: git failed (%s)", type(exc).__name__)
