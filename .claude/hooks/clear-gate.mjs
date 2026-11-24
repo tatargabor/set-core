@@ -140,13 +140,38 @@ const BACKGROUND_NONE_PATTERN = "none left|none running|no (?:background|running
 // compaction (documented: `idleCompaction`, floor CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS = 200 000)
 // starts at ~53.8 min after the last request and writes its record at ~54.8. A session idle for
 // --idle-minutes with ≥ --idle-floor tokens is handed off and cleared before that, on a warm cache.
-// Past IDLE_STOP_MINUTES nothing is typed for idle: the compaction is already under way.
+// Past IDLE_STOP_MINUTES nothing is typed for idle: the compaction is already under way — but ONLY
+// while the runtime's idle compaction is on. With `"idleCompaction": false` in the settings nothing
+// compacts at ~54 min, so that cut-off would just drop a session that slipped past the window (a
+// watcher restart, a late pass) to the 400k size path; then any idle ≥ --idle-minutes is due.
 export const DEFAULT_IDLE_MINUTES = 48
 export const DEFAULT_IDLE_FLOOR = 200_000
 export const IDLE_STOP_MINUTES = 54
 // The nudge record's trigger word: a handoff written after a warm-idle nudge is cleared at once,
 // not another 48 minutes later (the nudge's own turn restarts the idle clock).
 export const WARM_IDLE = "warm-idle"
+
+/**
+ * Is the runtime's idle compaction on for this project? Settings scopes in rising precedence —
+ * user, project, project-local, managed — and the last one that sets `idleCompaction` to a boolean
+ * wins. Unset everywhere means the runtime default: on. Unreadable or unparsable files are skipped,
+ * as the runtime cannot read them either. Returns {on, source} so the verdict can name the scope.
+ */
+export function idleCompactionSetting({ projectDir, home = process.env.HOME ?? "" } = {}) {
+  const files = [
+    home && join(home, ".claude", "settings.json"),
+    projectDir && join(projectDir, ".claude", "settings.json"),
+    projectDir && join(projectDir, ".claude", "settings.local.json"),
+    "/etc/claude-code/managed-settings.json",
+  ].filter(Boolean)
+  let on = true, source = "default"
+  for (const f of files) {
+    let v
+    try { v = JSON.parse(readFileSync(f, "utf8"))?.idleCompaction } catch { continue }
+    if (typeof v === "boolean") { on = v; source = f }
+  }
+  return { on, source }
+}
 
 export function session8(sessionId) {
   return String(sessionId ?? "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8) || "ismeretlen"
@@ -311,13 +336,14 @@ export function lastAssistantAt(path, window = 400) {
  * - the context is at least the floor;
  * - the session is not opted out;
  * - one of two paths applies:
- *   · the last request is ≥ idleMinutes and < IDLE_STOP_MINUTES old;
+ *   · the last request is ≥ idleMinutes and < IDLE_STOP_MINUTES old (no upper bound when the
+ *     runtime's idle compaction is off — runtimeCompacts false);
  *   · a warm-idle nudge was answered: the marker is newer than the nudge record.
  * Whether the marker is FRESH (the handoff was the last act) is the marker gate's business. A due
  * verdict with a stale marker is not eligible, and the nudge asks for a fresh handoff instead.
  */
 export function warmIdleVerdict({ minutesOpt, floor, tokens, turnIdle, turnReason, optoutOk, lastAt, now,
-  markerMtime, nudgeRecord }) {
+  markerMtime, nudgeRecord, runtimeCompacts = true }) {
   const base = { due: false, minutes: null, floor, late: false }
   if (!(minutesOpt > 0) || !(floor > 0)) return { ...base, reason: "off" }
   const minutes = lastAt == null ? null : Math.round(((now - lastAt) / 60_000) * 10) / 10
@@ -329,7 +355,7 @@ export function warmIdleVerdict({ minutesOpt, floor, tokens, turnIdle, turnReaso
   if (tokens == null) return out("context size unknown")
   if (tokens < floor) return out(`${tokens} < floor ${floor}`)
   if (!optoutOk) return out("opted out")
-  if (!answered && minutes >= IDLE_STOP_MINUTES) {
+  if (!answered && runtimeCompacts && minutes >= IDLE_STOP_MINUTES) {
     return out(`warm window missed: idle ${minutes} min ≥ ${IDLE_STOP_MINUTES}${markerMtime == null ? " with no armed handoff" : ""} — the runtime's idle compaction is under way; nothing typed`, { late: true })
   }
   return out(answered
@@ -454,6 +480,9 @@ export function evaluate(opts = {}) {
     minutesOpt: Number(opts.idleMinutes ?? DEFAULT_IDLE_MINUTES), floor: Number(opts.idleFloor ?? DEFAULT_IDLE_FLOOR),
     tokens: tok.tokens, turnIdle: turn.idle, turnReason: turn.reason, optoutOk: optoutEarly,
     lastAt, now, markerMtime: markerFresh ? markerMtime : null, nudgeRecord: records.latest,
+    runtimeCompacts: typeof opts.idleCompaction === "boolean"
+      ? opts.idleCompaction
+      : idleCompactionSetting({ projectDir: resolve(dir, "..", ".."), home: opts.home ?? process.env.HOME }).on,
   })
   const warmDetail = warm.due || warm.late || (warm.minutes != null && warm.minutes >= Number(opts.idleMinutes ?? DEFAULT_IDLE_MINUTES))
     ? `; ${WARM_IDLE}: ${warm.reason}` : ""

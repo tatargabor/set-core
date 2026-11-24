@@ -14,12 +14,13 @@
 #     2026-11-23: one consumer log grew to 47 MB, one session's verdict 879× in 3000 lines);
 #   - --dry-run evaluates and logs without ever sending keys;
 #   - --started-after drops sessions started before a moment (e.g. before the clear-reload
-#     hook was wired into settings — clearing a session that cannot reload is the one really
-#     dangerous combination). Without the flag the moment defaults to the tree's recorded
-#     wiring time (.reload-wired-at, written once by init --auto-clear) — measured 2026-11-23,
-#     the old "--started-after now" default excluded the arming session itself: one tree's only
-#     working session was skipped 2858 times, all 6 of its compactions in the window
-#     unprotected. The first skip of a session is announced in .excluded-<session8> (reason +
+#     hook was wired into settings). OFF by default since 2026-11-24: measured on Claude Code
+#     2.1.331, a running session picks up a reload hook added to project settings mid-run and its
+#     /clear reloads (started-after-self-exclusion task 1.1), so "started before the wiring"
+#     no longer means "cannot reload", and the filter only excluded sessions that could. Opt in
+#     with an explicit moment, or `--started-after wired` for the tree's recorded wiring time
+#     (.reload-wired-at, written once by init --auto-clear), on an older runtime that snapshots
+#     hooks at start. The first skip of a session is announced in .excluded-<session8> (reason +
 #     the claude --resume way out) and logged once, never typed into;
 #   - a session with no writer path is skipped with a logged reason: no tmux pane hosts it
 #     AND no fleet agent (ownerd roster, matched by pid) holds it;
@@ -65,10 +66,10 @@
 #     [--auto-continue PROMPT] [--continue-delay SEC] [--autopilot]
 #     [--compact-on-background true|false] [--compact-threshold N] [--log-max-kb KB]
 #
-#   --started-after ISO   drop sessions whose process started before this moment. Default when
-#                 omitted: the tree's wiring stamp (.set/handoff/.reload-wired-at — the session's
-#                 own tree first, then --dir; written once by init --auto-clear). No stamp
-#                 anywhere = no filter. An explicit value always wins.
+#   --started-after ISO|wired   drop sessions whose process started before this moment. Omitted:
+#                 no filter (the default since 2026-11-24, see above). `wired` = the tree's wiring
+#                 stamp (.set/handoff/.reload-wired-at — the session's own tree first, then --dir);
+#                 no stamp anywhere = no filter for that session.
 #
 #   --background-work-blocks   default false since 2026-11-23: background tasks and subagents survive
 #                 /clear on 2.1.330 (docs/investigations/2026-11-23-background-survival-rerun.md).
@@ -113,7 +114,7 @@ set -u
 
 ARM_NUDGE="true"; NUDGE_RATIO=""; IDLE_MINUTES=""; IDLE_FLOOR=""
 WARM_MISSED=" "   # sessions whose missed warm window was logged (a string set: macOS bash 3.2 has no -A)
-DIR=""; INTERVAL=60; THRESHOLD=""; FRESHNESS=""; BG="false"; AFTER=""; AFTER_GIVEN=0; WIRED_MS=""; GATE=""; DRY=0; LOG_MAX_KB=""
+DIR=""; INTERVAL=60; THRESHOLD=""; FRESHNESS=""; BG="false"; AFTER=""; AFTER_GIVEN=0; STAMP_MODE=0; WIRED_MS=""; GATE=""; DRY=0; LOG_MAX_KB=""
 CONTINUE_PROMPT=""; CONTINUE_DELAY=20; AUTOPILOT=0; COMPACT_BG="false"; COMPACT_THRESHOLD=""
 COMPACT_CONTINUE="Continue after an automatic /compact (compact-on-background): your background agents are still running and will notify you. Re-read your own handoff file in full, then continue its CURRENT next step - a later UPDATE section supersedes earlier next steps, and a step marked done is never redone. Write a fresh handoff before the context fills again."
 DEFAULT_CONTINUE="Autopilot continue after an automatic /clear (auto-continue): read the reloaded handoff file in full - it is THIS session's own thread. Continue with its CURRENT next step - a later UPDATE section supersedes the original next-steps list, and a step marked done is never redone. A project-level goal or plan file is context, not a work queue: never take over a step or lane another session owns. Stop and wait only at a decision that the thread's recorded human direction does not already answer - ask it on its own line starting with NEED INPUT: so the keep-going hook lets the stop through."
@@ -124,7 +125,7 @@ while [ $# -gt 0 ]; do
     --threshold) THRESHOLD="$2"; shift 2;;
     --freshness) FRESHNESS="$2"; shift 2;;
     --background-work-blocks) BG="$2"; shift 2;;
-    --started-after) AFTER="$2"; AFTER_GIVEN=1; shift 2;;
+    --started-after) if [ "$2" = "wired" ]; then STAMP_MODE=1; else AFTER="$2"; AFTER_GIVEN=1; fi; shift 2;;
     --gate) GATE="$2"; shift 2;;
     --auto-continue) CONTINUE_PROMPT="$2"; shift 2;;
     --continue-delay) CONTINUE_DELAY="$2"; shift 2;;
@@ -280,12 +281,12 @@ ms_to_iso() { # $1 = epoch ms → ISO-8601 Z, or a spoken fallback
   node -e 'const t = Number(process.argv[1]); process.stdout.write(Number.isFinite(t) && t > 0 ? new Date(t).toISOString().replace(/\.\d{3}Z$/, "Z") : "an unknown moment")' "${1:-}" 2>/dev/null
 }
 
-# The filter's default moment is the wiring, not the arming: without it, every watcher restart
-# measured its own start and re-excluded sessions that already had the hook (measured
+# `--started-after wired`: the moment is the wiring, not the arming. Without it, every watcher
+# restart measured its own start and re-excluded sessions that already had the hook (measured
 # 2026-11-23: one tree's only working session, skipped 2858 times, silent). A corrupt stamp
-# refuses to start, like a corrupt --started-after — a silently OFF filter is how a session that
-# cannot reload gets cleared.
-if [ "$AFTER_GIVEN" != "1" ]; then
+# refuses to start, like a corrupt --started-after — a silently OFF filter that was asked for is
+# how a session that cannot reload gets cleared.
+if [ "$STAMP_MODE" = "1" ]; then
   WIRED_MS=$(wired_ms_of "$DIR")
   if [ -z "$WIRED_MS" ] && [ -f "$DIR/.set/handoff/.reload-wired-at" ]; then
     echo "wiring stamp is not a parseable date: $DIR/.set/handoff/.reload-wired-at" >&2
@@ -340,13 +341,14 @@ excluded_record() { # $1 = tree, $2 = sid, $3 = startedAt ms, $4 = effective fil
 # branch, so the unremoved record would suppress every threshold warning for ever — the session
 # that did the right thing gets less advice than before it resumed. Removing it logs once: the
 # file is gone, so its absence is the once-guard.
-included_cleanup() { # $1 = tree, $2 = sid → rc 0 always
+included_cleanup() { # $1 = tree, $2 = sid, $3 = effective filter ms ("" = filter off) → rc 0 always
   local s8 f
   s8=$(printf '%s' "$2" | tr -cd 'a-zA-Z0-9' | cut -c1-8)
   f="$1/.set/handoff/.excluded-$s8"
   [ -e "$f" ] || return 0
   rm -f "$f" 2>/dev/null
-  log "included  $2  started after the filter — .excluded-$s8 removed"
+  if [ -n "${3:-}" ]; then log "included  $2  started after the filter — .excluded-$s8 removed"
+  else log "included  $2  no start filter — .excluded-$s8 removed"; fi
 }
 
 # Provenance: logged BEFORE typing (specs: intent-ledger). $1 tree, $2 kind, $3 text, $4 session, $5 pid
@@ -743,7 +745,7 @@ is_descendant() {
 }
 
 if [ "$AFTER_GIVEN" = "1" ]; then AFTER_LABEL="$AFTER"
-elif [ -n "$WIRED_MS" ]; then AFTER_LABEL="wired $(ms_to_iso "$WIRED_MS") (default)"
+elif [ "$STAMP_MODE" = "1" ]; then AFTER_LABEL="wired${WIRED_MS:+ $(ms_to_iso "$WIRED_MS")}"
 else AFTER_LABEL="any"; fi
 log "watcher started dir=$DIR interval=${INTERVAL}s threshold=${THRESHOLD:-default} bg-blocks=$BG started-after=$AFTER_LABEL dry-run=$DRY auto-continue=$([ -n "$CONTINUE_PROMPT" ] && echo on || echo off) autopilot=$([ "$AUTOPILOT" = "1" ] && echo on || echo off) compact-on-background=$([ "$COMPACT_BG" = "true" ] && echo "on (≥ ${COMPACT_THRESHOLD:-default})" || echo off) arm-nudge=$([ "$ARM_NUDGE" = "true" ] && echo "on (ratio ${NUDGE_RATIO:-default})" || echo off) warm-idle=$([ "${IDLE_MINUTES:-48}" = "0" ] || [ "${IDLE_FLOOR:-200000}" = "0" ] && echo off || echo "on (${IDLE_MINUTES:-48} min, floor ${IDLE_FLOOR:-200000})")"
 # Heartbeat, every pass, in every watched tree that has a handoff dir (the main tree always). keep-going
@@ -768,15 +770,17 @@ while :; do
     tree=$(tree_of "$cwd")
     [ -n "$tree" ] || continue
     [ -n "$sid" ] || continue
-    # The start filter: an explicit --started-after wins; otherwise the session's own tree's
-    # wiring stamp (worktrees each have their own .set/handoff), falling back to --dir's. No
-    # stamp anywhere = no filter for this session.
-    EFF_AFTER="$WIRED_MS"
-    if [ "$AFTER_GIVEN" != "1" ]; then
+    # The start filter, OFF unless asked: an explicit --started-after moment, or with `wired` the
+    # session's own tree's wiring stamp (worktrees each have their own .set/handoff), falling back
+    # to --dir's. No stamp anywhere = no filter for this session. With the filter off, a stale
+    # .excluded record from an earlier filtered run is removed below (included_cleanup).
+    EFF_AFTER=""
+    if [ "$AFTER_GIVEN" = "1" ]; then
+      EFF_AFTER="$AFTER_MS"
+    elif [ "$STAMP_MODE" = "1" ]; then
+      EFF_AFTER="$WIRED_MS"
       wired_here=$(wired_ms_of "$tree")
       [ -n "$wired_here" ] && EFF_AFTER="$wired_here"
-    else
-      EFF_AFTER="$AFTER_MS"
     fi
     if [ -n "$EFF_AFTER" ]; then
       started=$(jq -r '.startedAt // 0' "$rec" 2>/dev/null)
@@ -785,7 +789,7 @@ while :; do
         continue
       fi
     fi
-    included_cleanup "$tree" "$sid"
+    included_cleanup "$tree" "$sid" "$EFF_AFTER"
     slug=$(printf '%s' "$cwd" | sed 's/\//-/g')
     transcript="$HOME/.claude/projects/$slug/$sid.jsonl"
     gate_args=(--session "$sid" --transcript "$transcript" --dir "$tree/.set/handoff" --json --background-work-blocks "$BG")
