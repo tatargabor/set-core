@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "S=\"$(command -v sac || echo \"$HOME/.local/bin/sac\")\"; [ -x \"$S\" ] && SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board \"$S\" hook watch-guard || true"
+            "command": "S=\"$(command -v sac || echo \"$HOME/.local/bin/sac\")\"; [ -x \"$S\" ] && SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board,set \"$S\" hook watch-guard || true"
           }
         ]
       }
@@ -73,7 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "S=\"$(command -v sac || echo \"$HOME/.local/bin/sac\")\"; [ -x \"$S\" ] && SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board \"$S\" hook heartbeat || true"
+            "command": "S=\"$(command -v sac || echo \"$HOME/.local/bin/sac\")\"; [ -x \"$S\" ] && SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board,set \"$S\" hook heartbeat || true"
           }
         ]
       },
@@ -114,7 +114,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "S=\"$(command -v sac || echo \"$HOME/.local/bin/sac\")\"; [ -x \"$S\" ] && SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board \"$S\" hook stop || true"
+            "command": "S=\"$(command -v sac || echo \"$HOME/.local/bin/sac\")\"; [ -x \"$S\" ] && SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board,set \"$S\" hook stop || true"
           }
         ]
       }
@@ -136,7 +136,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "S=\"$(command -v sac || echo \"$HOME/.local/bin/sac\")\"; if [ -x \"$S\" ]; then SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board \"$S\" hook session-start; else echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"[set-agent-comm] ⚠ `sac` is not installed on this machine (not on PATH, not in ~/.local/bin), so this project is OFF the bus here: no wake-ups, no unread-mail check, no heartbeat. Fix: run `bin/sac.mjs setup` from a set-agent-comm checkout on this machine, then restart the session.\"}}'; fi"
+            "command": "S=\"$(command -v sac || echo \"$HOME/.local/bin/sac\")\"; if [ -x \"$S\" ]; then SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board,set \"$S\" hook session-start; else echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"[set-agent-comm] ⚠ `sac` is not installed on this machine (not on PATH, not in ~/.local/bin), so this project is OFF the bus here: no wake-ups, no unread-mail check, no heartbeat. Fix: run `bin/sac.mjs setup` from a set-agent-comm checkout on this machine, then restart the session.\"}}'; fi"
           }
         ]
       },

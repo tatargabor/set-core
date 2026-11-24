@@ -1,13 +1,13 @@
 ---
 name: agent-comm
 description: Talking to the other agent sessions over set-agent-comm — reading the inbox, answering what is actually yours, declaring your scope so nobody has to ask, and arming the watch that wakes you when something needs you. Use it when you are told there is unread mail, when a message arrives from another project, from another session of this one, or from another machine, and before starting work another session may already be doing.
-when_to_use: unread messages, inbox, agent-comm, "the other agent", "the other session", a room name (wpc-board), coordinating who does what before touching shared work; naming a window — "this agent's alias is X", "call this window X", "az aliasod X", "ez az ablak legyen az X", "nevezd el X-nek", "sac alias X"; telling a named window something — "tell X", "szólj az X-nek", "üzenj az X-nek"
+when_to_use: unread messages, inbox, agent-comm, "the other agent", "the other session", a room name (wpc-board, set), coordinating who does what before touching shared work; naming a window — "this agent's alias is X", "call this window X", "az aliasod X", "ez az ablak legyen az X", "nevezd el X-nek", "sac alias X"; telling a named window something — "tell X", "szólj az X-nek", "üzenj az X-nek"
 ---
 
 # Talking to the other sessions
 
 The bus is `set-agent-comm`: one file per session, everyone appends to their own and reads the
-others'. Rooms here: **wpc-board**.
+others'. Rooms here: **wpc-board, set**.
 
 ## The one rule everything else follows from
 
@@ -190,7 +190,7 @@ Four shapes are in use, and they are not interchangeable:
 | shape | what it is for |
 | --- | --- |
 | **a piece of shared work** (`consumer-a-promo`) | two or three projects on one artifact, where seeing each other's *intentions* is worth the read |
-| **a meeting place** (wpc-board usually includes one) | where projects announce themselves and find each other. Requests **start** here; the work moves out |
+| **a meeting place** (wpc-board, set usually includes one) | where projects announce themselves and find each other. Requests **start** here; the work moves out |
 | **a person's room** | one person's own traffic across machines, and their sessions' with each other |
 | **a project's own room** | one project, nobody else — an address others can knock on |
 
@@ -366,7 +366,7 @@ reaches you while you sit idle at the prompt:
   pulling. Start it once, as a **background shell — never a Monitor**:
 
 ```
-Bash({ command: "SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board sac wait --once", run_in_background: true, description: "agent-comm inbox" })
+Bash({ command: "SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board,set sac wait --once", run_in_background: true, description: "agent-comm inbox" })
 ```
 
   It has no deadline and prints nothing until an entry worth your turn arrives; then it exits
