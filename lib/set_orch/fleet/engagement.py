@@ -84,6 +84,7 @@ __all__ = [
     "STATES", "LIVE_STATES", "KINDS", "WAKE_OUTCOMES", "FAIL_CLASSES", "EngagementError", "BusUnreadable",
     "EngagementStore", "default_store_path", "project_of", "linked_reply", "refresh",
     "unlinked_answer", "room_requests", "adopt_room_requests", "adoption_since", "relation_projects",
+    "seen_by",
     "waiting_seconds", "max_open", "view",
 ]
 
@@ -390,13 +391,17 @@ class EngagementStore:
 
     def assign_desk(self, engagement_id: str, *, label: Optional[str], seat: Optional[str],
                     mandate_id: Optional[str]) -> Optional[Dict[str, Any]]:
-        """Give an unclaimed open engagement its first desk. Not a handover: nobody held it."""
+        """Give an unclaimed engagement its first desk. Not a handover: nobody held it.
+
+        Also recorded when the engagement was answered meanwhile — measured live: the started desk
+        answered in 12 s, the round closed the record first, and it no longer named who answered.
+        """
         with file_lock(self.path):
             records = self._load()
             record = records.get(engagement_id)
             if record is None:
                 return None
-            if record["state"] != "open" or record["desk_seat"] or record["desk_label"]:
+            if record["state"] not in ("open", "answered") or record["desk_seat"] or record["desk_label"]:
                 logger.info("fleet engagement: %s already claimed or closed; assignment ignored",
                             engagement_id)
                 return dict(record)
@@ -584,6 +589,42 @@ def room_requests(*, since: float, now: float,
                 logger.warning("fleet engagement: a seat file in %s unreadable; skipped this round",
                                room_dir.name)
     return out
+
+
+def seen_by(room: str, ts: str, asker: Optional[str], seats: List[str],
+            *, store_root: Optional[Path] = None) -> Optional[str]:
+    """The first of `seats` whose bus read cursor in `room` is at or past the request. None else.
+
+    The bus keeps, per room and reading seat, the last entry it read from each writer
+    (`cursors.json`, key `<room>::<reader>`, value `{writer: ts}`). A live session of the
+    addressed project that has read the request has it in front of it: measured 2026-11-24, 81 of
+    108 answered room requests were answered after more than five minutes, so a desk started
+    then would work in parallel with a session already on it. Unreadable → None, counted as
+    unseen: the fail direction keeps a request from stopping, not a duplicate from starting.
+    """
+    import json
+
+    if not asker or not seats:
+        return None
+    root = Path(store_root) if store_root is not None else resolve_store_root()
+    try:
+        with open(root / "cursors.json", encoding="utf-8") as handle:
+            cursors = json.load(handle)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        logger.warning("fleet engagement: bus read cursors unreadable (%s); counted as unseen",
+                       type(exc).__name__)
+        return None
+    if not isinstance(cursors, dict):
+        return None
+    wanted = _epoch(ts)
+    for seat in seats:
+        entry = cursors.get(f"{room}::{seat}")
+        read = _epoch(entry.get(asker)) if isinstance(entry, dict) else None
+        if read is not None and wanted is not None and read >= wanted:
+            return seat
+    return None
 
 
 def adopt_room_requests(store: EngagementStore, *, store_root: Optional[Path] = None,

@@ -203,7 +203,7 @@ class Fakes:
         request(tmp_path, ago)
         self.eid = adopt(tmp_path, self.engagements)[0]
 
-    def watch(self, rows):
+    def watch(self, rows, seen=lambda room, ts, asker, seats: None):
         def start_desk(project, *, requested_by, takeover):
             self.starts.append((project, requested_by, takeover))
             made = self.mandates.create(kind="desk", goal="Answer requests", project=project, cwd="/x",
@@ -214,7 +214,7 @@ class Fakes:
         return tk.TakeoverWatch(
             engagements=self.engagements, mandates=self.mandates, rows=rows,
             cpu=lambda unit, pid: None, interrupt=lambda label, line: self.interrupts.append(label),
-            stop=lambda label: None, start_desk=start_desk, b=B, clock=lambda: self.now)
+            stop=lambda label: None, start_desk=start_desk, b=B, clock=lambda: self.now, seen=seen)
 
 
 def desk_row(project="beta", **over):
@@ -286,3 +286,63 @@ def test_a_takeover_desk_is_still_told_about_its_predecessor(tmp_path):
          "from_session": "s-1"}))
     assert "stalled or stopped" in lines and "moved from beta#0000dddd to you" in lines
     assert "Nobody picked" not in lines
+
+
+# -- a request a live session has already read --------------------------------------------
+
+
+def _cursors(root, data):
+    import json
+    (root / "cursors.json").write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_seen_by_reads_the_bus_cursor_of_a_live_seat(tmp_path):
+    ts = iso(600)
+    _cursors(tmp_path, {f"{ROOM}::beta#bbbbbbbb": {"alpha#aaaaaaaa": ts},
+                        f"{ROOM}::beta#cccccccc": {"alpha#aaaaaaaa": iso(900)}})
+    seats = ["beta#cccccccc", "beta#bbbbbbbb"]
+    assert eng_mod.seen_by(ROOM, ts, "alpha#aaaaaaaa", seats, store_root=tmp_path) == "beta#bbbbbbbb"
+    assert eng_mod.seen_by(ROOM, ts, "alpha#aaaaaaaa", ["beta#cccccccc"], store_root=tmp_path) is None
+    assert eng_mod.seen_by(ROOM, ts, "alpha#zzzzzzzz", seats, store_root=tmp_path) is None
+
+
+def test_unreadable_cursors_count_as_unseen(tmp_path):
+    (tmp_path / "cursors.json").write_text("{not json", encoding="utf-8")
+    assert eng_mod.seen_by(ROOM, iso(60), "alpha#aaaaaaaa", ["beta#bbbbbbbb"], store_root=tmp_path) is None
+    assert eng_mod.seen_by(ROOM, iso(60), "alpha#aaaaaaaa", ["beta#bbbbbbbb"],
+                           store_root=tmp_path / "missing") is None
+
+
+def test_no_desk_starts_for_a_request_a_live_session_has_read(tmp_path):
+    """Measured: 81 of 108 answered room requests took more than five minutes."""
+    f = Fakes(tmp_path)
+    f.now = NOW + 300
+    asked = []
+
+    def seen(room, ts, asker, seats):
+        asked.append(seats)
+        return "beta#bbbbbbbb"
+
+    plain = {"terminal_label": "beta-2", "seat": "beta#bbbbbbbb", "mandate": None}
+    other = {"terminal_label": "gamma-1", "seat": "gamma#cccccccc", "mandate": None}
+    out = f.watch([plain, other], seen=seen).run()
+    assert out[0]["decision"] == tk.NONE and out[0]["why"] == "read-by-a-live-session"
+    assert f.starts == [] and asked == [["beta#bbbbbbbb"]]
+
+
+def test_the_desk_that_answered_first_is_still_recorded(tmp_path):
+    """Measured live: the started desk answered before the round recorded it."""
+    f = Fakes(tmp_path)
+    f.now = NOW + 300
+    w = f.watch([])
+    real_start = w.start_desk
+
+    def start_and_answer(project, *, requested_by, takeover):
+        desk = real_start(project, requested_by=requested_by, takeover=takeover)
+        f.engagements.mark_answered(f.eid, iso(1))
+        return desk
+
+    w.start_desk = start_and_answer
+    w.run()
+    rec = f.engagements.get(f.eid)
+    assert rec["state"] == "answered" and rec["desk_seat"] == "beta#0000eeee"

@@ -440,7 +440,8 @@ class TakeoverWatch:
                  rows: List[Dict[str, Any]], cpu: Callable[[Optional[str], Optional[int]], Optional[float]],
                  interrupt: Callable[[str, str], None], stop: Callable[[str], Any],
                  start_desk: Callable[..., Any], b: Bounds,
-                 clock: Callable[[], float] = time.time) -> None:
+                 clock: Callable[[], float] = time.time,
+                 seen: Optional[Callable[[str, str, Optional[str], List[str]], Optional[str]]] = None) -> None:
         self.engagements = engagements
         self.mandates = mandates
         self.rows = rows
@@ -450,6 +451,8 @@ class TakeoverWatch:
         self.start_desk = start_desk
         self.b = b
         self.clock = clock
+        # fleet-room-request-adoption: which live seat of the project has read a request.
+        self.seen = seen or engagement_mod.seen_by
 
     def run(self) -> List[Dict[str, Any]]:
         out = []
@@ -505,6 +508,12 @@ class TakeoverWatch:
         if now - started < self.b.stall_seconds:
             logger.debug("fleet takeover: %s unclaimed, within the grace (%.0f s)", record["id"], now - started)
             return {**result, "decision": NONE, "why": "unclaimed-grace"}
+        seats = [r["seat"] for r in self.rows
+                 if r.get("seat") and engagement_mod.project_of(r["seat"]) == record.get("project")]
+        reader = self.seen(record.get("room"), record.get("ts"), record.get("asker"), seats)
+        if reader:
+            logger.debug("fleet takeover: %s unclaimed but read by live %s; no desk", record["id"], reader)
+            return {**result, "decision": NONE, "why": "read-by-a-live-session", "desk": None}
         takeover = {
             "room": record.get("room"), "ts": record.get("ts"), "asker": record.get("asker"),
             "from_seat": None, "from_session": None, "engagement_id": record["id"],

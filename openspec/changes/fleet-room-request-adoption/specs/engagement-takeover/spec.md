@@ -43,7 +43,7 @@ An engagement with source `room` SHALL become `answered` when a seat of the addr
 - **THEN** the engagement stays `open`
 
 ### Requirement: An unclaimed adopted request gets a desk
-An adopted engagement with no desk SHALL be assigned the addressed project's live framework desk when one exists, without counting a handover. When none exists and the request is younger than the stall bound, nothing SHALL be done. When none exists and the request is at least one stall bound old, a desk SHALL be started for the project with a takeover that names the request and no predecessor, and assigned to the engagement without counting a handover. That desk's context SHALL say that nobody picked the request up and that it was started to answer it.
+An adopted engagement with no desk SHALL be assigned the addressed project's live framework desk when one exists, without counting a handover. When none exists and the request is younger than the stall bound, nothing SHALL be done. When none exists but a live session of the project has read the request (its bus read cursor in that room is at or past the request), no desk SHALL be started; an unreadable cursor store SHALL count as unread. When none exists, nobody live has read it, and the request is at least one stall bound old, a desk SHALL be started for the project with a takeover that names the request and no predecessor, and assigned to the engagement without counting a handover. That desk's context SHALL say that nobody picked the request up and that it was started to answer it.
 
 #### Scenario: A live desk exists
 - **WHEN** an unclaimed adopted engagement's project has a live framework desk
@@ -53,6 +53,10 @@ An adopted engagement with no desk SHALL be assigned the addressed project's liv
 - **WHEN** an unclaimed adopted engagement's project has no live desk and the request is younger than the stall bound
 - **THEN** no desk is started
 
+#### Scenario: Read by a live session
+- **WHEN** an unclaimed adopted engagement's project has no live desk, the request is older than the stall bound, and a live session of the project has read it
+- **THEN** no desk is started
+
 #### Scenario: No desk, past the grace
-- **WHEN** an unclaimed adopted engagement's project has no live desk and the request is older than the stall bound
+- **WHEN** an unclaimed adopted engagement's project has no live desk, no live session of it has read the request, and the request is older than the stall bound
 - **THEN** a desk is started with a takeover naming the request and no predecessor, the engagement names it, and its handover count is 0

@@ -48,6 +48,18 @@ ordinary sessions time to answer — then a desk is started with a takeover whos
 empty, and assigned (again no handover). After assignment the request is an ordinary open
 engagement.
 
+**Not when a live session has read it** (added after M3/M4). Measured over seven days: 81 of
+108 answered room requests were answered after more than five minutes (median 104 min). A desk
+started at five minutes would, for most of them, work in parallel with a session already on it.
+The bus keeps a per-room, per-reader cursor of the last entry read from each writer
+(`cursors.json`); a live seat of the addressed project whose cursor is at or past the request
+holds it, and no desk is started. An unreadable cursor store counts as unread — that direction
+keeps a request from stopping, which is the change's purpose. *Alternative rejected:* a longer
+grace — 64 of 108 were still answered after 30 minutes, so no single bound separates "someone
+is on it" from "nobody saw it"; the cursor does.
+
+The desk is recorded on the engagement even when its answer closed the record first (M3).
+
 ### D5 — The unclaimed desk is told so
 The takeover block says nobody picked the request up and the fleet started this desk for it; its
 first FACT says the request is now held by it. No predecessor transcript is named.
