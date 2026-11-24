@@ -58,6 +58,7 @@ KEY_EXTRA = "auto_answer.extra_paths"
 KEY_LOG_DAYS = "auto_answer.log_days"
 KEY_DECIDE_TIMEOUT = "auto_answer.decide_timeout_s"
 KEY_ALLOW_FAMILIES = "auto_answer.allow_families"
+KEY_STANDING = "auto_answer.standing"
 
 DEFAULT_WINDOW_S = 60.0
 DEFAULT_LIKELY_MIN = 0.8
@@ -157,6 +158,38 @@ def never_patterns(get: Getter = local_config.get) -> List[str]:
 
 def extra_paths(get: Getter = local_config.get) -> List[str]:
     return _list(get, KEY_EXTRA)
+
+
+def standing_decisions(get: Getter = local_config.get) -> List[Tuple[str, str]]:
+    """The operator's standing decisions, verbatim: `(path, section text)` per configured
+    `path#heading` entry of `auto_answer.standing`.
+
+    Measured 2026-11-24: the owner wrote a standing approval into their global instructions
+    file, but a fork carries the conversation of a session started EARLIER, with the old
+    file in its context — and a pointer to a file is not a reading of it. So the sections
+    named here travel in the prompt itself, word for word, and a quote from them checks out
+    against the file like any other decision reference. A missing file or heading is
+    skipped with a warning, never guessed.
+    """
+    out: List[Tuple[str, str]] = []
+    for entry in _list(get, KEY_STANDING):
+        path, _, heading = entry.partition("#")
+        full = Path(os.path.expanduser(path.strip()))
+        try:
+            lines = full.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            logger.warning("auto answer: standing decision file unreadable (%s)", type(exc).__name__)
+            continue
+        start = next((i for i, l in enumerate(lines)
+                      if l.startswith("#") and heading.strip() and heading.strip() in l), None)
+        if start is None:
+            logger.warning("auto answer: standing decision heading not found in %s", full.name)
+            continue
+        level = len(lines[start]) - len(lines[start].lstrip("#"))
+        end = next((i for i in range(start + 1, len(lines))
+                    if lines[i].startswith("#") and len(lines[i]) - len(lines[i].lstrip("#")) <= level), len(lines))
+        out.append((str(full), "\n".join(lines[start:end]).strip()))
+    return out
 
 
 def allow_families(get: Getter = local_config.get) -> List[str]:
@@ -297,7 +330,10 @@ def parse_decision(raw: str, questions: Sequence[Question], kind: str) -> Tuple[
             refused[q.key] = "no entry for the question"
             continue
         if e.get("choice") is None or (isinstance(e.get("choice"), str) and not e["choice"].strip()):
-            refused[q.key] = "abstained"
+            # The model's own one-line reason is kept: "abstained" alone could not say, on
+            # the live morning of 2026-11-24, whether a silence was right or a gap.
+            why = _text(e.get("reason"))
+            refused[q.key] = f"abstained: {why[:200]}" if why else "abstained"
             continue
         tier = _text(e.get("tier")).lower()
         if tier not in TIERS:
@@ -804,8 +840,12 @@ ALLOWED_WORDS = {"push": "git push (a pre-push leak scan guards what a push publ
 
 def build_prompt(kind: str, questions: Sequence[Question], kb_hits: Sequence[Dict[str, str]],
                  locations: Sequence[str], conversation: bool = True,
-                 allowed: Sequence[str] = ()) -> str:
+                 allowed: Sequence[str] = (), standing: Sequence[Tuple[str, str]] = ()) -> str:
     parts = [PROMPT_HEAD]
+    for path, text in standing:
+        parts.append(f"\nSTANDING DECISION of the operator — it settles every question it covers; when it does, "
+                     f"answer with tier \"decided\" and a \"decision\" reference quoting it verbatim, path {path}:\n"
+                     f"<<<\n{text}\n>>>\n")
     if allowed:
         named = "; ".join(ALLOWED_WORDS.get(f, f) for f in allowed)
         parts.append(f"\nOn this machine the operator does NOT need to be asked about: {named}. "
@@ -1057,7 +1097,7 @@ def decide(envelope: Dict[str, Any], *, kind: str, session_id: str, cwd: str, as
     if launch is not None:
         method = "fork"
         prompt = build_prompt(kind, questions, hits, locations, conversation=True,
-                              allowed=allow_families(get))
+                              allowed=allow_families(get), standing=standing_decisions(get))
         out, reason = runner(fork_argv(launch, session_id), prompt, cwd=cwd, env=launch.env,
                              unset=launch.unset, timeout=bound)
         notes.append(f"fork on {launch.describe()}: {reason}")
@@ -1066,7 +1106,7 @@ def decide(envelope: Dict[str, Any], *, kind: str, session_id: str, cwd: str, as
         notes.append("fallback: sources-only (" + ("no transcript" if path is None else
                                                     "the session's provider could not be placed") + ")")
         prompt = build_prompt(kind, questions, hits, locations, conversation=False,
-                              allowed=allow_families(get))
+                              allowed=allow_families(get), standing=standing_decisions(get))
         out, reason = runner(fallback_argv(fallback_model(get)), prompt, cwd=cwd, env={}, unset=(),
                              timeout=bound)
         notes.append(f"fallback: {reason}")

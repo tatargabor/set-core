@@ -707,3 +707,43 @@ def test_a_report_of_a_done_act_is_not_the_act_asked_about():
 ])
 def test_a_participle_that_asks_still_excludes(text):
     assert aa.exclusion(aa.KIND_ASK, q(text=text, options=["Igen"]), "Igen", False)
+
+
+STANDING_MD = """# Rules
+
+## ▶ In-project development never waits on the owner
+
+**Standing approval: do not ask the owner before an in-project step needed for development.**
+Still ask about a production deploy.
+
+## Another section
+
+unrelated
+"""
+
+
+def test_standing_decisions_travel_verbatim_in_the_prompt_and_check_as_decided(tmp_path):
+    """Measured 2026-11-24: a fork carries an older session's context, so a standing approval
+    written to the instructions file later was never in front of the model. The configured
+    section now goes into the prompt word for word, and a quote of it checks as `decided`."""
+    f = tmp_path / "CLAUDE.md"
+    f.write_text(STANDING_MD)
+    get = lambda key, default=None: (json.dumps([f"{f}#In-project development never waits", f"{f}#nope"])
+                                     if key == aa.KEY_STANDING else default)
+    standing = aa.standing_decisions(get)
+    assert len(standing) == 1, "a heading that is not there is skipped, never guessed"
+    path, text = standing[0]
+    assert path == str(f) and text.startswith("## ▶ In-project") and "Another section" not in text
+    prompt = aa.build_prompt(aa.KIND_CONTINUATION, [q(text="Next?", options=["→ Run the tests"])], [], [],
+                             standing=standing)
+    assert "STANDING DECISION of the operator" in prompt and "do not ask the owner before an in-project step" in prompt
+    a = aa.Answer(key="Q1", choice="→ Run the tests", claimed_tier="decided", confidence=0.9, outward=False,
+                  references=[aa.Reference("file", "do not ask the owner before an in-project step needed for development",
+                                           path=str(f), decision=True)])
+    assert aa.check_references(a, [], str(tmp_path)).tier == aa.TIER_DECIDED
+
+
+def test_an_abstention_keeps_the_models_reason():
+    d = aa.parse_decision('{"answers": [{"key": "Q1", "choice": null, "reason": "a release version is the owner\'s call"}]}',
+                          [q()], aa.KIND_ASK)
+    assert d[1]["Q1"] == "abstained: a release version is the owner's call"
