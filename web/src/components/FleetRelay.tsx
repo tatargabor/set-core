@@ -9,7 +9,8 @@
  * Why the waiting count matters more than the switch: while the hook waits, the agent's
  * terminal shows "running PreToolUse hook" and the fleet sees it as busy — the question is
  * not in its transcript yet (measured). So the count on the CLOSED control is the only
- * place a relayed question is visible at all, and "answer here instead" is the only way
+ * place a relayed question is visible at all, and "to terminal" (formerly "answer here instead", renamed 2026-11-24: the owner read it as
+ * "let it through" and pulled six questions off the channel at once) is the only way
  * back to the terminal short of turning the whole relay off.
  *
  * The detail floats under the header and pushes nothing; it closes on its own control,
@@ -228,9 +229,9 @@ export default function FleetRelay() {
                           <button type="button" disabled={busy}
                                   onClick={() => post(`/api/fleet/question-relay/release/${encodeURIComponent(w.session_id)}`)}
                                   className="ml-auto whitespace-nowrap underline decoration-dotted text-fg-muted hover:text-fg-strong"
-                                  title="Stop waiting on the channel: the question appears at the agent's terminal within a few seconds"
+                                  title="Takes the question OFF the channel: it then waits at the agent's terminal for an answer typed there. It does not answer or approve anything — use it only when you are at the machine."
                                   data-fleet-relay-release={w.session_id}>
-                            answer here instead
+                            to terminal ↩
                           </button>
                         )}
                     </div>
