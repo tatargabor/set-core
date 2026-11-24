@@ -68,6 +68,27 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-230 — `set-doctor` says "not on the agent bus (no sac hooks)" about a project whose hooks ARE installed, because `sac doctor` has not seen a session there yet
+- **state:** open
+- **reported:** 2026-11-24 by this session, re-running the doctor right after `sac install <project>` in 23 projects.
+- **measured:** all 23 still read `not on the agent bus (no sac hooks)`, while each one's `.claude/settings.json` held the four portable `sac hook` lines and `sac install --dry-run` planned nothing new. `sac doctor --project <one of them>` answered `no local project matches`. `lib/set_doctor/checks.py` `bus_status` maps "absent from `sac doctor`'s list" to that sentence.
+- **fail direction:** loud, false — the printed fix (`sac install`) is already done, so a reader re-runs it, finds nothing changes, and either distrusts the doctor or edits settings by hand.
+- **fixed when:** a project with the hooks in its settings but no seat yet reads as "hooks installed, no session seen yet", with no fix line; a project without the hooks still reads "no sac hooks".
+
+### B-229 — `set-doctor`'s `commands` check reports the pip console scripts of set-core's own package as "run another checkout's code", and its fix (`./install.sh`) recreates them
+- **state:** open
+- **reported:** 2026-11-24 by this session, right after a full `install.sh` run.
+- **measured:** `set-doctor` warned `4 command(s) run another checkout's code: set-control, set-orch-core, set-run-logs, set-agent-owner`. Each is a pip-generated wrapper (`from gui.main import main`, …) written at the install's own timestamp — `pyproject.toml` `[project.scripts]` declares them — and `/usr/bin/python3 -c 'import gui, set_orch'` resolves both to THIS checkout. The check accepts only a symlink into `bin/`, so the editable install's wrappers fail it every time.
+- **fail direction:** loud, false — a permanent warning whose fix cannot clear it teaches the reader to ignore the `commands` row, which is the row that would catch a real second checkout.
+- **fixed when:** the check resolves a console-script wrapper's module to its file and passes when that file is inside this checkout; a wrapper importing from another checkout still warns.
+
+### B-228 — `install.sh` redeploys each project's worktrees AFTER the project, and a worktree's `set-project init` re-registers the main checkout's set-core MCP server with the worktree as `CLAUDE_PROJECT_DIR`
+- **state:** open
+- **reported:** 2026-11-24 by this session, comparing `set-doctor --json` before and after one `install.sh` run.
+- **measured:** before the run, five projects' `mcp` check read `ok — registered for this project, this checkout's server`; after it, the same five read `registered, but CLAUDE_PROJECT_DIR=<a worktree of it>, not <the project>`, each naming one of the worktrees the installer's second loop (`install.sh` ~line 770, `Updating worktree:`) had just initialised. `claude mcp get set-core` in the main checkout confirmed the worktree path. `claude mcp remove set-core -s local; set-project init` in the main checkout restored all seven.
+- **fail direction:** silent — every agent in the main checkout then asks `kb_search` about a worktree's tree (often a stale or half-finished branch), and the install log reports success for every project.
+- **fixed when:** an `install.sh` run over a project with worktrees leaves the main checkout's `mcp` check `ok`, asserted by a test that runs the project-then-worktree order.
+
 ### B-227 — the profile deploy's additive YAML merge re-serialises a consumer's `set/orchestration/config.yaml`, dropping every comment and activating a key the consumer had deliberately commented out
 - **state:** open
 - **reported:** 2026-11-24 by this session, diff-checking consumer trees after an `install.sh` redeploy of 36 projects.
