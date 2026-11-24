@@ -68,6 +68,26 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-215 — a reply to an agent's own request does not wake it, and an idle turn end never continues on its own
+- **state:** open
+- **reported:** 2026-11-24 by an itline-ai-plus session on the bus, at the owner's request (*„amikor végzett, le kellett volna egy auto beírásnak futnia, pedig nem volt kérdés, és ha ismerjük a célokat, akkor automatikusan beírhatta volna a kérdésem nélkül"*). The owner added the constraints below the same morning.
+- **measured:**
+  - The session asked aiplus-kereso through `set-fleet-ask` (REQUEST 08:00:29 in `dm-aiplus-kereso--itline-ai-plus`). The ANSWER landed at 08:08:24 (`ANSWER (re: 2026-11-24T08:00:29…)`, in `channels/dm-aiplus-kereso--itline-ai-plus/aiplus-kereso#d0f60431.md`).
+  - Two `sac wait --once` watches were alive and listened to that room (pids 2903954 and 3779716, `SET_AGENT_ROOM` includes `dm-aiplus-kereso--itline-ai-plus`). Neither fired. Both were still running at 08:2x.
+  - Their claude parents (674935 and 675413) are on the itline fleet agents, and their sessions changed since the watches started (an automatic `/clear` gives a new session id). So a watch armed by the session before a clear may be filtering for a seat that no longer exists. This is not yet proven: the wake filter lives in set-agent-comm.
+  - The session sat idle until the owner typed at 08:09.
+- **two parts:**
+  - (1) **set-agent-comm:** why a linked ANSWER did not wake the requesting seat's watch.
+  - (2) **set-core:** an idle, question-free turn end has no auto-continue. The continuation relay asks the operator instead; it never types "a reply to your request arrived; continue".
+- **constraints (owner, 2026-11-24):**
+  - Wake a session only for something that is ITS business: a reply linked to its own open request, or a step it scheduled.
+  - Never wake on room traffic in general. *„tokennel kihüléssel is vigyázni kell … ne legyen mindenki feleslegesen ébresztgetve és dolgoztatva"*: a cold cache re-reads the whole context, so every needless wake is the expensive kind.
+  - A project with no live seat is woken (a desk started) only when a request actually needs it. The idle desk exists so the next message finds a live agent (*„pont azért van az idle"*).
+- **fail direction:** calm. The session looks done and the reply looks delivered, and nothing moves until a person notices.
+- **fixed when:**
+  - (1) After a `/clear`, a REQUEST and its linked ANSWER wake the requesting session within one bus round. Measured on a real pair of sessions.
+  - (2) A session that ended its turn with no open question receives an auto-continue naming the arrived reply, at most once per reply. An unrelated room entry does not produce one (test).
+
 ### B-214 — a relayed AskUserQuestion is not released by a message typed in the terminal, so the session sits queued for up to 55 min
 - **state:** fix shipped, live proof pending — Enter typed in the FLEET's terminal of the asking agent now releases an `ask` or `permission` call (`question_relay.release_on_terminal_enter`, called from the terminal websocket; unit-tested in `tests/unit/test_relay_terminal_enter.py`). Not proven on a live session yet: the only held questions at the time were the owner's to answer, and releasing them would have moved them off the channel. A terminal OUTSIDE the fleet (a plain tmux or a desktop terminal) is still not covered.
 - **reported:** 2026-11-24 by the user ("ez is már 16 perce várakozik"), with a screenshot of the session.
