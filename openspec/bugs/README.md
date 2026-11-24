@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-231 — `set-leakscan` cannot learn that a self-hosted remote is private, so an agent can never push a private client-work repo hosted outside GitHub
+- **state:** open
+- **reported:** 2026-11-24 by this session, asked by the user to push a private sales repository whose only remote is a self-hosted git server.
+- **measured:** `set-leakscan` in that repo: `1289 finding(s) — 56 scanned file(s), remote is unknown` (consumer-name, env-marker, phone — all the repo's legitimate content). `remote_visibility()` in `bin/set-leakscan` asks only `gh repo view` and only for `github.com` URLs; every other URL is cached as `"unknown"`, which the caller treats as public. There is no allow entry, config key or flag that declares a remote private; the only way through is editing `~/.cache/set-core/leakscan-remote-visibility.json`, which expires after `VIS_TTL` and is a workaround, not a declaration.
+- **fail direction:** loud, blocking — correct for an undecidable remote, but with no legitimate exit it pushes the owner toward pushing by hand outside the agent gate, which is exactly the bypass the gate warns against.
+- **fixed when:** a machine-local, never-committed declaration (e.g. a `remote:<url-prefix>` line in `~/.config/set-core/leakscan-allow.txt`, or `set-config`) marks a self-hosted remote private; a push to it then scans as `remote private`, and an undeclared non-GitHub remote still blocks.
+
 ### B-230 — `set-doctor` says "not on the agent bus (no sac hooks)" about a project whose hooks ARE installed, because `sac doctor` has not seen a session there yet
 - **state:** open
 - **reported:** 2026-11-24 by this session, re-running the doctor right after `sac install <project>` in 23 projects.
