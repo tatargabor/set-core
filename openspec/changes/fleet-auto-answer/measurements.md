@@ -241,3 +241,24 @@ fails without the fix (held 60 s) and passes with it.
 live, because the operator had already switched on; it is covered by AC-1's unit test and by the
 scratch run in S5. A question that is actually WRITTEN through the real bridge has not happened
 yet — that, and the accuracy figure, are task 5.0.
+
+## S7 — the first live morning with the switch on, 2026-11-24 07:43–08:12
+
+From `decisions.jsonl` and `auto-answer.log`; aggregates and outcomes only.
+
+- **Through the decider:** 10 relayed calls (continuations, asks, one permission). Fork
+  latency 6.6–15.0 s.
+- **First automatic write:** a continuation's next step, `decided`, written after the
+  60 s window at 08:10:27; the relay woke the session with it (`waking the session with the
+  channel answer`).
+- **Excluded on a word, not an act:** 2 of the first 3 proposals. One was a check that
+  mentioned a deletion; one was "Install both", blocked by a negated mention and by an
+  option not chosen. This led to the owner's decision to exclude on the chosen answer
+  (commit `313a8ecb`, spec updated). After it, one call that would have been excluded
+  under the old rule re-checks as allowed.
+- **First operator send from the relay panel:** an excluded `likely` proposal, sent with
+  one click; logged with the operator's answer equal to the proposal.
+- **Still correctly not written:** a permission prompt, and an org-level connector setting
+  change. The latter was excluded for the wrong reason (words `send`/`delete` in a sentence
+  saying both stay forbidden). The right outcome by luck is worth a family of its own later:
+  account and security settings.
