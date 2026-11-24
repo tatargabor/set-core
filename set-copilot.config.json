@@ -32,28 +32,179 @@
       "nem cél"
     ],
     "keywords": [
-      { "topic": "orchestration", "stems": ["orchestrat", "orkesztr", "vezényl"] },
-      { "topic": "worktree", "stems": ["worktree", "munkafa"] },
-      { "topic": "decompose", "stems": ["decompos", "dekompoz", "felbont"] },
-      { "topic": "sentinel", "stems": ["sentinel", "őrszem"] },
-      { "topic": "ralph-loop", "stems": ["ralph", "loop", "hurok"] },
-      { "topic": "gate", "stems": ["gate", "kapu", "verify gate"] },
-      { "topic": "verify", "stems": ["verify", "verifik", "ellenőrz"] },
-      { "topic": "archive", "stems": ["archive", "archivál", "archív"] },
-      { "topic": "openspec", "stems": ["openspec", "open spec"] },
-      { "topic": "spec-writing", "stems": ["spec[- ]?ír", "spec[- ]?writ", "specifikáci", "delta spec"] },
-      { "topic": "memory", "stems": ["memory", "memória", "shodh", "emlékez"] },
-      { "topic": "mcp", "stems": ["mcp", "model context protocol"] },
-      { "topic": "design-pipeline", "stems": ["design pipeline", "set[- ]?design", "v0 design", "dizájn"] },
-      { "topic": "ikp", "stems": ["ikp", "integration knowledge pack"] },
-      { "topic": "e2e", "stems": ["e2e", "end[- ]?to[- ]?end", "playwright"] },
-      { "topic": "coverage", "stems": ["coverage", "lefedettség"] },
-      { "topic": "traceability", "stems": ["traceab", "trace", "nyomonkövet", "követhető"] },
-      { "topic": "agent-dispatch", "stems": ["dispatch", "kiosztás", "subagent", "agent fleet"] },
-      { "topic": "token-budget", "stems": ["token", "kvóta", "budget", "keret"] },
-      { "topic": "claude-code", "stems": ["claude code", "claude[- ]?kód"] },
-      { "topic": "set-capture", "stems": ["set[- ]?capture", "capture"] },
-      { "topic": "set-copilot", "stems": ["copilot", "kopilot"] }
+      {
+        "topic": "orchestration",
+        "stems": [
+          "orchestrat",
+          "orkesztr",
+          "vezényl"
+        ]
+      },
+      {
+        "topic": "worktree",
+        "stems": [
+          "worktree",
+          "munkafa"
+        ]
+      },
+      {
+        "topic": "decompose",
+        "stems": [
+          "decompos",
+          "dekompoz",
+          "felbont"
+        ]
+      },
+      {
+        "topic": "sentinel",
+        "stems": [
+          "sentinel",
+          "őrszem"
+        ]
+      },
+      {
+        "topic": "ralph-loop",
+        "stems": [
+          "ralph",
+          "loop",
+          "hurok"
+        ]
+      },
+      {
+        "topic": "gate",
+        "stems": [
+          "gate",
+          "kapu",
+          "verify gate"
+        ]
+      },
+      {
+        "topic": "verify",
+        "stems": [
+          "verify",
+          "verifik",
+          "ellenőrz"
+        ]
+      },
+      {
+        "topic": "archive",
+        "stems": [
+          "archive",
+          "archivál",
+          "archív"
+        ]
+      },
+      {
+        "topic": "openspec",
+        "stems": [
+          "openspec",
+          "open spec"
+        ]
+      },
+      {
+        "topic": "spec-writing",
+        "stems": [
+          "spec[- ]?ír",
+          "spec[- ]?writ",
+          "specifikáci",
+          "delta spec"
+        ]
+      },
+      {
+        "topic": "memory",
+        "stems": [
+          "memory",
+          "memória",
+          "shodh",
+          "emlékez"
+        ]
+      },
+      {
+        "topic": "mcp",
+        "stems": [
+          "mcp",
+          "model context protocol"
+        ]
+      },
+      {
+        "topic": "design-pipeline",
+        "stems": [
+          "design pipeline",
+          "set[- ]?design",
+          "v0 design",
+          "dizájn"
+        ]
+      },
+      {
+        "topic": "ikp",
+        "stems": [
+          "ikp",
+          "integration knowledge pack"
+        ]
+      },
+      {
+        "topic": "e2e",
+        "stems": [
+          "e2e",
+          "end[- ]?to[- ]?end",
+          "playwright"
+        ]
+      },
+      {
+        "topic": "coverage",
+        "stems": [
+          "coverage",
+          "lefedettség"
+        ]
+      },
+      {
+        "topic": "traceability",
+        "stems": [
+          "traceab",
+          "trace",
+          "nyomonkövet",
+          "követhető"
+        ]
+      },
+      {
+        "topic": "agent-dispatch",
+        "stems": [
+          "dispatch",
+          "kiosztás",
+          "subagent",
+          "agent fleet"
+        ]
+      },
+      {
+        "topic": "token-budget",
+        "stems": [
+          "token",
+          "kvóta",
+          "budget",
+          "keret"
+        ]
+      },
+      {
+        "topic": "claude-code",
+        "stems": [
+          "claude code",
+          "claude[- ]?kód"
+        ]
+      },
+      {
+        "topic": "set-capture",
+        "stems": [
+          "set[- ]?capture",
+          "capture"
+        ]
+      },
+      {
+        "topic": "set-copilot",
+        "stems": [
+          "copilot",
+          "kopilot"
+        ]
+      }
     ]
   },
   "copilot": {
@@ -106,5 +257,6 @@
         "when": "the two of them decide something worth recording — a scope choice, a boundary between spec-authoring and orchestration, a design call. Summarize it in one line so it can be written down after."
       }
     ]
-  }
+  },
+  "configVersion": 1
 }
