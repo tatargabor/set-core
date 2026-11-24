@@ -75,6 +75,20 @@ consumer's name, path, or content.
 - **fail direction:** the harmful one — a stale answer typed into a live agent, and the carrier's Esc can interrupt a running turn. Every long session was exposed.
 - **fixed when / fixed by:** `call_is_open` on a real path searches the whole transcript (`has_result`: a byte search for the id, then a parse of only the matching line); an unreadable transcript keeps the old "open" reading so a plain-terminal parked question is still named. `test_an_answer_far_above_the_tail_still_closes_the_call` builds a transcript larger than the window with the result at its top; it fails without the fix (stash-and-rerun) and passes with it; backfill suite 26 green.
 
+### B-241 — the auto-answer decider spends 30 s on a knowledge-base lookup that times out on most questions
+- **state:** open
+- **reported:** 2026-11-24 by this session, running the full relay path end to end.
+- **measured:** in `~/.local/share/set-core/auto-answer/decisions.jsonl`, 4 of the last 5 decisions carry the note `kb: not used (timed out after 30 s)` with `latency_s` 35.0–37.5; the fifth (`kb: 6 hit(s)`) took 5.9 s. `auto-answer.log` shows the same gap: `worker started` → the provider resolve 30 s later, every time. The timeout is `KB_TIMEOUT_S = 30.0` in `lib/set_orch/fleet/auto_answer.py`.
+- **fail direction:** slow, quiet. The decision itself takes 5–9 s, so the window an agent sits blocked grows sixfold for a lookup that returns nothing. The proposal reaches the channel 30 s late, which leaves the operator less of the window to overrule it.
+- **fixed when:** the lookup's cause of timing out is named and removed, or the lookup is bounded well under the decision time; across 5 consecutive relayed questions none carries the timeout note, and `latency_s` stays under 15 s.
+
+### B-240 — an answer the operator gives in a question dialog can never check as "operator", so a real decision of theirs is only ever "likely"
+- **state:** open
+- **reported:** 2026-11-24 by this session, running the auto-write path end to end.
+- **measured:** a question the operator had already answered ("Leave them", chosen in an `AskUserQuestion` dialog) was decided `Leave them`, tier `likely`, confidence 0.95, and written. Its only reference, kind `operator`, quote `Leave them`, has `checked: False`. `operator_turns()` in `lib/set_orch/fleet/auto_answer.py` reads only `user` entries whose content is text, and excludes tool results by design. A dialog answer arrives as a tool result, so it is invisible to the check.
+- **fail direction:** two ways at once. The tier under-reports, since a decision the operator actually made reads as a guess. And a write the operator did authorise is indistinguishable in the log from one resting on the model's confidence alone. With `likely_min` at 0.8, the second kind is written too, so the panel cannot show which writes had a checked source.
+- **fixed when:** an operator's answer in a question dialog, before the question, checks as an `operator` reference, tier `decided`, while text inside OTHER tool results (file contents, command output) still does not. A test holds both.
+
 ### B-237 — `set-doctor` reports an auto-clear watcher "ok" while the running process predates its script, so a template update never takes effect
 - **state:** open
 - **reported:** 2026-11-24 by the user, after a session in this tree was idle-compacted by the runtime although warm-idle rotation had shipped that morning.
