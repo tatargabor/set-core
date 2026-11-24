@@ -249,13 +249,24 @@ log_rotate() {
 }
 log_rotate
 
+# The fleet owner client is probed ONCE, loudly. Measured 2026-11-24: 36 of 41 watcher units ran
+# without set-core's lib on PYTHONPATH, so the per-pass lookup's import failed into `except: pass`,
+# and every fleet-hosted session read "no fleet agent holds it" for ever. Only the 5 units that had
+# PYTHONPATH could ever clear an agent. Absence is announced, never silent.
+FLEET_OK=1; FLEET_NOTE=""
+FLEET_ERR=$(python3 -c "import set_orch.fleet.owner_client" 2>&1 >/dev/null) || FLEET_OK=0
+FLEET_ERR=$(printf '%s\n' "$FLEET_ERR" | tail -1)   # a pipe here would report tail's status, not python's
 if ! command -v tmux >/dev/null; then
-  if python3 -c "import set_orch.fleet.owner_client" >/dev/null 2>&1; then
+  if [ "$FLEET_OK" = "1" ]; then
     log "tmux not available — the writer path is the fleet owner only"
   else
     echo "tmux not available and the fleet owner client is not importable — no writer path" >&2
     exit 2
   fi
+fi
+if [ "$FLEET_OK" != "1" ]; then
+  FLEET_NOTE="; the fleet owner client is NOT importable, so a fleet agent cannot be found"
+  log "warn  fleet: the owner client is not importable by $(command -v python3) (${FLEET_ERR:-unknown error}) — sessions hosted by the fleet can never be nudged or cleared, only tmux panes can; put set-core's lib on PYTHONPATH in this watcher's environment"
 fi
 [ -f "$LEDGER" ] || log "note  autopilot ledger not installed — typed text is not provenance-logged"
 
@@ -721,7 +732,7 @@ nudge_session() { # $1 = tree, $2 = sid, $3 = pid, $4 = verdict
       # Deduped like the "no" line (own key, same shape + heartbeat rule): measured 2026-11-24, an
       # unreachable 400k+ seat logged this every pass, 14 lines in 15 minutes, with nothing new.
       no_log_due "${2}nowriter" "$(verdict_shape "nudge $3")" \
-        && log "nudge $2  due at $tokens but no tmux pane hosts pid ${3:-?} and no fleet agent holds it — no writer path (logged on change or every 30 min)"
+        && log "nudge $2  due at $tokens but no tmux pane hosts pid ${3:-?} and no fleet agent holds it — no writer path${FLEET_NOTE} (logged on change or every 30 min)"
       return 0
     fi
     pres=$(presence_owner "$label"); turn=$(turn_owner "$label")
@@ -886,7 +897,7 @@ while :; do
         continue
       fi
       no_log_due "${sid}nowriter" "$(verdict_shape "skip $pane_pid")" \
-        && log "skip  $sid  ELIGIBLE but no tmux pane hosts pid ${pane_pid:-?} and no fleet agent holds it — no writer path (logged on change or every 30 min)"
+        && log "skip  $sid  ELIGIBLE but no tmux pane hosts pid ${pane_pid:-?} and no fleet agent holds it — no writer path${FLEET_NOTE} (logged on change or every 30 min)"
       continue
     fi
     state=$(presence_tmux "$pane")
