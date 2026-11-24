@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-223 — the wait detector re-asks a desk's finished report, which asked the owner nothing
+- **state:** open
+- **reported:** 2026-11-24 by this session (set-core#dccdba56, a fleet desk), at the turn end that triggered it.
+- **measured:** `relay.log` `12:19:21 wait detect [dccdba56]: the turn ended waiting on the user; asking for a re-ask`. The turn was a desk run: one bus request was done, the linked ANSWER was sent (12:19:05), the inbox was empty, and the last message was a result report ending "Nothing else in the inbox is addressed to this desk, so I'm stopping." It held no question and no option list. The one sentence that might read as pending was a fact about another tree ("which is its owner's decision"). The global rule tells a finished thread to report and stop without a closing question, so the detector fires exactly where the rule is obeyed. Same class as B-220, different trigger: B-220 is a turn waiting on its own background work; this one waits on nothing.
+- **fail direction:** noisy. The owner gets a phone question with no question in it, and a session that obeys the hook has to invent one, which breaks the no-closing-question rule.
+- **fixed when:** a turn end whose last message asks nothing (no question mark addressed to the user, no options, no "NEED INPUT") and that names the work as finished or stopped produces no re-ask (a test on `wait_detect.decide` with this message shape), while a turn that does ask the user still re-asks.
+
 ### B-222 — the watchdog's relay-hold triage files a question the owner simply has not answered yet as `known:B-214`
 - **state:** closed 2026-11-24 in the commit that adds this line (`fleet-watchdog` tasks 7.1, 7.4). `probe_relay_hold` now counts the prompts queued from the terminal since the hold started (`typed_since`, the transcript's `queue-operation` `enqueue` records that are not a harness tag) and reports only a hold with a typed prompt, or one whose transcript cannot be read (`typed_in_terminal: null`). A hold with nothing typed is not reported: the relay already put that question on the owner's phone, so this narrows the "fixed when" below rather than adding a third label. Measured: replayed through `typed_since`, the B-214 session's transcript counts the operator's queued message; on the live machine the three held asks report nothing. Tests `test_relay_hold_with_nothing_typed_is_the_owner_not_a_defect` and `…_with_a_prompt_typed_into_the_terminal_is_reported` failed against the previous code and pass with the fix.
 - **reported:** 2026-11-24 by this session (set-core#808a2d65), reading `set-watchdog status` at the owner's request.
