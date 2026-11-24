@@ -274,10 +274,10 @@ def test_kb_hits_reach_the_candidates(monkeypatch):
     monkeypatch.setattr(aa.shutil, "which", lambda n: "/bin/set-kb")
     run, seen = kb_run(json.dumps({"hits": [{"path": "docs/colours.md", "headingPath": "Release > Colour",
                                              "snippet": "The release colour is TEAL."}]}))
-    hits, note = aa.kb_candidates([q()], "/proj", run=run)
+    hits, note = aa.kb_candidates([q()], "/proj", run=run, refresh=lambda e, c: None)
     assert hits == [{"path": "docs/colours.md", "heading": "Release > Colour", "excerpt": "The release colour is TEAL."}]
     assert note == "kb: 1 hit(s)" and seen["cwd"] == "/proj"
-    assert seen["argv"][:4] == ["/bin/set-kb", "search", "--json", "--limit"]
+    assert seen["argv"][:5] == ["/bin/set-kb", "search", "--json", "--no-reindex", "--limit"]
     assert "TEAL" in seen["argv"][-1] and "Which release colour?" in seen["argv"][-1]
     prompt = aa.build_prompt(aa.KIND_ASK, [q()], hits, [])
     assert "docs/colours.md" in prompt and "The release colour is TEAL." in prompt
@@ -292,7 +292,7 @@ def test_kb_hits_reach_the_candidates(monkeypatch):
 def test_kb_failure_is_noted_not_fatal(monkeypatch, run_args, why):
     monkeypatch.setattr(aa.shutil, "which", lambda n: "/bin/set-kb")
     run, _ = kb_run(**run_args)
-    hits, note = aa.kb_candidates([q()], "/proj", run=run)
+    hits, note = aa.kb_candidates([q()], "/proj", run=run, refresh=lambda e, c: None)
     assert hits == [] and note.startswith("kb: not used") and why in note
 
 
@@ -848,3 +848,34 @@ def test_the_exclusion_gives_way_to_a_taught_rule_but_not_on_a_permission_prompt
     assert aa.exclusion(aa.KIND_ASK, prod, "Igen", True) is not None
     assert aa.exclusion(aa.KIND_ASK, prod, "Igen", True, taught=True) is None
     assert aa.exclusion(aa.KIND_PERMISSION, prod, "Allow", False, taught=True) == "permission prompt"
+
+
+def test_kb_search_never_refreshes_inside_the_bound_b239(monkeypatch):
+    """B-241: a first index build measured 93 s against a 30 s bound, so it was killed on
+    every question and never finished. The search reads the index as it is; the refresh
+    runs detached — and starts even when the search itself fails, so the index heals."""
+    monkeypatch.setattr(aa.shutil, "which", lambda n: "/bin/set-kb")
+    started = []
+    run, seen = kb_run(exc=subprocess.TimeoutExpired("set-kb", aa.KB_TIMEOUT_S))
+    hits, note = aa.kb_candidates([q()], "/proj", run=run, refresh=lambda e, c: started.append((e, c)))
+    assert "--no-reindex" in seen["argv"]
+    assert started == [("/bin/set-kb", "/proj")]
+    assert hits == [] and "timed out" in note
+    assert aa.KB_TIMEOUT_S <= 10
+
+
+def test_kb_background_refresh_is_detached_and_never_raises(monkeypatch):
+    calls = []
+
+    class FakePopen:
+        def __init__(self, argv, **kw):
+            calls.append((argv, kw))
+    monkeypatch.setattr(aa.subprocess, "Popen", FakePopen)
+    aa.kb_refresh_in_background("/bin/set-kb", "/proj")
+    argv, kw = calls[0]
+    assert argv == ["/bin/set-kb", "index"] and kw["cwd"] == "/proj" and kw["start_new_session"] is True
+
+    def boom(*a, **k):
+        raise FileNotFoundError("set-kb")
+    monkeypatch.setattr(aa.subprocess, "Popen", boom)
+    aa.kb_refresh_in_background("/bin/set-kb", "/proj")   # logged, not raised

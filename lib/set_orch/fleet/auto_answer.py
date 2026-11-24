@@ -70,7 +70,11 @@ DEFAULT_FALLBACK_MODEL = "sonnet"
 DEFAULT_LOG_DAYS = 90
 DEFAULT_DECIDE_TIMEOUT_S = 120.0
 KB_LIMIT = 6
-KB_TIMEOUT_S = 30.0
+#: A SEARCH of the existing index answers in under a second (measured 0.45 s here); the
+#: bound only has to cover that. It used to be 30 s and the search refreshed first: a first
+#: build measured 93 s, so it was killed every time, never finished, and every decision
+#: paid the full 30 s for nothing (B-241).
+KB_TIMEOUT_S = 10.0
 KB_QUERY_CHARS = 400
 
 #: Set on the fork's environment: the fork must never relay its own questions, and a
@@ -683,8 +687,24 @@ def allow(tier: str, confidence: float, excluded: Optional[str], bar: float) -> 
 Runner = Callable[..., Any]
 
 
+def kb_refresh_in_background(exe: str, cwd: str) -> None:
+    """Bring the index up to date OUTSIDE the decision's time bound (B-241).
+
+    Detached, output discarded, never waited on. `set-kb`'s own writer lock makes a second
+    concurrent refresh a no-op, so starting one per question is safe; a missing or stale
+    index heals in the background instead of being killed mid-build by the decision's bound.
+    """
+    try:
+        subprocess.Popen([exe, "index"], cwd=cwd or None, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError as exc:
+        logger.warning("auto answer: kb background refresh could not start (%s)", type(exc).__name__)
+
+
 def kb_candidates(questions: Sequence[Question], cwd: str, *, run: Runner = subprocess.run,
-                  limit: int = KB_LIMIT) -> Tuple[List[Dict[str, str]], str]:
+                  limit: int = KB_LIMIT,
+                  refresh: Callable[[str, str], None] = kb_refresh_in_background,
+                  ) -> Tuple[List[Dict[str, str]], str]:
     """Ranked sections from `set-kb search --json`, and a note for the log.
 
     The decider runs the search, not the model, so the model keeps read-only tools and
@@ -698,8 +718,11 @@ def kb_candidates(questions: Sequence[Question], cwd: str, *, run: Runner = subp
     query = re.sub(r"\s+", " ", query).strip()[:KB_QUERY_CHARS]
     if not query:
         return [], "kb: not used (empty question)"
+    # Search the index as it is (`--no-reindex`) and refresh it in the background: a
+    # refresh inside the bound is what kept a first build from ever finishing (B-241).
+    refresh(exe, cwd)
     try:
-        res = run([exe, "search", "--json", "--limit", str(limit), query], cwd=cwd or None,
+        res = run([exe, "search", "--json", "--no-reindex", "--limit", str(limit), query], cwd=cwd or None,
                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=KB_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         return [], f"kb: not used (timed out after {KB_TIMEOUT_S:.0f} s)"
