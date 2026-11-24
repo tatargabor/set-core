@@ -44,10 +44,12 @@ GUARD_ENV = "SET_WAIT_DETECT_CLASSIFIER"
 PROMPT = """You classify the final message an AI coding agent sent before ending its turn.
 Answer with exactly one word.
 
-WAITING — the agent cannot usefully continue until the user answers a question, makes a
+WAITING — THIS agent's own next step is blocked until the user answers a question, makes a
 decision, confirms something, or does something and reports back (e.g. "tell me when done").
 DONE — the agent finished or reported, and any closing offer ("tell me if you want more",
-"if it still fails, let me know") does not block the work.
+"if it still fails, let me know") does not block the work. A status report is DONE even when it
+lists things that wait for the user ELSEWHERE — in other sessions, on a chat channel, in a queue —
+or says the agent keeps watching something in the background.
 
 MESSAGE:
 """

@@ -200,3 +200,14 @@ def test_hook_script_is_silent_when_relay_off(tmp_path):
     res = subprocess.run([str(root / "bin" / "set-hook-wait-detect")], input=json.dumps(stop_input()),
                          capture_output=True, text=True, env=env)
     assert res.returncode == 0 and res.stdout == ""
+
+
+def test_the_prompt_scopes_waiting_to_this_agent_and_frees_status_reports():
+    """Measured 2026-11-24: 159 WAITING vs 127 DONE over the relay log, and status reports
+    that only LISTED questions waiting in other sessions were classified WAITING, so the
+    agent was told to ask the owner something it had no need to ask. Re-run on the two real
+    messages with the sharper wording: both DONE, while 'tell me when it's done' and an open
+    either/or question stayed WAITING."""
+    from set_orch.fleet import wait_detect as wd
+    assert "THIS agent's own next step is blocked" in wd.PROMPT
+    assert "lists things that wait for the user ELSEWHERE" in wd.PROMPT
