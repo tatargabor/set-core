@@ -11,11 +11,13 @@
  * that clear ran 89 min after the last request instead of at 48.
  *
  * Usage:
- *   node handoff-cost.mjs cost <transcript.jsonl> <marker-mtime-ms> [<until-ms>]
- *     → JSON {requests, input, cacheWrite, cacheRead, output, equiv, since, contextBefore}
+ *   node handoff-cost.mjs cost <transcript.jsonl> <marker-mtime-ms> [<until-ms> [<handoff-file-name>]]
+ *     → JSON {requests, input, cacheWrite, cacheRead, output, equiv, scope, since, contextBefore}
  *       The handoff turn = the assistant requests after the last user STRING entry (a human
  *       prompt, or the /handoff a nudge typed) at or before the marker, up to <until> (default
- *       now). contextBefore = the context size of the last request before that turn.
+ *       now). With the handoff's file name, a turn NOT opened by /handoff (the session wrote its
+ *       handoff itself) starts at its first write of that file instead: scope "self-written".
+ *       contextBefore = the context size of the last request before that turn.
  *   node handoff-cost.mjs payback <fresh-transcript.jsonl> <context-before> <n>
  *     → JSON {requests, avgContext, savedEquiv} over the fresh session's first n requests, or
  *       {requests} alone while it has fewer than n. Saved = (context-before − avg fresh context)
@@ -59,13 +61,42 @@ function equivOf(u) {
   return (u.input_tokens || 0) * RATE.input + write + (u.cache_read_input_tokens || 0) * RATE.read + (u.output_tokens || 0) * RATE.output
 }
 
-export function handoffCost(text, markerMs, untilMs = Date.now()) {
+const HANDOFF_COMMAND = /^\s*\/handoff\b|<command-name>\/handoff<\/command-name>/
+const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit"])
+const SHELL_WRITE = /(^|[^0-9&])>|\btee\b|\s-i\b|\b(cp|mv)\s/
+
+/** Does this assistant record START writing the handoff named `name` (a file write, a shell write, or the skill)? */
+function writesHandoff(r, name) {
+  for (const c of Array.isArray(r?.message?.content) ? r.message.content : []) {
+    if (c?.type !== "tool_use") continue
+    const inp = c.input ?? {}
+    if (c.name === "Skill" && /(^|:)handoff$/.test(String(inp.skill ?? ""))) return true
+    if (WRITE_TOOLS.has(c.name) && String(inp.file_path ?? "").endsWith(`/${name}`)) return true
+    if (c.name === "Bash" && String(inp.command ?? "").includes(name) && SHELL_WRITE.test(String(inp.command))) return true
+  }
+  return false
+}
+
+export function handoffCost(text, markerMs, untilMs = Date.now(), handoffName = "") {
   const recs = records(text)
   let since = null
+  let opener = ""
   for (const r of recs) {
     const t = Date.parse(r?.timestamp ?? "")
     if (!Number.isFinite(t) || t > markerMs) continue
-    if (r.type === "user" && typeof r.message?.content === "string") since = t
+    if (r.type === "user" && typeof r.message?.content === "string") { since = t; opener = r.message.content }
+  }
+  // A turn the /handoff command opened IS the handoff turn. Otherwise the session wrote its handoff
+  // itself, often at the end of a long work turn (measured 2026-11-24: 90 work requests, 3.67M,
+  // logged as one handoff): count from its first write of that file. The reading and thinking
+  // before that write are left out, so a self-written cost errs low by a request or two.
+  let scope = "turn"
+  if (since != null && handoffName && !HANDOFF_COMMAND.test(opener)) {
+    const first = recs.find((r) => {
+      const t = Date.parse(r?.timestamp ?? "")
+      return r?.type === "assistant" && t >= since && t <= markerMs && writesHandoff(r, handoffName)
+    })
+    if (first) { since = Date.parse(first.timestamp); scope = "self-written" }
   }
   const all = requests(recs)
   const inTurn = all.filter((r) => { const t = Date.parse(r.timestamp); return since != null && t >= since && t <= untilMs })
@@ -80,7 +111,7 @@ export function handoffCost(text, markerMs, untilMs = Date.now()) {
     sum.equiv += equivOf(u)
   }
   sum.equiv = Math.round(sum.equiv)
-  return { ...sum, since: since == null ? null : new Date(since).toISOString(), contextBefore: before ? ctxOf(before.message.usage) : null }
+  return { ...sum, scope, since: since == null ? null : new Date(since).toISOString(), contextBefore: before ? ctxOf(before.message.usage) : null }
 }
 
 export function payback(text, contextBefore, n) {
@@ -93,10 +124,10 @@ export function payback(text, contextBefore, n) {
 
 const invoked = process.argv[1] ? resolve(process.argv[1]) : ""
 if (invoked === fileURLToPath(import.meta.url)) {
-  const [cmd, file, a, b] = process.argv.slice(2)
+  const [cmd, file, a, b, c] = process.argv.slice(2)
   try {
     const text = readFileSync(file, "utf8")
-    if (cmd === "cost") console.log(JSON.stringify(handoffCost(text, Number(a), b ? Number(b) : Date.now())))
+    if (cmd === "cost") console.log(JSON.stringify(handoffCost(text, Number(a), b ? Number(b) : Date.now(), c ?? "")))
     else if (cmd === "payback") console.log(JSON.stringify(payback(text, Number(a), Number(b))))
     else console.log(JSON.stringify({ error: `unknown command: ${cmd ?? ""}` }))
   } catch (e) {
