@@ -251,6 +251,13 @@
   block holds `fleet: owner client found via set-agent-owner`. The 4 that import through their own
   PYTHONPATH print no found line. No `warn  fleet` line appears anywhere after a 10:06:12Z start.
   The units need only set-core's bin dir on PATH, and `%h/.local/bin` already is.
+- 2026-11-24 ~11:09, the 846cb63 roll (`presence.mjs`: a row painted only with non-CSI escapes
+  read as typed and held an auto-continue). Templates only, no unit change, same procedure. The
+  dry run showed 38 trees getting only `presence.mjs`. Measured after: the presence blob in 38/38
+  trees equals the package's HEAD file, 40/40 watcher units are `active` with a 10:09:35Z start,
+  36 hold the `owner client found` line, 4 import through their own PYTHONPATH, and no
+  `warn  fleet` appears anywhere. 36 pathspec-limited commits. Nothing requires a PYTHONPATH line:
+  the doctor check that did was reverted in 9286ea5b.
 - 2026-11-23 22:04: set-core ITSELF had been left out of the rollout (the rollout script skipped
   the framework's own tree, which is not a reason under the owner's "every project" decision).
   Noticed because a 410k-token session here was never asked for a handoff. Installed now with the
