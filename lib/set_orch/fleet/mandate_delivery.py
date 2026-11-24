@@ -186,17 +186,24 @@ def _takeover_lines(takeover: Mapping[str, Any]) -> List[str]:
     asker = takeover.get("asker") or "the asker"
     before = takeover.get("from_seat") or "an earlier desk"
     session = takeover.get("from_session")
+    unclaimed = not takeover.get("from_seat") and not session
     lines = [
         "",
-        "## You are TAKING OVER a request — continue it, do not start over",
+        "## You were started to answer a request nobody picked up" if unclaimed
+        else "## You are TAKING OVER a request — continue it, do not start over",
         "",
         f"- The request: bus room `{room}`, entry `{ts}`, asked by {asker}. Read it with "
         f"`sac history {room}`.",
         "- If that room refuses you (a room of two between other seats is readable by those two "
         f"only — measured), do not work around it: open a room of two with the asker (`sac dm "
         f"{asker}`) and send ONE QUESTION asking it to re-send the request to you; wait for it.",
-        f"- It was held by {before}, which stalled or stopped; the fleet stopped it and started you.",
     ]
+    if unclaimed:
+        # fleet-room-request-adoption: posted straight into the room, and nobody picked it up.
+        lines.append("- Nobody picked this request up: it was posted straight into the room and no "
+                     "desk held it, so the fleet started you to answer it. There is no predecessor.")
+    else:
+        lines.append(f"- It was held by {before}, which stalled or stopped; the fleet stopped it and started you.")
     if session:
         lines.append(
             f"- Its session id is `{session}`. Its transcript is that id's `.jsonl` under this "
@@ -206,7 +213,8 @@ def _takeover_lines(takeover: Mapping[str, Any]) -> List[str]:
         "- Also check this project's open OpenSpec changes (`openspec list`, their tasks.md): "
         "what is ticked is done; carry on from there.",
         f"- FIRST, before any work: post one FACT in `{room}` WITHOUT `--re`, saying the request "
-        f"{ts} moved from {before} to you. Unlinked, so it does not close the request. (In a "
+        + (f"{ts} is now held by you. " if unclaimed else f"{ts} moved from {before} to you. ")
+        + "Unlinked, so it does not close the request. (In a "
         "project room an unaddressed entry wakes nobody; in a room of two every entry wakes the "
         "other seat.)",
         f"- When done, answer IN `{room}` with a reply linked to the ORIGINAL request "

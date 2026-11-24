@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-235 — the agent-side commit gate scans the whole index, so one session's staged finding refuses every other session's pathspec-limited commit
+- **state:** open
+- **reported:** 2026-11-24 by this session (set-core#8d47865a), committing `fleet-room-request-adoption`.
+- **measured:** `git commit <six own paths> -m …` was refused by `set-hook-leakscan` (`env-marker (1) docs/learn/orchestration-pipeline.md:391`). That file was staged (`A`) by another live session (`set-core#1ddbdfdc`) and is not among the committed paths. The hook runs `set-leakscan --staged` in the repository (`~/.local/bin/set-hook-leakscan`, the `--staged` call near line 301), which reads the shared index; a pathspec commit (`git commit <paths>`) commits HEAD plus the working-tree content of only those paths, which is what `.claude/rules/cross-cutting-checklist.md` requires in a shared checkout.
+- **fail direction:** blocks — the safe direction for the leak, but it stalls every other session's commit for as long as one session holds a finding in the index, and the message names a file the blocked session must not touch.
+- **fixed when:** for a `git commit` carrying pathspecs, the gate scans what that commit would contain (HEAD + those paths' working-tree content, e.g. a temporary index built for them), so an unrelated staged finding no longer refuses it; a pathless commit still scans the whole index. A test holds both, plus a pathspec commit whose own path carries a finding (still refused).
+
 ### B-234 — `fleetTileClick.test.tsx` "a click in the open tile's BODY leaves it open" fails: the tile body is not recognised as an opening target
 - **state:** open
 - **reported:** 2026-11-24 by this session (set-core#f7306bb0), found by the verifier of `fleet-auto-answer-session-off`.

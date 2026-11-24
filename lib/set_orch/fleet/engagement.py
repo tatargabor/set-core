@@ -38,7 +38,7 @@ import re
 import secrets
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .. import local_config
 from .channels import resolve_store_root
@@ -50,6 +50,7 @@ STATES = ("resolving", "open", "answered", "failed", "withdrawn")
 #: States that count against an asker's bound and keep a desk alive.
 LIVE_STATES = ("resolving", "open")
 KINDS = ("REQUEST", "QUESTION")
+SOURCES = ("ask", "room")
 
 #: Why an engagement failed — classes, never prose, so a caller does not grep a sentence.
 FAIL_CLASSES = (
@@ -82,6 +83,7 @@ _HEADING = re.compile(
 __all__ = [
     "STATES", "LIVE_STATES", "KINDS", "WAKE_OUTCOMES", "FAIL_CLASSES", "EngagementError", "BusUnreadable",
     "EngagementStore", "default_store_path", "project_of", "linked_reply", "refresh",
+    "unlinked_answer", "room_requests", "adopt_room_requests", "adoption_since", "relation_projects",
     "waiting_seconds", "max_open", "view",
 ]
 
@@ -152,6 +154,9 @@ def _normalise(raw: Any) -> Optional[Dict[str, Any]]:
         "desk_seat": _text(raw.get("desk_seat")),
         "desk_mandate": _text(raw.get("desk_mandate")),
         "kind": raw.get("kind") if raw.get("kind") in KINDS else "REQUEST",
+        # fleet-room-request-adoption: `ask` was opened by set-fleet-ask, `room` was found
+        # posted straight into a relation room and adopted.
+        "source": raw.get("source") if raw.get("source") in SOURCES else "ask",
         "subject": _text(raw.get("subject"), SUBJECT_MAX),
         "room": _text(raw.get("room")),
         "ts": _text(raw.get("ts")),
@@ -354,6 +359,52 @@ class EngagementStore:
         logger.info("fleet engagement: %s asker wake: %s", engagement_id, outcome)
         return dict(record)
 
+    def adopt(self, *, room: str, ts: str, asker: Optional[str], project: str,
+              kind: str = "REQUEST", sent_at: Optional[float] = None) -> Optional[Dict[str, Any]]:
+        """Record a request found posted straight into a relation room. Idempotent on room+ts.
+
+        Returns the new record, or None when that entry already has an engagement. Not bound by
+        the asker's open limit: the request is already on the bus, and refusing to record it
+        would not unsend it — it would only make it invisible again.
+        """
+        if kind not in KINDS:
+            raise EngagementError(f"unknown engagement kind: {kind!r}", "unknown-kind")
+        if not _text(project) or not _text(room) or not _text(ts):
+            raise EngagementError("an adopted engagement needs a project, a room and a timestamp", "no-pointer")
+        with file_lock(self.path):
+            records = self._load()
+            if any(r["room"] == room and r["ts"] == ts for r in records.values()):
+                return None
+            now = self._clock()
+            record = _normalise({
+                "id": "e-" + secrets.token_hex(6), "asker": asker, "project": project, "kind": kind,
+                "source": "room", "state": "open", "room": room, "ts": ts,
+                "opened_at": now, "sent_at": sent_at if sent_at is not None else now,
+            })
+            assert record is not None
+            records[record["id"]] = record
+            self._save(records)
+        logger.info("fleet engagement: %s adopted from room %s (kind=%s project=%s)",
+                    record["id"], room, kind, project)
+        return record
+
+    def assign_desk(self, engagement_id: str, *, label: Optional[str], seat: Optional[str],
+                    mandate_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Give an unclaimed open engagement its first desk. Not a handover: nobody held it."""
+        with file_lock(self.path):
+            records = self._load()
+            record = records.get(engagement_id)
+            if record is None:
+                return None
+            if record["state"] != "open" or record["desk_seat"] or record["desk_label"]:
+                logger.info("fleet engagement: %s already claimed or closed; assignment ignored",
+                            engagement_id)
+                return dict(record)
+            record.update(desk_label=_text(label), desk_seat=_text(seat), desk_mandate=_text(mandate_id))
+            self._save(records)
+        logger.info("fleet engagement: %s assigned to desk %s", engagement_id, record["desk_seat"] or label)
+        return dict(record)
+
     def mark_answered(self, engagement_id: str, answer_ts: str) -> Optional[Dict[str, Any]]:
         return self._transition(engagement_id, ("open",), state="answered",
                                 answer_ts=_text(answer_ts), closed_at=self._clock())
@@ -395,6 +446,164 @@ def linked_reply(room: str, request_ts: str, project: str,
     return best
 
 
+def _epoch(ts: Any) -> Optional[float]:
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def _headings(path: Path):
+    """(match) for every heading line of one seat file. Raises OSError."""
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if not line.startswith("## "):
+                continue
+            match = _HEADING.match(line.rstrip("\n"))
+            if match:
+                yield match
+
+
+def unlinked_answer(room: str, request_ts: str, project: str,
+                    *, store_root: Optional[Path] = None) -> Optional[str]:
+    """The earliest ANSWER by `project` in `room` after `request_ts` that links to nothing.
+
+    The closure an adopted request needs besides the bus's own link: measured 2026-11-24, 36 of
+    66 requests posted straight into a relation room were answered by an unlinked ANSWER. An
+    ANSWER linked to a different request does not count. Raises `BusUnreadable`.
+    """
+    after = _epoch(request_ts)
+    if after is None:
+        return None
+    root = Path(store_root) if store_root is not None else resolve_store_root()
+    room_dir = root / "channels" / room
+    try:
+        files = sorted(p for p in room_dir.iterdir() if p.suffix == ".md")
+    except OSError as exc:
+        raise BusUnreadable(type(exc).__name__) from exc
+    best: Optional[Tuple[float, str]] = None
+    for path in files:
+        if project_of(path.stem) != project:
+            continue
+        try:
+            for match in _headings(path):
+                if match.group("type") != "ANSWER" or match.group("re"):
+                    continue
+                when = _epoch(match.group("ts"))
+                if when is not None and when > after and (best is None or when < best[0]):
+                    best = (when, match.group("ts"))
+        except OSError as exc:
+            raise BusUnreadable(type(exc).__name__) from exc
+    return best[1] if best else None
+
+
+#: A request older than this is never adopted, so a closed record pruned after its retention
+#: cannot bring an old request back (fleet-room-request-adoption D3).
+ADOPT_MAX_AGE_SECONDS = 24 * 3600.0
+#: A request younger than this is left for a round: `set-fleet-ask` posts first and records the
+#: timestamp after, and adopting in between would double it.
+ADOPT_MIN_AGE_SECONDS = 90.0
+
+
+def adoption_since(*, path: Optional[str] = None, now: Optional[float] = None) -> float:
+    """The epoch adoption was first switched on, created on first use (forward only, D3)."""
+    import json
+
+    path = path or os.path.join(os.path.dirname(default_store_path()), "fleet-engagement-adopt.json")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            since = json.load(handle).get("since")
+        if isinstance(since, (int, float)) and not isinstance(since, bool):
+            return float(since)
+        logger.warning("fleet engagement: adoption watermark has no epoch; starting it again")
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError, AttributeError) as exc:
+        logger.warning("fleet engagement: adoption watermark unreadable (%s); starting it again",
+                       type(exc).__name__)
+    since = time.time() if now is None else now
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    atomic_write_json({"since": since}, path)
+    logger.info("fleet engagement: adoption switched on; nothing posted before %.0f is adopted", since)
+    return since
+
+
+def relation_projects(room: str) -> Optional[Tuple[str, str]]:
+    """The two projects of a relation room `dm-<a>--<b>`, or None for any other room."""
+    if not room.startswith("dm-") or room.count("--") != 1:
+        return None
+    a, b = room[3:].split("--", 1)
+    return (a, b) if a and b and a != b else None
+
+
+def room_requests(*, since: float, now: float,
+                  store_root: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Cross-project requests in relation rooms that adoption may record. Headings only.
+
+    A REQUEST or QUESTION by a seat of one project of the room, unaddressed or addressed to the
+    other project by name, between `ADOPT_MIN_AGE_SECONDS` and `ADOPT_MAX_AGE_SECONDS` old and
+    not older than `since`. An entry addressed to one session is a conversation, not adopted.
+    """
+    root = Path(store_root) if store_root is not None else resolve_store_root()
+    floor = max(since, now - ADOPT_MAX_AGE_SECONDS)
+    out: List[Dict[str, Any]] = []
+    try:
+        rooms = [p for p in (root / "channels").iterdir() if p.is_dir()]
+    except OSError as exc:
+        raise BusUnreadable(type(exc).__name__) from exc
+    for room_dir in rooms:
+        pair = relation_projects(room_dir.name)
+        if pair is None:
+            continue
+        try:
+            files = [p for p in room_dir.iterdir() if p.suffix == ".md"]
+        except OSError:
+            logger.warning("fleet engagement: room %s unreadable; skipped this round", room_dir.name)
+            continue
+        for path in files:
+            sender = project_of(path.stem)
+            if sender not in pair:
+                continue
+            addressed = pair[1] if sender == pair[0] else pair[0]
+            try:
+                if path.stat().st_mtime < floor:
+                    continue
+                for match in _headings(path):
+                    if match.group("type") not in KINDS:
+                        continue
+                    to = (match.group("to") or "").strip()
+                    if to and to != addressed:
+                        continue
+                    when = _epoch(match.group("ts"))
+                    if when is None or when < floor or now - when < ADOPT_MIN_AGE_SECONDS:
+                        continue
+                    out.append({"room": room_dir.name, "ts": match.group("ts"), "asker": path.stem,
+                                "project": addressed, "kind": match.group("type"), "sent_at": when})
+            except OSError:
+                logger.warning("fleet engagement: a seat file in %s unreadable; skipped this round",
+                               room_dir.name)
+    return out
+
+
+def adopt_room_requests(store: EngagementStore, *, store_root: Optional[Path] = None,
+                        since: Optional[float] = None, now: Optional[float] = None) -> List[str]:
+    """Adopt every untracked cross-project request in a relation room. Returns the new ids."""
+    now = time.time() if now is None else now
+    if since is None:
+        since = adoption_since(path=os.path.join(os.path.dirname(store.path) or ".",
+                                                 "fleet-engagement-adopt.json"), now=now)
+    known = {(r["room"], r["ts"]) for r in store.all().values() if r["room"] and r["ts"]}
+    adopted: List[str] = []
+    for found in room_requests(since=since, now=now, store_root=store_root):
+        if (found["room"], found["ts"]) in known:
+            continue
+        record = store.adopt(**found)
+        if record is not None:
+            adopted.append(record["id"])
+    return adopted
+
+
 def refresh(store: EngagementStore, *, store_root: Optional[Path] = None) -> Dict[str, Any]:
     """Turn every open engagement whose reply the bus links into `answered`.
 
@@ -409,6 +618,9 @@ def refresh(store: EngagementStore, *, store_root: Optional[Path] = None) -> Dic
             continue
         try:
             reply = linked_reply(record["room"], record["ts"], record["project"], store_root=store_root)
+            if not reply and record.get("source") == "room":
+                reply = unlinked_answer(record["room"], record["ts"], record["project"],
+                                        store_root=store_root)
         except BusUnreadable:
             unreadable.append(record["id"])
             continue
@@ -436,6 +648,7 @@ def view(record: Dict[str, Any], *, now: Optional[float] = None,
         "desk_label": record["desk_label"],
         "desk_seat": record["desk_seat"],
         "kind": record["kind"],
+        "source": record.get("source", "ask"),
         "subject": record["subject"],
         "state": "unmeasured" if (unmeasured and state == "open") else state,
         "stored_state": state,

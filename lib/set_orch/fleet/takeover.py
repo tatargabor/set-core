@@ -70,6 +70,9 @@ NONE = "none"
 INTERRUPT = "interrupt"
 REPLACE = "replace"
 BOUND = "bound-reached"
+#: fleet-room-request-adoption: an adopted request given the project's live desk, or a started one.
+ASSIGN = "assign"
+START = "start"
 
 #: Pauses between the three writes of an interrupt. The CR is a separate write so the
 #: terminal does not take it as part of a paste (measured: 0.8 s works).
@@ -409,6 +412,22 @@ def _desk_row(engagement: Dict[str, Any], rows: List[Dict[str, Any]]) -> Optiona
     return None
 
 
+def _project_desk_row(project: Optional[str], rows: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The live row of the project's framework desk: a terminal holding an open desk mandate."""
+    for row in rows:
+        held = row.get("mandate") or {}
+        if (held.get("kind") == "desk" and held.get("project") == project and not held.get("ended")
+                and row.get("terminal_label")):
+            return row
+    return None
+
+
+def _unclaimed(record: Dict[str, Any]) -> bool:
+    """An adopted engagement nobody holds yet (fleet-room-request-adoption D4)."""
+    return (record.get("source") == "room" and not record.get("desk_seat")
+            and not record.get("desk_label") and not record.get("desk_mandate"))
+
+
 class TakeoverWatch:
     """One round over the open engagements. Every collaborator is a callable.
 
@@ -444,6 +463,8 @@ class TakeoverWatch:
         return out
 
     def _one(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        if _unclaimed(record):
+            return self._claim(record)
         row = _desk_row(record, self.rows)
         cpu = self.cpu(row.get("unit"), row.get("pid")) if row else None
         asking = self.engagements.live_asked_by(row.get("seat")) if row else 0
@@ -465,6 +486,35 @@ class TakeoverWatch:
         elif decision == REPLACE:
             result["new_desk"] = self._replace(record, row)
         return result
+
+    def _claim(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Give an adopted request a desk: the project's live one, else a started one after a grace.
+
+        Neither counts as a handover — nobody held the request, so nobody handed it over.
+        """
+        result = {"id": record["id"], "desk": None, "moved": None, "cpu": None}
+        row = _project_desk_row(record.get("project"), self.rows)
+        if row is not None:
+            held = row.get("mandate") or {}
+            self.engagements.assign_desk(record["id"], label=row.get("terminal_label"),
+                                         seat=row.get("seat"), mandate_id=held.get("id"))
+            logger.info("fleet takeover: %s -> assign (live desk %s)", record["id"], row.get("terminal_label"))
+            return {**result, "decision": ASSIGN, "why": "live-desk", "desk": row.get("terminal_label")}
+        now = self.clock()
+        started = _number(record.get("sent_at")) or _number(record.get("opened_at")) or now
+        if now - started < self.b.stall_seconds:
+            logger.debug("fleet takeover: %s unclaimed, within the grace (%.0f s)", record["id"], now - started)
+            return {**result, "decision": NONE, "why": "unclaimed-grace"}
+        takeover = {
+            "room": record.get("room"), "ts": record.get("ts"), "asker": record.get("asker"),
+            "from_seat": None, "from_session": None, "engagement_id": record["id"],
+        }
+        logger.info("fleet takeover: %s -> start (unclaimed for %.0f s; project %s has no live desk)",
+                    record["id"], now - started, record.get("project"))
+        desk = self.start_desk(record["project"], requested_by=record.get("asker"), takeover=takeover)
+        self.engagements.assign_desk(record["id"], label=desk.label, seat=desk.seat,
+                                     mandate_id=desk.mandate_id)
+        return {**result, "decision": START, "why": "unclaimed", "desk": desk.label, "new_desk": desk.seat}
 
     def _replace(self, record: Dict[str, Any], row: Optional[Dict[str, Any]]) -> Optional[str]:
         from_session = row.get("session_id") if row else None

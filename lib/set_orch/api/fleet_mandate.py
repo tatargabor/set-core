@@ -442,6 +442,15 @@ def takeover_round() -> Dict[str, Any]:
     there is a request to watch.
     """
     engagements = fleet_engagement.EngagementStore()
+    # fleet-room-request-adoption: a request posted straight into a relation room becomes an
+    # engagement first, so the same round can close or claim it.
+    adopted: List[str] = []
+    try:
+        adopted = fleet_engagement.adopt_room_requests(engagements)
+    except fleet_engagement.BusUnreadable as exc:
+        logger.warning("fleet takeover: the bus could not be read for adoption (%s)", exc)
+    if adopted:
+        logger.info("fleet takeover: adopted %d request(s) posted straight into a room", len(adopted))
     refreshed: Dict[str, Any] = {"measured": True}
     if engagements.list(state="open"):
         refreshed = fleet_engagement.refresh(engagements)
