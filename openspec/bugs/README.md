@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-233 — a cross-project request posted straight into a room opens no engagement, so the takeover watch never sees it
+- **state:** open
+- **reported:** 2026-11-24 by this session (set-core#8d47865a), reading the inbox after `fleet-engagement-takeover` was archived.
+- **measured:** `dm-set-claude-handoff--set-core`, entry 2026-11-24T14:07:11, a REQUEST from `set-claude-handoff#a5bc0d35` with no addressee ("Follow-up to e-836fdefa307d … please also roll b5be195 …"). `curl localhost:7400/api/fleet/engagements` at 14:08 listed no engagement for it: the only opener is the `set-fleet-ask` route (`lib/set_orch/api/fleet_mandate.py` `engagements.open`), and an asker that posts a follow-up with `sac send` in the room bypasses it. The set-core desk was live (`working`) at the time, so this one is likely handled; the gap is that nothing would notice if it were not.
+- **fail direction:** calm — an unanswered request of this shape has no record, no interrupt, no takeover; the map shows nothing waiting.
+- **fixed when:** an unaddressed or desk-addressed REQUEST from another project in a project's relation room either opens an engagement (or attaches to the one it follows up), or is reported as "not tracked" where the engagements are shown — a test drives a room entry without `set-fleet-ask` and asserts one of the two.
+
 ### B-232 — the question-relay `teach` writes a consumer's name verbatim into a public repo's committed rules file
 - **state:** open
 - **reported:** 2026-11-24 by a peer agent (set-claude-handoff's session, over the bus): a taught answer appended to that repo's `.claude/rules/auto-answer-taught.md` named a private consumer tree; the repo is public, so the leak gate blocked every commit there until the session generalised the name by hand.
