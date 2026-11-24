@@ -68,6 +68,20 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-222 — the watchdog's relay-hold triage files a question the owner simply has not answered yet as `known:B-214`
+- **state:** open
+- **reported:** 2026-11-24 by this session (set-core#808a2d65), reading `set-watchdog status` at the owner's request.
+- **measured:** three open `relay-hold` findings (`6612638d15c9aee9`, `6763b0142fbe6348`, `b28468be9755a2ed`), all triaged `known:B-214`. Their `question-relay/waiting/*.json` records are `ask`-kind holds started 11:05, 11:11 and 11:29; `relay.log` shows each was handed over (two of them after a `wait detect … asking for a re-ask`) and nothing typed in a terminal in between. B-214 is "a message typed in the terminal does not release the held question"; nothing here says a message was typed. The probe's evidence carries only `minutes`, `questions` and `kind`, so the triage cannot tell owner latency from B-214, and `RELAY_HOLD_S = 15 * 60` (`lib/set_orch/fleet_watchdog/probes.py`) is shorter than an ordinary phone reply.
+- **fail direction:** calm — a pending owner decision is shown as an already-known framework defect, so the panel reads "nothing new" while three projects wait on the owner, one of them on a security decision.
+- **fixed when:** a `relay-hold` finding says whether a terminal prompt was typed during the hold (the B-214 signal), the triage gets that fact, and a hold with no such prompt is shown as "waiting on the owner" rather than `known:B-214`; a test on the probe holds both cases.
+
+### B-221 — the watchdog triage pairs a brief with the wrong finding, and nothing checks the pairing
+- **state:** open
+- **reported:** 2026-11-24 by this session (set-core#808a2d65), reading `findings.json` at the owner's request.
+- **measured:** in `~/.local/share/set-core/watchdog/findings.json`, finding `15eb8dc15f992dfa` (subject `unit:<A>.service`) carries a brief that starts "systemd --user unit <B>.service is in failed state", and `65abfaf9f24d60ab` (subject `unit:<B>.service`) carries the brief written for A. Both came from the same batched GLM call at the first tick. `lib/set_orch/fleet_watchdog/triage.py` keys the answer by the model's own `fp` (`out[str(item["fp"])]`) and never checks the brief against the finding's subject. The causes differ: A exits 1 on an expired OAuth sign-in, B exits 4 by design on a YouTube 429.
+- **fail direction:** misleading — a dispatched brief sends the owning agent to measure the wrong unit; here both units are failed in the same project, which hides it.
+- **fixed when:** a triage answer whose brief names another finding's subject and not its own is rejected or marked unmatched (test with a swapped two-finding answer), and the service-health evidence carries the unit's `Result` and exit status so the brief can name the cause.
+
 ### B-220 — the wait detector re-asks on the phone when a turn ends waiting on the session's OWN background work, not on the user
 - **state:** open
 - **reported:** 2026-11-24 by this session (set-core#8d47865a), while running the `fleet-engagement-takeover` live tests.
