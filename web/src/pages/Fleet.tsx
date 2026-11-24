@@ -44,6 +44,7 @@ import FleetWaves from '../components/FleetWaves'
 import FleetMap from '../components/FleetMap'
 import FleetRelay from '../components/FleetRelay'
 import FleetAutoAnswer, { FleetAutoAnswerMark } from '../components/FleetAutoAnswer'
+import { publishAgentNames } from '../lib/fleetAutoAnswer'
 import FleetIdleClose from '../components/FleetIdleClose'
 import FleetSplitter from '../components/FleetSplitter'
 import { useFileListings } from '../hooks/useFileListings'
@@ -2507,6 +2508,15 @@ export default function Fleet() {
   // first project in the ARRANGED order and says so through `onSelect`, so the
   // selected project is always one the reader can find in the list.
   const everyAgent = useMemo(() => allAgents(projects), [projects])
+  /* The automatic-answers panel names an agent the way its tile does — the user could
+     not match `set-core · f7306bb0` to the tile titled `set-core-autop2` (2026-11-24). */
+  useEffect(() => {
+    const names: Record<string, { project: string | null; label: string | null }> = {}
+    for (const p of projects) for (const a of p.agents) {
+      if (a.session_id && !names[a.session_id]) names[a.session_id] = { project: p.name, label: shownLabel(a) }
+    }
+    publishAgentNames(names)
+  }, [projects])
   /* Patched in place on every answer — see `latestUpdate`: a gone agent
      leaves, a newcomer takes the least recent slot, nothing else moves. It
      returns the same array when nothing changed, so a poll costs no render.

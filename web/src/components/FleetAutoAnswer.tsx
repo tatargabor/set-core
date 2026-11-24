@@ -18,8 +18,8 @@ import { Bot, X } from 'lucide-react'
 
 import { age } from '../lib/fleetAge'
 import {
-  autoMode, autoTitle, countdown, matched, outcomeLabel, parseAutoAnswerState, parseDecisions,
-  publishPending, tierLabel, usePendingFor,
+  agentName, autoMode, autoTitle, countdown, kindLabel, matched, outcomeLabel, parseAutoAnswerState,
+  parseDecisions, publishPending, questionBody, shownChoice, tierLabel, useAgentNames, usePendingFor,
   type AutoAnswerState, type DecisionRecord, type PendingProposal,
 } from '../lib/fleetAutoAnswer'
 
@@ -48,6 +48,59 @@ function Refs({ refs }: { refs: PendingProposal['references'] }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+
+/** The agent as its tile names it: project muted, the tile's title strong. */
+function AgentTitle({ sessionId, logged, project }: { sessionId: string | null; logged: string | null; project?: string | null }) {
+  useAgentNames()
+  const n = agentName(sessionId, logged, project ?? null)
+  return (
+    <span className="min-w-0 truncate" data-fleet-auto-agent={n.live ? 'live' : 'gone'}
+          title={n.live ? `${n.project ?? ''} · ${n.label ?? ''} — the agent's tile on the fleet`
+            : `${n.project ?? ''} · ${n.label ?? ''} — this session is no longer on the fleet; the name is the logged one`}>
+      {n.project && <span className="text-fg-muted">{n.project} · </span>}
+      <span className={n.live ? 'text-fg-loud font-semibold' : 'text-fg-strong'}>{n.label ?? 'unknown agent'}</span>
+    </span>
+  )
+}
+
+const CHIP = 'inline-flex items-center rounded px-1 leading-4 text-[10px] uppercase tracking-wide border whitespace-nowrap'
+
+function TierChip({ tier, confidence }: { tier: string | null; confidence: number | null }) {
+  const tone = tier === 'decided' ? 'border-sky-400/50 text-sky-300'
+    : tier === 'found' ? 'border-emerald-400/50 text-emerald-300'
+      : tier === 'likely' ? 'border-violet-400/50 text-violet-300'
+        : 'border-surface-line text-fg-ghost'
+  return <span className={`${CHIP} ${tone}`} data-fleet-auto-tier={tier ?? 'none'}
+               title={tier === 'decided' ? 'An earlier decision of yours, checked verbatim in its source'
+                 : tier === 'found' ? 'Found in the project\'s files, checked verbatim'
+                   : tier === 'likely' ? 'Inferred — written only at or above the bar'
+                     : 'The decider did not answer'}>{tierLabel(tier, confidence)}</span>
+}
+
+function KindChip({ kind }: { kind: string | null }) {
+  return <span className={`${CHIP} border-surface-line text-fg-muted`}>{kindLabel(kind)}</span>
+}
+
+function OutcomeChip({ outcome }: { outcome: string | null }) {
+  const o = outcomeLabel(outcome)
+  const tone = o.tone === 'loud' ? 'border-sky-400/60 bg-sky-400/10 text-sky-300'
+    : o.tone === 'warn' ? 'border-amber-400/60 bg-amber-400/10 text-amber-300'
+      : 'border-surface-line text-fg-muted'
+  return <span className={`${CHIP} ${tone}`}>{o.text}</span>
+}
+
+/** The live measurement in one line: what was written, and how often it agreed with you. */
+function DecisionSummary({ decisions }: { decisions: DecisionRecord[] }) {
+  const written = decisions.filter(d => d.outcome === 'written').length
+  const judged = decisions.map(matched).filter((m): m is boolean => m !== null)
+  const agreed = judged.filter(Boolean).length
+  return (
+    <span className="font-normal text-fg-muted" data-fleet-auto-summary>
+      {written} written · {judged.length ? `${agreed}/${judged.length} matched your answer` : 'none answered by you yet'}
+    </span>
   )
 }
 
@@ -86,7 +139,7 @@ export function FleetAutoAnswerPanel({ state, decisions, readAt, busy, error, on
             {state.enabled ? 'on' : 'off'}
           </button>
         )}
-        {state && <span className="text-fg-muted">window {state.window_s}s · bar {state.likely_min.toFixed(2)}</span>}
+        {state && <span className="text-fg-muted" title="The wait before an allowed proposal is written, and the confidence a 'likely' answer needs">window {state.window_s}s · likely ≥ {state.likely_min.toFixed(2)}</span>}
         <button type="button" onClick={onClose} aria-label="Close the automatic answers panel"
                 className="ml-auto text-fg-muted hover:text-fg-strong" data-fleet-auto-close>
           <X size={14} strokeWidth={1.75} aria-hidden />
@@ -105,28 +158,33 @@ export function FleetAutoAnswerPanel({ state, decisions, readAt, busy, error, on
         )}
 
         <section>
-          <h3 className="text-fg-strong font-semibold">Pending — written unless you answer or cancel</h3>
+          <h3 className="flex items-baseline gap-2 text-fg-strong font-semibold">
+            Pending
+            <span className="font-normal text-fg-muted">written after the window unless you answer or cancel</span>
+          </h3>
           {!state ? <p className="text-fg-ghost">reading…</p>
             : state.pending.length === 0 ? <p className="text-fg-muted" data-fleet-auto-pending="0">Nothing pending.</p>
             : (
-              <ul className="divide-y divide-surface-line/60" data-fleet-auto-pending={state.pending.length}>
+              <ul className="space-y-1.5 mt-1" data-fleet-auto-pending={state.pending.length}>
                 {state.pending.map(p => (
-                  <li key={`${p.id}:${p.key}`} className="py-1.5" data-fleet-auto-row={p.id}>
+                  <li key={`${p.id}:${p.key}`} className="rounded border border-amber-400/40 border-l-2 border-l-amber-400 bg-amber-400/5 px-2 py-1.5"
+                      data-fleet-auto-row={p.id}>
                     <div className="flex items-center gap-2">
-                      <span className="text-fg-strong truncate">{p.agent ?? p.project ?? 'unknown agent'}</span>
-                      <span className="text-fg-muted">{tierLabel(p.tier, p.confidence)}</span>
-                      <span className="ml-auto tabular-nums text-amber-400" data-fleet-auto-countdown>
-                        in {countdown(p.seconds_left === null ? null : p.seconds_left - elapsed)}
+                      <AgentTitle sessionId={p.session_id} logged={p.agent} project={p.project} />
+                      <KindChip kind={p.kind} />
+                      <TierChip tier={p.tier} confidence={p.confidence} />
+                      <span className="ml-auto tabular-nums text-amber-300 whitespace-nowrap" data-fleet-auto-countdown>
+                        writes in {countdown(p.seconds_left === null ? null : p.seconds_left - elapsed)}
                       </span>
                       <button type="button" disabled={busy} onClick={() => onCancel(p.id)}
-                              className="underline decoration-dotted text-fg-muted hover:text-fg-strong"
+                              className="rounded border border-surface-line px-1.5 text-fg-strong hover:border-red-400/60 hover:text-red-300"
                               title="Do not write it: the question keeps waiting for your answer"
                               data-fleet-auto-cancel={p.id}>
                         cancel
                       </button>
                     </div>
-                    <p className="mt-0.5 text-fg-muted line-clamp-2">{p.question}</p>
-                    <p className="mt-0.5">→ <span className="text-fg-loud font-semibold">{p.choice}</span></p>
+                    <p className="mt-1 text-fg-muted line-clamp-2" title={p.question}>{questionBody(p.kind, p.question)}</p>
+                    <p className="mt-1">→ <span className="text-fg-loud font-semibold">{shownChoice(p.choice)}</span></p>
                     <Refs refs={p.references} />
                   </li>
                 ))}
@@ -135,42 +193,44 @@ export function FleetAutoAnswerPanel({ state, decisions, readAt, busy, error, on
         </section>
 
         <section>
-          <h3 className="text-fg-strong font-semibold">Recent decisions</h3>
+          <h3 className="flex items-baseline gap-2 text-fg-strong font-semibold">
+            Recent decisions
+            {decisions && decisions.length > 0 && <DecisionSummary decisions={decisions} />}
+          </h3>
           {decisions === null ? <p className="text-fg-ghost">reading…</p>
             : decisions.length === 0 ? <p className="text-fg-muted" data-fleet-auto-decisions="0">No decision logged yet.</p>
             : (
-              <table className="w-full table-fixed" data-fleet-auto-decisions={decisions.length}>
-                <tbody className="divide-y divide-surface-line/60">
-                  {decisions.map(d => {
-                    const o = outcomeLabel(d.outcome)
-                    const m = matched(d)
-                    return (
-                      <tr key={`${d.id}:${d.key}:${d.ts}`} className="align-top" data-fleet-auto-decision={d.outcome ?? '?'}>
-                        <td className="w-12 py-1 text-fg-ghost tabular-nums">{age(Date.now() / 1000 - d.ts)}</td>
-                        <td className="py-1 pr-2">
-                          <span className="text-fg-strong">{d.agent ?? '?'}</span>
-                          <p className="text-fg-muted line-clamp-1" title={d.question}>{d.question}</p>
-                        </td>
-                        <td className="w-40 py-1 pr-2 truncate" title={d.choice ?? ''}>
-                          {d.choice ?? <span className="text-fg-ghost">—</span>}
-                          <p className="text-fg-muted">{tierLabel(d.tier, d.confidence)}</p>
-                        </td>
-                        <td className="w-36 py-1">
-                          <span className={o.tone === 'loud' ? 'text-sky-300' : o.tone === 'warn' ? 'text-amber-400' : 'text-fg-muted'}>
-                            {o.text}
-                          </span>
+              <ul className="mt-1 divide-y divide-surface-line/60" data-fleet-auto-decisions={decisions.length}>
+                {decisions.map(d => {
+                  const m = matched(d)
+                  return (
+                    <li key={`${d.id}:${d.key}:${d.ts}`} className="py-1.5" data-fleet-auto-decision={d.outcome ?? '?'}>
+                      <div className="flex items-center gap-2">
+                        <AgentTitle sessionId={d.session} logged={d.agent} />
+                        <KindChip kind={d.kind} />
+                        <span className="ml-auto text-fg-ghost tabular-nums whitespace-nowrap">{age(Date.now() / 1000 - d.ts)} ago</span>
+                      </div>
+                      <p className="mt-0.5 text-fg-muted line-clamp-2" title={d.question}>{questionBody(d.kind, d.question)}</p>
+                      <div className="mt-0.5 flex items-center gap-2 min-w-0">
+                        <span className="min-w-0 truncate" title={d.choice ?? ''}>
+                          → {d.choice ? <span className="text-fg-strong">{shownChoice(d.choice)}</span> : <span className="text-fg-ghost">no proposal</span>}
+                        </span>
+                        <TierChip tier={d.tier} confidence={d.confidence} />
+                        <span className="ml-auto flex items-center gap-2 shrink-0">
                           {d.human_answer !== null && (
-                            <p className={m ? 'text-emerald-400' : 'text-fg-muted'} title={d.human_answer}
-                               data-fleet-auto-match={m ? 'yes' : 'no'}>
-                              {m ? 'matched your answer' : `you: ${d.human_answer.slice(0, 40)}`}
-                            </p>
+                            <span className={`max-w-[12rem] truncate ${m ? 'text-emerald-400' : 'text-fg-muted'}`} title={`you answered: ${d.human_answer}`}
+                                  data-fleet-auto-match={m ? 'yes' : 'no'}>
+                              {m ? '✓ matched you' : `✗ you: ${d.human_answer}`}
+                            </span>
                           )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                          <OutcomeChip outcome={d.outcome} />
+                        </span>
+                      </div>
+                      {d.reason && d.outcome !== 'written' && <p className="mt-0.5 text-fg-ghost">{d.reason}</p>}
+                    </li>
+                  )
+                })}
+              </ul>
             )}
         </section>
       </div>

@@ -9,11 +9,11 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 
 import FleetAutoAnswer, { FleetAutoAnswerMark } from '../../src/components/FleetAutoAnswer'
 import {
-  autoMode, autoTitle, countdown, matched, outcomeLabel, parseAutoAnswerState, parseDecisions, pendingFor,
-  publishPending, tierLabel,
+  agentName, autoMode, autoTitle, countdown, kindLabel, matched, outcomeLabel, parseAutoAnswerState, parseDecisions,
+  pendingFor, publishAgentNames, publishPending, questionBody, shownChoice, tierLabel,
 } from '../../src/lib/fleetAutoAnswer'
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); publishPending([]) })
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); publishPending([]); publishAgentNames({}) })
 
 const PENDING = {
   id: 'relay-47f1763f-0123456789ab', key: 'Q1', session_id: 'sess-1', agent: 'proj · 47f1763f', project: 'proj',
@@ -147,5 +147,35 @@ describe('the mark on the asking agent', () => {
     expect(pendingFor('other')).toBeNull()
     act(() => publishPending([]))
     expect(container.querySelector('[data-fleet-auto-mark]')).toBeNull()
+  })
+})
+
+describe('naming the agent the way its tile does (2026-11-24)', () => {
+  it('the tile name wins; a session gone from the fleet keeps its logged name, marked', () => {
+    publishAgentNames({ 'sess-1': { project: 'proj', label: 'video-orulet' } })
+    expect(agentName('sess-1', 'proj · 47f1763f')).toEqual({ project: 'proj', label: 'video-orulet', live: true })
+    expect(agentName('gone', 'proj · 47f1763f')).toEqual({ project: 'proj', label: '47f1763f', live: false })
+    expect(agentName(null, null, 'proj')).toEqual({ project: 'proj', label: null, live: false })
+  })
+
+  it('a continuation shows its summary, not the relay header that repeats the agent', () => {
+    const q = '✅ Finished, waiting for the next instruction — set-core · f7306bb0\nWired the decider.\nPick a suggestion or write what it should do next; the session continues with it.'
+    expect(questionBody('continuation', q)).toBe('Wired the decider.')
+    expect(questionBody('ask', 'Which colour?')).toBe('Which colour?')
+    expect(kindLabel('continuation')).toBe('next step')
+    expect(shownChoice('→ Report the result')).toBe('Report the result')
+    expect(shownChoice('TEAL')).toBe('TEAL')
+  })
+
+  it('the panel rows carry the tile name, live', async () => {
+    stubFetch()
+    publishAgentNames({ 'sess-1': { project: 'proj', label: 'video-orulet' } })
+    const { container } = render(<FleetAutoAnswer />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-auto-pending-count]')).not.toBeNull())
+    fireEvent.click(container.querySelector('[data-fleet-auto-toggle]')!)
+    const row = container.querySelector('[data-fleet-auto-row]')!
+    expect(row.querySelector('[data-fleet-auto-agent="live"]')!.textContent).toBe('proj · video-orulet')
+    await waitFor(() => expect(container.querySelector('[data-fleet-auto-summary]')).not.toBeNull())
+    expect(container.querySelector('[data-fleet-auto-summary]')!.textContent).toBe('0 written · 1/2 matched your answer')
   })
 })

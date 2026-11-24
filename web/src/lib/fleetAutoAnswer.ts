@@ -53,6 +53,7 @@ export interface DecisionRecord {
   ts: number
   id: string
   key: string
+  session: string | null
   agent: string | null
   kind: string | null
   question: string
@@ -106,7 +107,8 @@ export function parseDecisions(d: unknown): DecisionRecord[] | null {
     const r = x as Record<string, unknown>
     if (typeof r.id !== 'string') return []
     return [{
-      ts: num(r.ts) ?? 0, id: r.id, key: str(r.key) ?? 'Q1', agent: str(r.agent), kind: str(r.kind),
+      ts: num(r.ts) ?? 0, id: r.id, key: str(r.key) ?? 'Q1', session: str(r.session), agent: str(r.agent),
+      kind: str(r.kind),
       question: str(r.question) ?? '', choice: str(r.choice), tier: str(r.tier), confidence: num(r.confidence),
       outcome: str(r.outcome), reason: str(r.reason) ?? '', human_answer: str(r.human_answer),
       references: refs(r.references),
@@ -204,4 +206,79 @@ function subscribe(cb: () => void): () => void {
 
 export function usePendingFor(sessionId: string | null | undefined): PendingProposal | null {
   return useSyncExternalStore(subscribe, () => pendingFor(sessionId), () => null)
+}
+
+// --------------------------------------------------------------------------- //
+// The agents' names as the fleet shows them on their tiles
+// --------------------------------------------------------------------------- //
+
+/**
+ * Asked for by the user (2026-11-24): the panel said `set-core · f7306bb0` — the project and
+ * a session-id prefix — while the tile says `set-core-autop2` or `video-orulet`, so a row
+ * could not be matched to a tile. The fleet publishes the name it renders on each tile; the
+ * panel shows that, and falls back to the logged label only for a session that is gone.
+ */
+export interface AgentName {
+  project: string | null
+  label: string | null
+  /** False when the session is no longer on the fleet and the name is the logged one. */
+  live: boolean
+}
+
+let namesBySession: Record<string, { project: string | null; label: string | null }> = {}
+const nameListeners = new Set<() => void>()
+
+export function publishAgentNames(names: Record<string, { project: string | null; label: string | null }>): void {
+  const keys = Object.keys(names)
+  const same = keys.length === Object.keys(namesBySession).length
+    && keys.every(k => namesBySession[k]?.project === names[k].project && namesBySession[k]?.label === names[k].label)
+  if (same) return
+  namesBySession = { ...names }
+  nameListeners.forEach(l => l())
+}
+
+/** The tile's name for a session; else the logged `project · id` split, marked not live. */
+export function agentName(sessionId: string | null | undefined, logged: string | null,
+                          project: string | null = null): AgentName {
+  const known = sessionId ? namesBySession[sessionId] : undefined
+  if (known && known.label) return { project: known.project ?? project, label: known.label, live: true }
+  const parts = (logged ?? '').split(' · ')
+  if (parts.length >= 2) return { project: parts[0] || project, label: parts.slice(1).join(' · '), live: false }
+  return { project, label: logged || null, live: false }
+}
+
+function subscribeNames(cb: () => void): () => void {
+  nameListeners.add(cb)
+  return () => { nameListeners.delete(cb) }
+}
+
+/** Re-renders the caller when any tile name changes. */
+export function useAgentNames(): Record<string, { project: string | null; label: string | null }> {
+  return useSyncExternalStore(subscribeNames, () => namesBySession, () => namesBySession)
+}
+
+/**
+ * The question as a reader wants it. A continuation's text starts with the relay's own
+ * header line (`✅ Finished, waiting for the next instruction — <agent>`), which repeats the
+ * agent and says nothing about THIS question; the summary under it is the content.
+ */
+export function questionBody(kind: string | null, question: string): string {
+  if (kind !== 'continuation') return question
+  const lines = question.split('\n')
+  const rest = lines[0].startsWith('✅') ? lines.slice(1) : lines
+  return rest.filter(l => !/^Pick a suggestion or write what it should do next/.test(l)).join(' ').trim() || question
+}
+
+export function kindLabel(kind: string | null): string {
+  switch (kind) {
+    case 'continuation': return 'next step'
+    case 'permission': return 'permission'
+    case 'ask': return 'question'
+    default: return kind ?? 'question'
+  }
+}
+
+/** A continuation's suggestions already start with an arrow; the row draws its own. */
+export function shownChoice(choice: string): string {
+  return choice.replace(/^\s*(?:→|->)\s*/, '')
 }
