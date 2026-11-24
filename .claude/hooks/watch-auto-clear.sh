@@ -397,14 +397,16 @@ typed() {
 }
 
 # Presence (task 0.2): empty|ghost may be typed into; typed|unknown may not.
+# A "typed" verdict arrives as typed[paint <shape>] (presence.mjs --explain): still not safe, and
+# every held line now shows what the check saw. Only the exact words empty and ghost are safe.
 safe_to_type() { case "$1" in empty|ghost) return 0;; *) return 1;; esac; }
 presence_tmux() { # $1 = pane
-  local s; s=$(tmux capture-pane -p -e -t "$1" 2>/dev/null | node "$PRESENCE" 2>/dev/null)
+  local s; s=$(tmux capture-pane -p -e -t "$1" 2>/dev/null | node "$PRESENCE" --explain 2>/dev/null)
   printf '%s' "${s:-unknown}"
 }
 presence_owner() { # $1 = fleet label — raw tail bytes, last input-row paint
   local s
-  s=$(python3 - "$1" <<'PY' 2>/dev/null | node "$PRESENCE" --stream 2>/dev/null
+  s=$(python3 - "$1" <<'PY' 2>/dev/null | node "$PRESENCE" --stream --explain 2>/dev/null
 import sys
 try:
     from set_orch.fleet.owner_client import OwnerClient
