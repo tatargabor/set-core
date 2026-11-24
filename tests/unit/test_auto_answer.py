@@ -651,3 +651,14 @@ def test_decision_locations_point_where_decisions_live(tmp_path):
     assert str(new) in locs and str(old) not in locs, "only the newest handoff"
     assert str(root / "openspec/changes/one") in locs and str(root / "openspec/changes/archive") not in locs
     assert str(root / "docs/decisions.md") in locs and not any("nope" in l for l in locs)
+
+
+def test_a_prohibition_after_the_act_does_not_count():
+    """Live 2026-11-24: a settings question excluded as 'send, delete' because it said both
+    stay forbidden. The same clause naming the act as forbidden is not the act."""
+    text = ("A 6 csak olvasó tool kapott Always allow plafont, a mellékletletöltés nem. "
+            "A küldés és a törlés továbbra is tiltva marad. Átállítsam a mellékletletöltést Always allow-ra?")
+    assert aa.exclusion(aa.KIND_ASK, q(text=text, options=["Igen, állítsd át (Recommended)", "Nem"]),
+                        "Igen, állítsd át (Recommended)", False) is None
+    assert aa.exclusion(aa.KIND_ASK, q(text="Sending is disabled for now. Send the report anyway?", options=["Yes"]),
+                        "Yes", False) == "outward step: send"

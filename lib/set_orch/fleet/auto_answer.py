@@ -445,9 +445,18 @@ def _families(text: str, never: Iterable[str], keep: Callable[[str, re.Match], b
     return hits
 
 
+# A prohibition AFTER the act in the same clause: "a küldés és a törlés továbbra is tiltva
+# marad" — the live case of 2026-11-24 that excluded an unrelated settings question.
+_NEGATED_AFTER = re.compile(r"\b(?:tiltva|tilos|tiltott|letiltva|forbidden|disabled|blocked|prohibited"
+                            r"|not allowed|nem engedelyezett|stays? off|remains? off)\b")
+
+
 def _negated(text: str, m: re.Match) -> bool:
     before = re.findall(r"[\w']+", text[:m.start()].split(".")[-1].split(";")[-1])[-3:]
-    return bool(_NEGATOR.search(" ".join(before)))
+    if _NEGATOR.search(" ".join(before)):
+        return True
+    after = re.split(r"[.;:!?,]", text[m.end():], maxsplit=1)[0]
+    return bool(_NEGATED_AFTER.search(" ".join(re.findall(r"[\w']+", after)[:6])))
 
 
 def exclusion(kind: str, question: Question, choice: str, model_outward: bool,
