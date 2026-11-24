@@ -123,9 +123,9 @@ def test_one_bad_answer_does_not_sink_the_other():
 # --------------------------------------------------------------------------- 2.3
 
 @pytest.mark.parametrize("text,family", [
-    ("May I push the 11 commits?", "publish"),
-    ("Mehet a push?", "publish"),
-    ("Pusholjam?", "publish"),
+    ("May I push the 11 commits?", "push"),
+    ("Mehet a push?", "push"),
+    ("Pusholjam?", "push"),
     ("Publish the page now?", "publish"),
     ("Cut the release now?", "publish"),
     ("Release the fix today?", "publish"),
@@ -182,7 +182,7 @@ def test_exclusion_sides():
     # the CHOSEN answer is checked
     assert aa.exclusion(aa.KIND_CONTINUATION, q(text="Next?", options=[]), "push it", False)
     assert aa.exclusion(aa.KIND_ASK, q(text="How do we go on?", options=["Push to main", "Keep it local"]),
-                        "Push to main", False) == "outward step: publish"
+                        "Push to main", False) == "outward step: push"
 
 
 # The owner's decision (2026-11-24): block only when the CHOSEN answer is the outward step.
@@ -237,7 +237,7 @@ def test_a_negated_mention_does_not_count_but_a_plain_one_does():
     assert aa.exclusion(aa.KIND_ASK, q(text="Nothing is pushed yet. Keep going?", options=["Yes", "No"]),
                         "Yes", False) is None
     assert aa.exclusion(aa.KIND_ASK, q(text="Do not wait for CI. Push now?", options=["Yes", "No"]),
-                        "Yes", False) == "outward step: publish"
+                        "Yes", False) == "outward step: push"
 
 
 # --------------------------------------------------------------------------- 2.4
@@ -665,3 +665,25 @@ def test_a_prohibition_after_the_act_does_not_count():
                         "Igen, állítsd át (Recommended)", False) is None
     assert aa.exclusion(aa.KIND_ASK, q(text="Sending is disabled for now. Send the report anyway?", options=["Yes"]),
                         "Yes", False) == "outward step: send"
+
+
+def test_a_machine_can_allow_push_but_never_a_force_push():
+    """Owner's decision 2026-11-24: pushes need no approval here — the leak-scan gates guard
+    what a push publishes. A force-push stays excluded (`delete`), and so does publishing."""
+    ask = q(text="Pusholhatom?", options=["Mehet a push", "Még ne"])
+    assert aa.exclusion(aa.KIND_ASK, ask, "Mehet a push", False) == "outward step: push"
+    assert aa.exclusion(aa.KIND_ASK, ask, "Mehet a push", False, allowed=["push"]) is None
+    force = q(text="The branch diverged. Force-push it?", options=["Yes", "No"])
+    assert aa.exclusion(aa.KIND_ASK, force, "Yes", False, allowed=["push"]) == "outward step: delete"
+    pub = q(text="Publish the page and push?", options=["Yes", "No"])
+    assert aa.exclusion(aa.KIND_ASK, pub, "Yes", False, allowed=["push"]) == "outward step: publish"
+    # the model's own flag still excludes
+    assert aa.exclusion(aa.KIND_ASK, ask, "Mehet a push", True, allowed=["push"]) == "outward step: flagged by the model"
+
+
+def test_allow_families_reads_only_known_families_and_tells_the_model():
+    get = lambda key, default=None: '["push", "nonsense"]' if key == aa.KEY_ALLOW_FAMILIES else default
+    assert aa.allow_families(get) == ["push"]
+    prompt = aa.build_prompt(aa.KIND_ASK, [q(text="Push?", options=["Yes"])], [], [], allowed=["push"])
+    assert "does NOT need to be asked about: git push" in prompt
+    assert "does NOT need" not in aa.build_prompt(aa.KIND_ASK, [q(text="Push?", options=["Yes"])], [], [])

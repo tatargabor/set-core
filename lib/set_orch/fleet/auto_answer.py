@@ -57,6 +57,7 @@ KEY_NEVER = "auto_answer.never_patterns"
 KEY_EXTRA = "auto_answer.extra_paths"
 KEY_LOG_DAYS = "auto_answer.log_days"
 KEY_DECIDE_TIMEOUT = "auto_answer.decide_timeout_s"
+KEY_ALLOW_FAMILIES = "auto_answer.allow_families"
 
 DEFAULT_WINDOW_S = 60.0
 DEFAULT_LIKELY_MIN = 0.8
@@ -156,6 +157,17 @@ def never_patterns(get: Getter = local_config.get) -> List[str]:
 
 def extra_paths(get: Getter = local_config.get) -> List[str]:
     return _list(get, KEY_EXTRA)
+
+
+def allow_families(get: Getter = local_config.get) -> List[str]:
+    """Exclusion families this machine's operator lets the decider answer anyway.
+
+    Owner's decision, 2026-11-24: *„git checkout és push pedig nem kell engedély ugyis futnak a
+    mechanizmusok hogy ha publik akkor leakscan ha pedig privat akkor nem lesz gond"* — so a
+    machine may list `push`. Only families named in EXCLUSION_FAMILIES count; force-push stays
+    in `delete` whatever is listed here.
+    """
+    return [f for f in _list(get, KEY_ALLOW_FAMILIES) if f in EXCLUSION_FAMILIES]
 
 
 # --------------------------------------------------------------------------- #
@@ -335,7 +347,10 @@ def parse_decision(raw: str, questions: Sequence[Question], kind: str) -> Tuple[
 EXCLUSION_FAMILIES: Dict[str, Tuple[str, ...]] = {
     # "release" only as an act: "the release colour" is a question about a release, not a
     # publish, and a bare `release\w*` excluded it (measured on this module's own tests).
-    "publish": (r"push\w*", r"publish\w*", r"publik\w*", r"kozze\w*", r"upload\w*", r"feltolt\w*",
+    # `push` is its own family so a machine can allow it (`auto_answer.allow_families`);
+    # a force-push is in `delete` and is never allowed that way.
+    "push": (r"push\w*",),
+    "publish": (r"publish\w*", r"publik\w*", r"kozze\w*", r"upload\w*", r"feltolt\w*",
                 r"(?:cut|ship|tag|make|do) (?:a |the |this )?release\w*",
                 r"release (?:it|this|them|now|the (?:fix|version|build|change|update)\w*)",
                 r"ship (?:it|this|them|the)"),
@@ -463,8 +478,9 @@ def _negated(text: str, m: re.Match) -> bool:
 
 
 def exclusion(kind: str, question: Question, choice: str, model_outward: bool,
-              never: Iterable[str] = ()) -> Optional[str]:
-    """Why this answer may not be written automatically, or None. Any one reason excludes."""
+              never: Iterable[str] = (), allowed: Iterable[str] = ()) -> Optional[str]:
+    """Why this answer may not be written automatically, or None. Any one reason excludes.
+    Families in `allowed` (the machine's `auto_answer.allow_families`) do not exclude."""
     if kind == KIND_PERMISSION:
         return "permission prompt"
     never = list(never)
@@ -473,6 +489,8 @@ def exclusion(kind: str, question: Question, choice: str, model_outward: bool,
                      lambda t, m: not (read_only and _NOUN_OF_ACT.match(_word_at(t, m.start()))))
     if _is_consent(choice):
         hits += [h for h in _families(question.text, never, lambda t, m: not _negated(t, m)) if h not in hits]
+    allowed = set(allowed)
+    hits = [h for h in hits if h not in allowed]
     if hits:
         return "outward step: " + ", ".join(hits)
     if model_outward:
@@ -762,9 +780,17 @@ Reply with ONE JSON object and nothing else:
 """
 
 
+ALLOWED_WORDS = {"push": "git push (a pre-push leak scan guards what a push publishes)"}
+
+
 def build_prompt(kind: str, questions: Sequence[Question], kb_hits: Sequence[Dict[str, str]],
-                 locations: Sequence[str], conversation: bool = True) -> str:
+                 locations: Sequence[str], conversation: bool = True,
+                 allowed: Sequence[str] = ()) -> str:
     parts = [PROMPT_HEAD]
+    if allowed:
+        named = "; ".join(ALLOWED_WORDS.get(f, f) for f in allowed)
+        parts.append(f"\nOn this machine the operator does NOT need to be asked about: {named}. "
+                     "Do not mark those \"outward\" on their own account.\n")
     if not conversation:
         parts.append("NOTE: you are NOT a fork — there is no conversation; use only the files.\n")
     label = {KIND_CONTINUATION: "The agent finished its turn; the question is what it should do next. "
@@ -1011,7 +1037,8 @@ def decide(envelope: Dict[str, Any], *, kind: str, session_id: str, cwd: str, as
     bound = decide_timeout_s(get)
     if launch is not None:
         method = "fork"
-        prompt = build_prompt(kind, questions, hits, locations, conversation=True)
+        prompt = build_prompt(kind, questions, hits, locations, conversation=True,
+                              allowed=allow_families(get))
         out, reason = runner(fork_argv(launch, session_id), prompt, cwd=cwd, env=launch.env,
                              unset=launch.unset, timeout=bound)
         notes.append(f"fork on {launch.describe()}: {reason}")
@@ -1019,7 +1046,8 @@ def decide(envelope: Dict[str, Any], *, kind: str, session_id: str, cwd: str, as
         method = "fallback"
         notes.append("fallback: sources-only (" + ("no transcript" if path is None else
                                                     "the session's provider could not be placed") + ")")
-        prompt = build_prompt(kind, questions, hits, locations, conversation=False)
+        prompt = build_prompt(kind, questions, hits, locations, conversation=False,
+                              allowed=allow_families(get))
         out, reason = runner(fallback_argv(fallback_model(get)), prompt, cwd=cwd, env={}, unset=(),
                              timeout=bound)
         notes.append(f"fallback: {reason}")

@@ -261,7 +261,7 @@ def test_a_push_question_is_forwarded_with_a_recommendation_not_written(tmp_path
     payload = json.dumps(envelope(tmp_path, text="May I push the 11 commits?", options=("Yes", "No")))
     assert r.work(payload=payload) == {"Q1": "excluded"} and r.answer_text() is None
     shown = r.forwarded[0]["questions"][0]["question"]
-    assert "Recommendation (not written automatically — outward step: publish): «Yes»" in shown
+    assert "Recommendation (not written automatically — outward step: push): «Yes»" in shown
     assert "push it, as always" in shown
     assert r.records()[0]["outcome"] == "excluded"
 

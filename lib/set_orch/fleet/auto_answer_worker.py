@@ -449,7 +449,7 @@ def work(payload: str, relay_vars: Dict[str, str], world: Optional[World] = None
         if a is None:
             outcome[q.key], reasons[q.key] = OUT_NO_DECISION, decision.refused.get(q.key, "no decision")
             continue
-        excl = aa.exclusion(kind, q, a.choice, a.outward, never)
+        excl = aa.exclusion(kind, q, a.choice, a.outward, never, aa.allow_families(w.get))
         outcome[q.key] = aa.allow(a.tier, a.confidence, excl, bar)
         reasons[q.key] = excl or ("" if outcome[q.key] == aa.OUTCOME_ALLOWED else
                                   f"likely {a.confidence:.2f} below {bar:.2f}")
