@@ -73,18 +73,34 @@ it you use the defaults and SAY so.
    ```bash
    tmux new-session -d -s auto-clear-watcher \
      "bash $PWD/.claude/hooks/watch-auto-clear.sh --dir $PWD \
-      --started-after $(date -u +%Y-%m-%dT%H:%M:%SZ) --interval 60 \
+      --interval 60 \
       --background-work-blocks <from profile, default false> \
       --auto-continue '<from profile, or: default>'"
    ```
-   `--started-after now` matters: only sessions started after the reload wiring exists may
-   ever be cleared. For reboot survival, install a `systemd --user` unit running the same
+   No `--started-after` here: the filter then defaults to the tree's recorded wiring time
+   (`.set/handoff/.reload-wired-at` — ONE ISO-8601 UTC-with-Z line, never rewritten), so a
+   watcher restart does not exclude sessions that already had the hook. `init --auto-clear`
+   writes it only when a `.claude/settings*.json` already wires the reload hook, and its value
+   is that file's mtime — at or after the real wiring edit, so it errs late (safe). Where no
+   settings file wires it yet, init writes NOTHING and says so (`not yet …`): merge the hook
+   first, then re-run `init --auto-clear` (or write the stamp by hand:
+   `date -u +%Y-%m-%dT%H:%M:%SZ > .set/handoff/.reload-wired-at`). Pass `--started-after <iso>`
+   explicitly only when no stamp exists — and then every session started before that moment is
+   excluded, this arming session included.
+   For reboot survival, install a `systemd --user` unit running the same
    command with `Restart=on-failure` and say you did.
 4. **VERIFY** — an armed state without evidence is not armed:
    `tail -1 .set/handoff/auto-clear.log` must show `watcher started … auto-continue=…`;
    run the gate once by hand (`node .claude/hooks/clear-gate.mjs --session <any live id> …
    --json`) and show the 5-gate verdict. Report: threshold, which writer paths exist
    (tmux / fleet owner), auto-continue on/off, both switch states.
+   Then say whether THIS session is covered: `test -f .set/handoff/.excluded-<session8>` (the id8
+   from the statusline or the newest `~/.claude/sessions/<pid>.json`). Present ⇒ this session
+   started before the filter: name it in this turn and give the resume command from the file's
+   line 1 (`claude --resume <id>` — same session id, new process, current hooks), then let the
+   user resume it. The resume path is not measured yet — task 1.1 of started-after-self-exclusion;
+   verify the resumed session reloads after a `/clear` before relying on it. Do not expect a clear
+   or a nudge to reach the excluded session: it is never typed into.
 
 ### macOS
 
@@ -161,6 +177,10 @@ Re-enable by deleting the file. `status` always reports which switches exist.
 - Nothing project-specific belongs in this skill: per-project tuning lives in
   `.claude/handoff.profile.md` (`## Auto-clear` section) — propose a section, never write it
   without the user's yes.
+- A session the start filter excludes is told ONCE, in `.set/handoff/.excluded-<session8>`
+  (the resume command + the reason), and the skip is logged once — never typed into. Its way
+  out: `claude --resume <id>` restarts the same session id with current hooks, and it is
+  watched again.
 - The gate only ever EVALUATES; the executor types. Keep that split when you wire anything new.
 - Every verdict is logged to `.set/handoff/auto-clear.log` — pass or fail. If a session is
   not being cleared, the reason is in the log, not in anyone's memory.

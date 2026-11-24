@@ -146,7 +146,17 @@ function context(ev) {
   const killed = existsSync(join(dir, ".no-keepgoing")) ? ".no-keepgoing"
     : existsSync(join(dir, `.no-keepgoing-${s8}`)) ? `.no-keepgoing-${s8}` : null
   const markerFresh = markerAgeMs == null ? false : markerFreshness({ dir, s8, transcriptPath: ev.transcript_path }).fresh
-  return { dir, s8, lines, tokens: tok.tokens, markerAgeMs, markerFresh, killed, autoClear, statePath: join(dir, `.keepgoing-${s8}.json`) }
+  // Surfacing (change started-after-self-exclusion): the watcher announces a start-filter skip in
+  // .excluded-<session8> — line 1 carries the resume command; this hook is where the session
+  // finally hears it (D1: never typed keys — an excluded session's hooks are exactly the stale ones).
+  const excludedPath = join(dir, `.excluded-${s8}`)
+  let excludedResume = `claude --resume ${ev.session_id}`
+  try {
+    const cmd = readFileSync(excludedPath, "utf8").split("\n")[0].trim().replace(/^\S+\s+/, "")
+    if (cmd.startsWith("claude ")) excludedResume = cmd
+  } catch { /* not excluded */ }
+  const excluded = existsSync(excludedPath) ? excludedPath : null
+  return { dir, s8, lines, tokens: tok.tokens, markerAgeMs, markerFresh, killed, autoClear, excluded, excludedResume, statePath: join(dir, `.keepgoing-${s8}.json`) }
 }
 
 function log(dir, line) {
@@ -173,6 +183,21 @@ async function main(argv) {
   const c = context(ev)
 
   if (mode === "post") {
+    // The exclusion notice FIRST, whatever the context size: the watcher will never act on this
+    // session, so the threshold advice below would be advice nobody acts on either. Said once —
+    // the state file. (A new human prompt resets decideStop's state and may say it once more;
+    // that is a human coming back to a still-excluded session, not spam.)
+    if (c.excluded) {
+      const st = readState(c.statePath)
+      if (!st.excludedSaid) {
+        st.excludedSaid = true
+        try { mkdirSync(c.dir, { recursive: true }); writeFileSync(c.statePath, JSON.stringify(st)) } catch { /* said again next call, harmless */ }
+        log(c.dir, `post  ${c.s8}  excluded by --started-after — surfaced once (${c.excludedResume})`)
+        process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PostToolUse",
+          additionalContext: `[auto-clear] THIS session is excluded by the watcher's --started-after: it started before the clear-reload wiring, so a /clear here would reload nothing — no automatic clear and no handoff nudge will reach it. To be covered, exit and run: ${c.excludedResume} (same session id, new process, current hooks). Reason on file: ${c.excluded}.` } }) + "\n")
+      }
+      return 0
+    }
     // An early warning inside a long turn: the Stop check only runs at the END of a turn.
     const o = { ...DEFAULTS, ...opts }
     if (!c.autoClear || c.killed || c.tokens == null || c.tokens < o.threshold) return 0
@@ -189,10 +214,13 @@ async function main(argv) {
 
   if (mode !== "stop") return 0
   const message = ev.last_assistant_message ?? lastAssistantText(c.lines)
+  // An excluded session never gets a clear: the watcher skips it by the start filter, so "the
+  // handoff is armed — waiting for the auto-clear" would wait for ever. The exclusion acts like
+  // no watcher here (the post hook already early-returns on it).
   const d = decideStop({
     message, backgroundTasks: Array.isArray(ev.background_tasks) ? ev.background_tasks : [],
     tokens: c.tokens, markerAgeMs: c.markerAgeMs, markerFresh: c.markerFresh, killed: c.killed, human: lastHumanPrompt(c.lines),
-    state: readState(c.statePath), opts, autoClear: c.autoClear,
+    state: readState(c.statePath), opts, autoClear: !c.excluded && c.autoClear,
   })
   if (d.block) {
     // The budget lives in the state file. If it cannot be written, every Stop starts at 1/40 again,

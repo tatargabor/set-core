@@ -9,11 +9,18 @@
 # types, and it types only on an eligible verdict.
 #
 # Safety properties (kept even when armed):
-#   - every gate verdict is logged, pass or fail — absence is announced, never silent;
+#   - every gate verdict is logged, pass or fail — absence is announced, never silent; the
+#     repeated "no" verdict is deduped to shape changes plus a 30-min heartbeat (measured
+#     2026-11-23: one consumer log grew to 47 MB, one session's verdict 879× in 3000 lines);
 #   - --dry-run evaluates and logs without ever sending keys;
 #   - --started-after drops sessions started before a moment (e.g. before the clear-reload
 #     hook was wired into settings — clearing a session that cannot reload is the one really
-#     dangerous combination);
+#     dangerous combination). Without the flag the moment defaults to the tree's recorded
+#     wiring time (.reload-wired-at, written once by init --auto-clear) — measured 2026-11-23,
+#     the old "--started-after now" default excluded the arming session itself: one tree's only
+#     working session was skipped 2858 times, all 6 of its compactions in the window
+#     unprotected. The first skip of a session is announced in .excluded-<session8> (reason +
+#     the claude --resume way out) and logged once, never typed into;
 #   - a session with no writer path is skipped with a logged reason: no tmux pane hosts it
 #     AND no fleet agent (ownerd roster, matched by pid) holds it;
 #   - PRESENCE GATE (autopilot task 0.2, measured 2026-09-13 10:03:50Z: the watcher's /clear
@@ -56,7 +63,12 @@
 #   watch-auto-clear.sh --dir <projectRoot> [--interval SEC] [--threshold N] [--freshness SEC]
 #     [--background-work-blocks true|false] [--started-after ISO] [--gate PATH] [--dry-run]
 #     [--auto-continue PROMPT] [--continue-delay SEC] [--autopilot]
-#     [--compact-on-background true|false] [--compact-threshold N]
+#     [--compact-on-background true|false] [--compact-threshold N] [--log-max-kb KB]
+#
+#   --started-after ISO   drop sessions whose process started before this moment. Default when
+#                 omitted: the tree's wiring stamp (.set/handoff/.reload-wired-at — the session's
+#                 own tree first, then --dir; written once by init --auto-clear). No stamp
+#                 anywhere = no filter. An explicit value always wins.
 #
 #   --background-work-blocks   default false since 2026-11-23: background tasks and subagents survive
 #                 /clear on 2.1.330 (docs/investigations/2026-11-23-background-survival-rerun.md).
@@ -83,6 +95,12 @@
 #                 survive; the session's marker is removed after it, so the next one needs a fresh
 #                 handoff. Never presses Escape for a compact: a working turn is waited out.
 #
+#   --log-max-kb KB   size rotation, the safety net under the "no" dedupe: at watcher start and at
+#                 the top of every pass, a log past KB kilobytes (default 5120) is renamed to
+#                 auto-clear.log.1 — any old .1 replaced — and the fresh file's first line names
+#                 the rotation and the size. Measured 2026-11-23: one consumer log had grown to
+#                 47 MB / 236 385 lines.
+#
 #   --auto-continue default   use the package's own continue prompt (DEFAULT_CONTINUE below).
 #
 #   --autopilot   every automatic continuation first runs .claude/hooks/autopilot/drift-guard.mjs
@@ -95,7 +113,7 @@ set -u
 
 ARM_NUDGE="true"; NUDGE_RATIO=""; IDLE_MINUTES=""; IDLE_FLOOR=""
 WARM_MISSED=" "   # sessions whose missed warm window was logged (a string set: macOS bash 3.2 has no -A)
-DIR=""; INTERVAL=60; THRESHOLD=""; FRESHNESS=""; BG="false"; AFTER=""; GATE=""; DRY=0
+DIR=""; INTERVAL=60; THRESHOLD=""; FRESHNESS=""; BG="false"; AFTER=""; AFTER_GIVEN=0; WIRED_MS=""; GATE=""; DRY=0; LOG_MAX_KB=""
 CONTINUE_PROMPT=""; CONTINUE_DELAY=20; AUTOPILOT=0; COMPACT_BG="false"; COMPACT_THRESHOLD=""
 COMPACT_CONTINUE="Continue after an automatic /compact (compact-on-background): your background agents are still running and will notify you. Re-read your own handoff file in full, then continue its CURRENT next step - a later UPDATE section supersedes earlier next steps, and a step marked done is never redone. Write a fresh handoff before the context fills again."
 DEFAULT_CONTINUE="Autopilot continue after an automatic /clear (auto-continue): read the reloaded handoff file in full - it is THIS session's own thread. Continue with its CURRENT next step - a later UPDATE section supersedes the original next-steps list, and a step marked done is never redone. A project-level goal or plan file is context, not a work queue: never take over a step or lane another session owns. Stop and wait only at a decision that the thread's recorded human direction does not already answer - ask it on its own line starting with NEED INPUT: so the keep-going hook lets the stop through."
@@ -106,7 +124,7 @@ while [ $# -gt 0 ]; do
     --threshold) THRESHOLD="$2"; shift 2;;
     --freshness) FRESHNESS="$2"; shift 2;;
     --background-work-blocks) BG="$2"; shift 2;;
-    --started-after) AFTER="$2"; shift 2;;
+    --started-after) AFTER="$2"; AFTER_GIVEN=1; shift 2;;
     --gate) GATE="$2"; shift 2;;
     --auto-continue) CONTINUE_PROMPT="$2"; shift 2;;
     --continue-delay) CONTINUE_DELAY="$2"; shift 2;;
@@ -117,6 +135,7 @@ while [ $# -gt 0 ]; do
     --nudge-ratio) NUDGE_RATIO="$2"; shift 2;;
     --idle-minutes) IDLE_MINUTES="$2"; shift 2;;
     --idle-floor) IDLE_FLOOR="$2"; shift 2;;
+    --log-max-kb) LOG_MAX_KB="$2"; shift 2;;
     --dry-run) DRY=1; shift;;
     *) echo "unknown flag: $1" >&2; exit 2;;
   esac
@@ -154,6 +173,80 @@ fi
 
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$LOG"; }
 
+# Per-watcher memory for the "no" dedupe below: one small file per watched session, under a
+# per-watcher temp dir (a string set would need declare -A, which macOS bash 3.2 lacks).
+NO_DEDUPE_DIR="${CLAUDE_CODE_TMPDIR:-${TMPDIR:-/tmp}}/set-handoff-no-dedupe-$$"
+# A failed creation silently disabled the dedupe — absence is announced, never silent.
+mkdir -p "$NO_DEDUPE_DIR" 2>/dev/null || { log "warn  no-dedupe: cannot create $NO_DEDUPE_DIR — verdict lines repeat per pass"; NO_DEDUPE_DIR=""; }
+# The dir must not outlive the watcher: otherwise one dir per lifetime accumulates in the temp
+# dir. The EXIT trap covers a normal end; INT TERM HUP clean up AND exit — a trap replaces the
+# signal's default terminate, so the explicit exit is what still ends the watcher.
+# A trapped signal is also DEFERRED while bash waits for a foreground child, so the loop's
+# `sleep "$INTERVAL"` (60 s in production) would hold a TERM sent to the watcher alone until it
+# ran out. The loop therefore sleeps in the background and `wait`s, which a trapped signal
+# interrupts at once; the handler kills that sleep too, so nothing of the watcher outlives it.
+SLEEP_PID=""
+cleanup_no_dedupe() {
+  [ -n "$SLEEP_PID" ] && kill "$SLEEP_PID" 2>/dev/null
+  [ -n "$NO_DEDUPE_DIR" ] && rm -rf "$NO_DEDUPE_DIR" 2>/dev/null
+  return 0
+}
+trap cleanup_no_dedupe EXIT
+trap 'cleanup_no_dedupe; exit 0' INT TERM HUP
+
+# The verdict's SHAPE: $failed with every run of digits replaced by N — so a moving token count
+# or freshness age (the measured churn: "tokens:184211 < 400000 … (-1s old)") is not a change.
+# The second expression folds N.N into N: the gate prints decimal ages ("idle 55.1 min ≥ 54"),
+# and a ticking tenth of a minute is the same moving number, not a change. \{1,\}, not \+ — BSD sed.
+verdict_shape() { printf '%s' "$1" | sed -e 's/[0-9][0-9]*/N/g' -e 's/\(N\)\(\.N\)\{1,\}/\1/g'; }
+
+# The per-pass "no" line is written only when THIS session's shape changed, or NO_HEARTBEAT_S
+# passed since its last written line (a heartbeat, so a tail still shows the session is watched).
+# The memory is per watcher: two watchers on one tree each keep their own and each log their own
+# line. Every other line (FIRE, NUDGE, request, warm-idle, skip) is never deduped. rc 0 = write it.
+NO_HEARTBEAT_S=1800
+no_log_due() { # $1 = sid, $2 = shape
+  local f now last seen
+  [ -n "$NO_DEDUPE_DIR" ] || return 0
+  f="$NO_DEDUPE_DIR/$(printf '%s' "$1" | tr -cd 'a-zA-Z0-9')"
+  [ -n "$f" ] || return 0
+  now=$(date +%s)
+  last=""; seen=""
+  if [ -f "$f" ]; then
+    read -r last seen < "$f" 2>/dev/null
+    case "$last" in ''|*[!0-9]*) last="" ;; esac
+    if [ -n "$last" ] && [ "$seen" = "$2" ] && [ $((now - last)) -lt "$NO_HEARTBEAT_S" ]; then
+      return 1
+    fi
+  fi
+  if printf '%s %s\n' "$now" "$2" > "$f" 2>/dev/null && [ -s "$f" ]; then return 0; fi
+  # A failed memory write degrades to the old behavior (repeat per pass) — announced, not silent.
+  log "warn  no-dedupe: cannot write $f — the verdict line repeats until this works"
+  return 0
+}
+
+# Size rotation — the safety net under the dedupe above (same measurement: one consumer log
+# reached 47 MB / 236 385 lines). At watcher start and at the top of every pass: past
+# --log-max-kb, auto-clear.log becomes .1 (any old .1 replaced) and the fresh file's first line
+# names the rotation and the size. `wc -c <` is the portable size check.
+LOG_MAX_KB="${LOG_MAX_KB:-5120}"
+case "$LOG_MAX_KB" in ''|*[!0-9]*) echo "--log-max-kb must be an integer (KB), got: $LOG_MAX_KB" >&2; exit 2;; esac
+# 0 is a valid integer but rotates every pass — the log never grows past one pass's lines.
+[ "$LOG_MAX_KB" -gt 0 ] || { echo "--log-max-kb must be a positive integer (KB), got: $LOG_MAX_KB" >&2; exit 2; }
+log_rotate() {
+  local bytes
+  [ -f "$LOG" ] || return 0
+  bytes=$(wc -c < "$LOG" 2>/dev/null) || return 0
+  bytes=$((bytes))   # BSD wc pads with spaces; arithmetic strips them
+  [ "$bytes" -gt $((LOG_MAX_KB * 1024)) ] || return 0
+  if mv -f "$LOG" "$LOG.1" 2>/dev/null; then
+    log "rotate  auto-clear.log reached ${bytes} bytes (> ${LOG_MAX_KB} KB) — the previous content is in auto-clear.log.1"
+  else
+    log "warn  rotate failed — auto-clear.log stays above ${LOG_MAX_KB} KB"
+  fi
+}
+log_rotate
+
 if ! command -v tmux >/dev/null; then
   if python3 -c "import set_orch.fleet.owner_client" >/dev/null 2>&1; then
     log "tmux not available — the writer path is the fleet owner only"
@@ -174,6 +267,87 @@ $wt"
 done < <(git -C "$DIR" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
 
 tree_of() { printf '%s\n' "$WORKTREES" | grep -Fx "$1"; }
+
+# The wiring stamp (change started-after-self-exclusion): ONE ISO-8601 UTC-with-Z line at
+# <tree>/.set/handoff/.reload-wired-at, written once by init --auto-clear, as epoch ms; "" when
+# absent. Parsed with node's Date.parse — `date -d` is GNU-only (the AFTER_MS lesson below).
+wired_ms_of() { # $1 = tree
+  [ -f "$1/.set/handoff/.reload-wired-at" ] || return 0
+  node -e 'const {readFileSync} = require("node:fs"); const t = Date.parse(readFileSync(process.argv[1], "utf8").trim()); if (Number.isFinite(t)) process.stdout.write(String(t))' \
+    "$1/.set/handoff/.reload-wired-at" 2>/dev/null
+}
+ms_to_iso() { # $1 = epoch ms → ISO-8601 Z, or a spoken fallback
+  node -e 'const t = Number(process.argv[1]); process.stdout.write(Number.isFinite(t) && t > 0 ? new Date(t).toISOString().replace(/\.\d{3}Z$/, "Z") : "an unknown moment")' "${1:-}" 2>/dev/null
+}
+
+# The filter's default moment is the wiring, not the arming: without it, every watcher restart
+# measured its own start and re-excluded sessions that already had the hook (measured
+# 2026-11-23: one tree's only working session, skipped 2858 times, silent). A corrupt stamp
+# refuses to start, like a corrupt --started-after — a silently OFF filter is how a session that
+# cannot reload gets cleared.
+if [ "$AFTER_GIVEN" != "1" ]; then
+  WIRED_MS=$(wired_ms_of "$DIR")
+  if [ -z "$WIRED_MS" ] && [ -f "$DIR/.set/handoff/.reload-wired-at" ]; then
+    echo "wiring stamp is not a parseable date: $DIR/.set/handoff/.reload-wired-at" >&2
+    exit 2
+  fi
+  while IFS= read -r wt; do
+    [ -n "$wt" ] && [ "$wt" != "$DIR" ] && [ -f "$wt/.set/handoff/.reload-wired-at" ] || continue
+    if [ -z "$(wired_ms_of "$wt")" ]; then
+      echo "wiring stamp is not a parseable date: $wt/.set/handoff/.reload-wired-at" >&2
+      exit 2
+    fi
+  done <<< "$WORKTREES"
+fi
+
+# The start-filter skip is ANNOUNCED, not silent (measured 2026-11-23: the only trace of one
+# tree's 2858 skips was a per-minute log line nobody reads). The FIRST skip of a session writes
+# .excluded-<session8> — the resume command on line 1, the reason below — and logs once; later
+# passes stay quiet (the file's NON-EMPTINESS is the guard, so a second watcher cannot double-write
+# either, exactly like nudge_record's noclobber). Nothing is ever TYPED into an excluded
+# session: its stale hooks are exactly why it is excluded (D1).
+#
+# A 0-BYTE record is the disk-full leftover (the same failure that left the 2026-09-25 firelock
+# empty: `>` creates the file, the write dies with ENOSPC): the old existence guard honoured the
+# empty file for ever — the session excluded with no resume command, no reason, and no way to
+# repair. So a 0-byte record counts as ABSENT: the body is written to a tmp file in the same
+# dir and mv'd into place only while the target still does not exist (the re-check narrows the
+# two-watchers race; both would write equivalent content anyway), and the repair logs the
+# written line once like a first write.
+excluded_record() { # $1 = tree, $2 = sid, $3 = startedAt ms, $4 = effective filter ms → rc 0 always
+  local s8 f tmp
+  s8=$(printf '%s' "$2" | tr -cd 'a-zA-Z0-9' | cut -c1-8)
+  f="$1/.set/handoff/.excluded-$s8"
+  [ -s "$f" ] && return 0
+  mkdir -p "$1/.set/handoff" 2>/dev/null
+  tmp="$f.tmp.$$"
+  if printf '%s claude --resume %s\nExcluded by the start filter: this process started %s, before --started-after %s — its hook snapshot predates the clear-reload wiring, so a /clear here would reload nothing. Exit and run the resume command on line 1 (same session id, new process, current hooks) to be watched again.\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" "$(ms_to_iso "$3")" "$(ms_to_iso "$4")" > "$tmp" 2>/dev/null \
+      && [ -s "$tmp" ] \
+      && { [ -s "$f" ] || mv -f "$tmp" "$f" 2>/dev/null; } \
+      && [ -s "$f" ]; then
+    rm -f "$tmp" 2>/dev/null
+    log "skip  $2  started before --started-after — .excluded-$s8 written (resume + reason), logged once"
+  else
+    rm -f "$tmp" 2>/dev/null
+    log "skip  $2  started before --started-after"
+  fi
+}
+
+# The exclusion record's other half (the resume hole): `claude --resume` keeps the session id but
+# starts a NEW process whose startedAt postdates the stamp, so a resumed session passes the filter
+# while its stale .excluded-<session8> stays. keep-going's post early-returns on the exclusion
+# branch, so the unremoved record would suppress every threshold warning for ever — the session
+# that did the right thing gets less advice than before it resumed. Removing it logs once: the
+# file is gone, so its absence is the once-guard.
+included_cleanup() { # $1 = tree, $2 = sid → rc 0 always
+  local s8 f
+  s8=$(printf '%s' "$2" | tr -cd 'a-zA-Z0-9' | cut -c1-8)
+  f="$1/.set/handoff/.excluded-$s8"
+  [ -e "$f" ] || return 0
+  rm -f "$f" 2>/dev/null
+  log "included  $2  started after the filter — .excluded-$s8 removed"
+}
 
 # Provenance: logged BEFORE typing (specs: intent-ledger). $1 tree, $2 kind, $3 text, $4 session, $5 pid
 typed() {
@@ -568,7 +742,10 @@ is_descendant() {
   return 1
 }
 
-log "watcher started dir=$DIR interval=${INTERVAL}s threshold=${THRESHOLD:-default} bg-blocks=$BG started-after=${AFTER:-any} dry-run=$DRY auto-continue=$([ -n "$CONTINUE_PROMPT" ] && echo on || echo off) autopilot=$([ "$AUTOPILOT" = "1" ] && echo on || echo off) compact-on-background=$([ "$COMPACT_BG" = "true" ] && echo "on (≥ ${COMPACT_THRESHOLD:-default})" || echo off) arm-nudge=$([ "$ARM_NUDGE" = "true" ] && echo "on (ratio ${NUDGE_RATIO:-default})" || echo off) warm-idle=$([ "${IDLE_MINUTES:-48}" = "0" ] || [ "${IDLE_FLOOR:-200000}" = "0" ] && echo off || echo "on (${IDLE_MINUTES:-48} min, floor ${IDLE_FLOOR:-200000})")"
+if [ "$AFTER_GIVEN" = "1" ]; then AFTER_LABEL="$AFTER"
+elif [ -n "$WIRED_MS" ]; then AFTER_LABEL="wired $(ms_to_iso "$WIRED_MS") (default)"
+else AFTER_LABEL="any"; fi
+log "watcher started dir=$DIR interval=${INTERVAL}s threshold=${THRESHOLD:-default} bg-blocks=$BG started-after=$AFTER_LABEL dry-run=$DRY auto-continue=$([ -n "$CONTINUE_PROMPT" ] && echo on || echo off) autopilot=$([ "$AUTOPILOT" = "1" ] && echo on || echo off) compact-on-background=$([ "$COMPACT_BG" = "true" ] && echo "on (≥ ${COMPACT_THRESHOLD:-default})" || echo off) arm-nudge=$([ "$ARM_NUDGE" = "true" ] && echo "on (ratio ${NUDGE_RATIO:-default})" || echo off) warm-idle=$([ "${IDLE_MINUTES:-48}" = "0" ] || [ "${IDLE_FLOOR:-200000}" = "0" ] && echo off || echo "on (${IDLE_MINUTES:-48} min, floor ${IDLE_FLOOR:-200000})")"
 # Heartbeat, every pass, in every watched tree that has a handoff dir (the main tree always). keep-going
 # reads it to know a watcher acts on its handoff demand when no per-repo watcher file exists. Only the
 # mtime counts; the body names who wrote it.
@@ -582,6 +759,7 @@ heartbeat() {
 }
 
 while :; do
+  log_rotate
   heartbeat
   for rec in "$HOME"/.claude/sessions/*.json; do
     [ -f "$rec" ] || continue
@@ -590,10 +768,24 @@ while :; do
     tree=$(tree_of "$cwd")
     [ -n "$tree" ] || continue
     [ -n "$sid" ] || continue
-    if [ -n "$AFTER_MS" ]; then
-      started=$(jq -r '.startedAt // 0' "$rec" 2>/dev/null)
-      [ "${started:-0}" -ge "$AFTER_MS" ] 2>/dev/null || { log "skip  $sid  started before --started-after"; continue; }
+    # The start filter: an explicit --started-after wins; otherwise the session's own tree's
+    # wiring stamp (worktrees each have their own .set/handoff), falling back to --dir's. No
+    # stamp anywhere = no filter for this session.
+    EFF_AFTER="$WIRED_MS"
+    if [ "$AFTER_GIVEN" != "1" ]; then
+      wired_here=$(wired_ms_of "$tree")
+      [ -n "$wired_here" ] && EFF_AFTER="$wired_here"
+    else
+      EFF_AFTER="$AFTER_MS"
     fi
+    if [ -n "$EFF_AFTER" ]; then
+      started=$(jq -r '.startedAt // 0' "$rec" 2>/dev/null)
+      if [ "${started:-0}" -ge "$EFF_AFTER" ] 2>/dev/null; then :; else
+        excluded_record "$tree" "$sid" "$started" "$EFF_AFTER"
+        continue
+      fi
+    fi
+    included_cleanup "$tree" "$sid"
     slug=$(printf '%s' "$cwd" | sed 's/\//-/g')
     transcript="$HOME/.claude/projects/$slug/$sid.jsonl"
     gate_args=(--session "$sid" --transcript "$transcript" --dir "$tree/.set/handoff" --json --background-work-blocks "$BG")
@@ -612,7 +804,7 @@ while :; do
     request_refused_cleanup "$tree" "$verdict" "$sid"
     trigger=$(printf '%s' "$verdict" | jq -r '.trigger // empty')
     if [ "$eligible" != "true" ] && [ "$action" != "compact" ]; then
-      log "no    $sid  $failed"
+      no_log_due "$sid" "$(verdict_shape "$failed")" && log "no    $sid  $failed"
       if [ "$(printf '%s' "$verdict" | jq -r '.idle.late // false')" = "true" ] && [ "${WARM_MISSED#* $sid }" = "$WARM_MISSED" ]; then
         WARM_MISSED="$WARM_MISSED$sid "
         log "warm-idle missed  $sid  $(printf '%s' "$verdict" | jq -r '.idle.reason')"
@@ -729,5 +921,6 @@ while :; do
       continue_tmux "$pane" "$pane_pid" "$sid" "$tree"
     fi
   done
-  sleep "$INTERVAL"
+  sleep "$INTERVAL" </dev/null >/dev/null 2>&1 & SLEEP_PID=$!
+  wait "$SLEEP_PID"; SLEEP_PID=""
 done
