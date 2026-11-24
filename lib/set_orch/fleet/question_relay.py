@@ -395,6 +395,39 @@ def request_release(session_id: str, base: Optional[Path] = None) -> bool:
     return True
 
 
+SESSION_RECORDS = Path.home() / ".claude" / "sessions"
+
+
+def release_on_terminal_enter(agent_pid: int, base: Optional[Path] = None,
+                              records: Path = SESSION_RECORDS) -> Optional[str]:
+    """The operator pressed Enter in the asking agent's terminal: hand its held question back.
+
+    B-214, measured 2026-11-24: a relayed AskUserQuestion holds the turn inside the hook, so
+    a message typed in the terminal only QUEUES behind it ("Queued · ctrl+x ctrl+s") and the
+    agent sat for 16 min until the fleet's "answer here instead". A person typing into that
+    terminal is at the machine, which is the same fact that button states. A continuation is
+    left alone — there the turn has ended and the typed prompt already supersedes it.
+    Returns the released session id, or None.
+    """
+    try:
+        data = json.loads((records / f"{int(agent_pid)}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    session_id = str(data.get("sessionId") or "") if isinstance(data, dict) else ""
+    if not session_id:
+        return None
+    record = waiting_record(session_id, base)
+    if not record or record.get("release_requested") or record.get("kind") == "continuation":
+        return None
+    if release_path(session_id, base).exists():
+        return None
+    if request_release(session_id, base):
+        logger.info("question relay [%s]: Enter typed in its terminal; question handed back there",
+                    _safe_id(session_id)[:8])
+        return session_id
+    return None
+
+
 def _clear_waiting(session_id: str, base: Path) -> None:
     for path in (waiting_path(session_id, base), release_path(session_id, base)):
         try:

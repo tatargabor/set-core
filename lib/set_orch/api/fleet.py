@@ -2706,6 +2706,17 @@ def fleet_put_splits(body: SplitsBody) -> Dict[str, Any]:
     return {"splits": stored}
 
 
+def _release_held_question(label: str) -> None:
+    """B-214: the person is at this terminal, so a question held on the relay comes back to it."""
+    from ..fleet import question_relay as qr
+    try:
+        pid = next((a.get("pid") for a in OwnerClient().list_agents() if a.get("label") == label), None)
+        if pid:
+            qr.release_on_terminal_enter(int(pid))
+    except Exception as exc:  # noqa: BLE001 — typing must never fail on this
+        logger.warning("fleet terminal: held-question check on %s failed (%s)", label, type(exc).__name__)
+
+
 @router.websocket("/ws/fleet/agents/{label}/terminal")
 async def fleet_terminal(websocket: WebSocket, label: str) -> None:
     """Relay one framework-owned terminal to a browser, in both directions.
@@ -2764,6 +2775,9 @@ async def fleet_terminal(websocket: WebSocket, label: str) -> None:
                 return
             if (payload := message.get("bytes")) is not None:
                 await stream.write(payload)
+                if b"\r" in payload:
+                    # B-214: Enter in this terminal hands a relay-held question back here.
+                    await asyncio.to_thread(_release_held_question, label)
                 continue
             text = message.get("text")
             if not text:
