@@ -128,7 +128,9 @@ def hooks_wired(tree: str) -> tuple:
 
 def watcher_units(home: str, tree: str) -> list:
     """[(unit name, ExecStart)] of user units that run THIS tree's watcher, whatever their name."""
-    want = os.path.join(tree, WATCHER)
+    # The registry may hold a symlink while the unit names the real directory, or the other
+    # way round (B-218): compare the resolved watcher path, not the spelling.
+    real = os.path.realpath(os.path.join(tree, WATCHER))
     out = []
     for f in sorted(glob.glob(os.path.join(home, ".config", "systemd", "user", "*.service"))):
         try:
@@ -136,7 +138,10 @@ def watcher_units(home: str, tree: str) -> list:
         except OSError:
             continue
         for line in text.splitlines():
-            if line.startswith("ExecStart=") and want in line:
+            if not line.startswith("ExecStart="):
+                continue
+            words = line[len("ExecStart="):].split()
+            if any(w.endswith(WATCHER) and os.path.realpath(w) == real for w in words):
                 out.append((os.path.basename(f), line[len("ExecStart="):]))
     return out
 

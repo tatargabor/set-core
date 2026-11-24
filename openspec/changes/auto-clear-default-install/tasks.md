@@ -205,6 +205,18 @@
   init template carries. The unit is active and its log has a fresh `watcher started` line. A hand
   unit restarted for the first time in weeks is where this shape shows up. All 45 watcher units
   were `active` a minute after the roll, with no warning in the journal.
+- 2026-11-24 ~09:50, the d47b1f1 roll (asked for by the package's session: 35aaf53 turn-state
+  counts a queued continue prompt as submitted; d47b1f1 dedupes the watcher's "no writer path"
+  lines). Templates only, no unit change, same procedure as the be300a2 roll. Dry run first: 38
+  trees would get `turn-state.mjs`, `watch-auto-clear.sh` and `skills/auto-clear/SKILL.md`, and
+  12 locally modified profile/skill copies would be kept. Skipped: the flagship consumer, the
+  archived and `deploy: false` entries, and four trees that never had the templates. Result: the
+  watcher and turn-state blobs in all 38 trees equal the package's HEAD files, there are 36
+  pathspec-limited commits (two trees gitignore `.claude/`), and all 38 units are `active` with
+  a fresh `watcher started` line. Defect found by the roll (B-218): the roll looked units up by
+  registry path, and one tree is registered through a symlink while its unit names the real
+  directory. So that tree's watcher was not stopped before its script was overwritten. It was
+  restarted by hand at once, and `watcher_units()` now compares resolved paths.
 - 2026-11-23 22:04: set-core ITSELF had been left out of the rollout (the rollout script skipped
   the framework's own tree, which is not a reason under the owner's "every project" decision).
   Noticed because a 410k-token session here was never asked for a handoff. Installed now with the

@@ -107,6 +107,17 @@ def test_a_differently_named_hand_unit_counts(box):
     assert run().status == "ok"
 
 
+def test_a_unit_written_with_the_real_path_counts_for_a_symlinked_registry_path(box, tmp_path):
+    """B-218: the registry holds a symlink, the unit names the real directory. Same tree."""
+    _, pkg, tree, home, _ = box
+    link = tmp_path / "proj-link"
+    link.symlink_to(tree)
+    assert [u for u, _ in ac.watcher_units(str(home), str(link))] == ["proj-auto-clear.service"]
+    (home / ".config" / "systemd" / "user" / "proj-auto-clear.service").unlink()
+    unit(home, "proj-auto-clear.service", link, "")
+    assert [u for u, _ in ac.watcher_units(str(home), str(tree))] == ["proj-auto-clear.service"]
+
+
 def test_another_trees_unit_does_not_count(box, tmp_path):
     run, _, _, home, _ = box
     (home / ".config" / "systemd" / "user" / "proj-auto-clear.service").unlink()

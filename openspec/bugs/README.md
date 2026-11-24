@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-218 — `watcher_units()` matched the watcher path by its spelling, so a tree registered through a symlink had "no watcher unit" while one ran
+- **state:** closed 2026-11-24 in the commit that adds this line. `lib/set_doctor/auto_clear.py` `watcher_units()` now compares the resolved path of each `…/watch-auto-clear.sh` word in `ExecStart` against the resolved tree path. `test_a_unit_written_with_the_real_path_counts_for_a_symlinked_registry_path` covers both directions (link in the registry, link in the unit). It failed against the previous code; with the fix it passes, and so do the doctor and deploy suites (33).
+- **reported:** 2026-11-24 by this session, during the auto-clear `d47b1f1` template roll.
+- **measured:** one registered tree's registry path is a symlink to a directory under another mount, and its unit's `ExecStart` names the real directory. `watcher_units(home, <registry path>)` returned `[]`, so the roll script (which looked units up by registry path) did NOT stop that tree's watcher before overwriting its running `watch-auto-clear.sh`. The other 37 units were stopped first, and their logs show a fresh `watcher started` line. This one was restarted by hand a minute later, it is `active`, and it logged a fresh start. `set-doctor` passes the registry path too, so it would have reported `no watcher unit runs this tree's watch-auto-clear.sh` for a running unit. `set-project init` was not affected because its step resolves `--project-dir` first.
+- **fail direction:** a false absence in the doctor (it offers an init that would change nothing). In a roll, a running bash script gets overwritten under itself, which is what stopping the units first exists to prevent.
+- **fixed when:** `watcher_units()` finds the unit from either spelling of the path. Done, see state.
+
 ### B-217 — a `literal:` allow entry written for one private repository silences that deny term in EVERY repository's commit-message gate, while the push gate still blocks it
 - **state:** open
 - **reported:** 2026-11-24 by this session, after the push gate blocked two commits in this public repository (written by two other sessions) whose messages named a deny-listed private project, although both had passed the `commit-msg` gate.
