@@ -258,6 +258,14 @@
   36 hold the `owner client found` line, 4 import through their own PYTHONPATH, and no
   `warn  fleet` appears anywhere. 36 pathspec-limited commits. Nothing requires a PYTHONPATH line:
   the doctor check that did was reverted in 9286ea5b.
+- 2026-11-24 ~13:59, the 4ff4770 + 2220bb1 roll (asked for by the package's session: the
+  auto-continue is confirmed against the text actually typed, and a self-written handoff is
+  priced from its first write). Same procedure as the be300a2 roll; skipped: the flagship
+  consumer, as before. Dry run first: 38 trees getting exactly `watch-auto-clear.sh` and
+  `handoff-cost.mjs`, no hook or unit change. Measured after: both blobs equal the package's
+  HEAD files in 38/38 trees, 38/38 units `active` with a fresh `watcher started` line in
+  `.set/handoff/auto-clear.log` (12:59–13:00Z), no warn/error line after it. 36 pathspec-limited
+  commits; two trees keep `.claude/` gitignored. The 0b9a084 roll (~12:31) was not recorded here.
 - 2026-11-23 22:04: set-core ITSELF had been left out of the rollout (the rollout script skipped
   the framework's own tree, which is not a reason under the owner's "every project" decision).
   Noticed because a 410k-token session here was never asked for a handoff. Installed now with the

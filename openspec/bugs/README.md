@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-226 — the question-relay `teach` writes a consumer's name verbatim into a public repo's committed rules file
+- **state:** open
+- **reported:** 2026-11-24 by a peer agent (set-claude-handoff's session, over the bus): a taught answer appended to that repo's `.claude/rules/auto-answer-taught.md` named a private consumer tree; the repo is public, so the leak gate blocked every commit there until the session generalised the name by hand.
+- **measured:** `lib/set_orch/fleet/relay_teach.py` `append_rule` writes the question, answer and explanation verbatim (`entry_text`) and nothing before `commit_rule` consults `set-leakscan` or the repo's visibility. The only guard is the target repo's pre-commit gate. `aefda910` (13:59) already makes a refused commit leave the index as it was, so the file no longer stays STAGED, but the entry stays in the working tree of the public repo, where the owning session's next broad add carries it or is blocked by it, and agents read it as a rule in the meantime.
+- **fail direction:** loud at commit (the gate refuses), calm before it: the panel reports the rule written, and the leak sits in an uncommitted file nobody asked for.
+- **fixed when:** `teach` into a repo whose remote is not private runs the same checks `set-leakscan --staged` would (registry names, deny-list, private `set-*` names) on the entry text BEFORE writing, and refuses or asks for a generalised wording instead of writing; a test holds a consumer-name answer refused for a public repo and accepted for a private one.
+
 ### B-225 — `set-leakscan`'s private `set-*` class blocks every own private repo name in a public repo, which the owner's 2026-11-24 rule allows
 - **state:** open
 - **reported:** 2026-11-24 by the user, while a public repo's push was blocked over the name of an own private repo (*„leakscan kivihet hivatkozást privat repora ha az a fejleztséshez kell és nem ügyfél név hanem ami saját reponk”*)
