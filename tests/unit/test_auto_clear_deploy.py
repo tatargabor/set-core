@@ -105,8 +105,6 @@ def test_a_project_with_nothing_installed_gets_everything(box):
     assert f"--dir {tree} " in text and f"{tree}/.claude/hooks/watch-auto-clear.sh" in text
     exec_start = next(l for l in text.splitlines() if l.startswith("ExecStart="))
     assert "--started-after" not in exec_start, "the package's start filter is opt-in; the unit does not opt in"
-    assert f"Environment=PYTHONPATH={acd.ROOT / 'lib'}\n" in text, "the watcher's fleet lookup imports set_orch"
-    assert "@" not in text.replace("%h", ""), "every placeholder is substituted"
     for flag in acd.OVERRIDING:
         assert flag + " " not in text
     assert "daemon-reload" in " ".join(calls(log))

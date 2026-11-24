@@ -71,14 +71,9 @@ def settings(tree, hooks):
     (tree / ".claude" / "settings.json").write_text(json.dumps({"hooks": hooks}))
 
 
-SET_CORE_LIB = str(Path(ac.__file__).resolve().parents[1])
-
-
-def unit(home, name, tree, extra, pythonpath=SET_CORE_LIB):
-    env = f"Environment=PYTHONPATH={pythonpath}\n" if pythonpath is not None else ""
+def unit(home, name, tree, extra):
     (home / ".config" / "systemd" / "user" / name).write_text(
-        "[Service]\n" + env + "ExecStart="
-        + f"{tree}/.claude/hooks/watch-auto-clear.sh --dir {tree} --interval 60 {extra}\n")
+        "[Service]\nExecStart=" + f"{tree}/.claude/hooks/watch-auto-clear.sh --dir {tree} --interval 60 {extra}\n")
 
 
 def test_a_complete_install_is_ok(box):
@@ -214,23 +209,3 @@ def test_the_native_trigger_prefers_the_per_model_key(tmp_path):
     assert ac.native_trigger(str(tmp_path)) == 540000
     s.write_text("{}")
     assert ac.native_trigger(str(tmp_path)) is None
-
-
-@pytest.mark.parametrize("pythonpath", [None, "/nowhere/lib"])
-def test_a_unit_that_cannot_import_the_owner_client_warns(box, pythonpath):
-    """2026-11-24: 36 of 41 watcher units ran without set-core's lib, so no fleet agent was ever
-    cleared, and this check called every one of them ok."""
-    run, _, tree, home, _ = box
-    unit(home, "proj-auto-clear.service", tree, "", pythonpath=pythonpath)
-    c = run()
-    assert c.status == "warn"
-    assert "proj-auto-clear.service has no set-core lib on PYTHONPATH" in c.detail
-    assert "Environment=PYTHONPATH=" in c.fix and "restart proj-auto-clear.service" in c.fix
-
-
-def test_a_quoted_pythonpath_with_several_entries_counts(box):
-    run, _, tree, home, _ = box
-    f = home / ".config" / "systemd" / "user" / "proj-auto-clear.service"
-    f.write_text(f'[Service]\nEnvironment="PYTHONPATH=/x:{SET_CORE_LIB}:/y"\n'
-                 f"ExecStart={tree}/.claude/hooks/watch-auto-clear.sh --dir {tree}\n")
-    assert run().status == "ok"

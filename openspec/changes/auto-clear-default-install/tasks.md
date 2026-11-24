@@ -237,6 +237,20 @@
   0 of 39 matched units without the lib. 36 pathspec-limited commits; two trees gitignore
   `.claude/`. Gap left as is: the doctor matches units by the watcher's script path, so the two
   `set-claude-handoff watch` units are invisible to it.
+- 2026-11-24 ~11:06, the entry above was WITHDRAWN at the owner's correction, relayed by the
+  package's session: no PYTHONPATH in the unit template or the units. A path baked into a unit is
+  one machine's layout, and the watcher must also work on a second machine. The package's
+  1237e8d does it instead: when the plain import fails, the watcher follows `set-agent-owner`,
+  `set-fleet-ask` or `set-fleet-roster` from PATH through the symlink and puts that checkout's
+  lib on its own PYTHONPATH. Reverted here: the template line, its substitution, the doctor's
+  `reaches_fleet` warning (it would have flagged every correct unit) and their tests. The line was
+  removed from the 36 units it had been added to. The five hand units that carried one before
+  keep theirs, because nothing here wrote them. Then 1237e8d was rolled to the 38 trees the same
+  way: units stopped, watcher upgraded, daemon-reload, the 40 watcher units restarted, 36
+  pathspec-limited commits. Measured after: 40/40 `active`. In 36 of them this start's startup
+  block holds `fleet: owner client found via set-agent-owner`. The 4 that import through their own
+  PYTHONPATH print no found line. No `warn  fleet` line appears anywhere after a 10:06:12Z start.
+  The units need only set-core's bin dir on PATH, and `%h/.local/bin` already is.
 - 2026-11-23 22:04: set-core ITSELF had been left out of the rollout (the rollout script skipped
   the framework's own tree, which is not a reason under the owner's "every project" decision).
   Noticed because a 410k-token session here was never asked for a handoff. Installed now with the
