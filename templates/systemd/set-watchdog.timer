@@ -2,9 +2,11 @@
 Description=set-watchdog every 5 minutes
 
 [Timer]
+# OnActiveSec starts the chain when the timer is enabled; OnUnitActiveSec alone never fires
+# before the service has run once (measured on the first install: NEXT n/a).
 OnBootSec=3min
+OnActiveSec=1min
 OnUnitActiveSec=5min
-Persistent=true
 
 [Install]
 WantedBy=timers.target

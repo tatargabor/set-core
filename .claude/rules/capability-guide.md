@@ -15,6 +15,7 @@ This project is **set-core** — an orchestration framework for Claude Code that
 | Archive completed change | `/opsx:archive` | Finalize and close |
 | Sync specs to main | `/opsx:sync` | Update main specs without archiving |
 | Check the machine and every project | `set-doctor` | After an install, a pull, or when something looks off |
+| Watch the fleet all day | `set-watchdog` (`status`, timer every 5 min; 🩺 badge in the fleet header) | Probes for quiet failures, GLM triage, hands real ones to the owning project |
 | Deploy set-core into a project | `set-project init` (`--dry-run` first) | New project, or after set-core changed |
 | Write the project role rules | `set-project roles` (`--check`, `--dry-run`) | After editing the machine-local role file |
 | Hide a project nobody develops | `set-project archive <name>` | The doctor skips it; its role rule says "do not develop" |

@@ -47,6 +47,7 @@ import FleetRelay from '../components/FleetRelay'
 import FleetAutoAnswer, { FleetAutoAnswerMark } from '../components/FleetAutoAnswer'
 import { publishAgentNames } from '../lib/fleetAutoAnswer'
 import FleetIdleClose from '../components/FleetIdleClose'
+import FleetWatchdog from '../components/FleetWatchdog'
 import FleetSplitter from '../components/FleetSplitter'
 import { useFileListings } from '../hooks/useFileListings'
 import {
@@ -3916,6 +3917,9 @@ export default function Fleet() {
         {/* Automatic answers (fleet-auto-answer): on/off and the count of proposals that
             will be written unless somebody answers; the panel floats like the map's. */}
         <FleetAutoAnswer />
+        {/* The watchdog (fleet-watchdog): open findings, red on a fail, and a distinct
+            STALE state when its timer stopped; the panel floats like the others. */}
+        <FleetWatchdog />
         {/* B-185 — jump to the agent asking you, for reading at the machine. The
             pulsing dot is the asking state's colour everywhere else on this screen,
             so the chip borrows it rather than inventing a second mark. Absent while

@@ -582,6 +582,52 @@ def check_relay(ctx: Context) -> Check:
                  sh("sac relay status"))
 
 
+def _last_watchdog_tick(ctx: Context) -> Optional[dict]:
+    base = ctx.env.get("SET_WATCHDOG_DIR") or os.path.join(ctx.home, ".local", "share", "set-core", "watchdog")
+    try:
+        with open(os.path.join(base, "ticks.jsonl"), "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            fh.seek(max(0, fh.tell() - 8192))
+            lines = fh.read().decode("utf-8", "replace").strip().splitlines()
+    except OSError:
+        return None
+    for line in reversed(lines):
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(rec, dict) and isinstance(rec.get("at"), (int, float)):
+            return rec
+    return None
+
+
+def check_watchdog(ctx: Context, now: Optional[float] = None) -> Check:
+    """The fleet watchdog is installed and ticking (fleet-watchdog). Measured from the tick log,
+    never from the unit's own claim; this check runs no tick."""
+    import time as _time
+    now = _time.time() if now is None else now
+    timer = os.path.join(ctx.home, ".config", "systemd", "user", "set-watchdog.timer")
+    if not os.path.exists(timer):
+        return Check("fleet", "watchdog", "warn", "set-watchdog.timer is not installed",
+                     sh("./install.sh  # or: systemctl --user enable --now set-watchdog.timer"))
+    rc, so, _ = run(["systemctl", "--user", "is-active", "set-watchdog.timer"], timeout=15, env=ctx.env)
+    if (so or "").strip() != "active":
+        return Check("fleet", "watchdog", "fail", f"set-watchdog.timer is installed but {(so or '?').strip()}",
+                     sh("systemctl --user enable --now set-watchdog.timer"))
+    last = _last_watchdog_tick(ctx)
+    if last is None:
+        return Check("fleet", "watchdog", "fail", "the timer is active but no tick was ever recorded",
+                     sh("journalctl --user -u set-watchdog.service -n 30"))
+    interval = int(last.get("interval_s") or 300)
+    age = now - float(last["at"])
+    stamp = _time.strftime("%Y-%m-%d %H:%M", _time.localtime(float(last["at"])))
+    if age > 3 * interval:
+        return Check("fleet", "watchdog", "fail",
+                     f"last tick {stamp} ({int(age // 60)} min ago, expected every {interval // 60} min)",
+                     sh("journalctl --user -u set-watchdog.service -n 30"))
+    return Check("fleet", "watchdog", "ok", f"last tick {stamp}, {last.get('open', '?')} open finding(s)")
+
+
 # ── providers, GitHub ────────────────────────────────────────────────────────
 
 
@@ -701,6 +747,7 @@ def run_all(ctx: Context, workers: int = 8) -> list:
         sac_by_path, sac_check = sac_doctor(ctx, sac_decl)
         checks.append(sac_check)
     checks.append(check_relay(ctx))
+    checks.append(check_watchdog(ctx))
     claude_projects = load_claude_projects(ctx)
     reg_path, registry = load_registry(ctx)
     if registry is None:

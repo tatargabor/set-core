@@ -23,6 +23,7 @@ from fastapi import APIRouter
 from .fleet import router as fleet_router
 from .fleet_mandate import router as fleet_mandate_router
 from .now import router as now_router
+from .fleet_watchdog import router as fleet_watchdog_router
 from .files import router as files_router
 from .desktop import router as desktop_router
 from .paste import router as paste_router
@@ -52,6 +53,8 @@ router.include_router(fleet_mandate_router)
 # `/api/fleet/now...` — the Now card; a `/api/fleet/...` family, so also before
 # the `/api/{project}/...` routers (CB-16).
 router.include_router(now_router)
+# `/api/fleet/watchdog` — the same family (CB-16).
+router.include_router(fleet_watchdog_router)
 # Also a `/api/fleet/...` family, and therefore also BEFORE the `/api/{project}/...`
 # routers below, for the same reason (CB-16).
 router.include_router(files_router)

@@ -99,6 +99,11 @@ function installFetch(answers: (() => Promise<unknown>)[], layout: unknown = { v
     if (String(url).includes('/api/fleet/auto-answer')) {
       return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) } as Response)
     }
+    // The watchdog badge (fleet-watchdog) reads on its own schedule as well: outside the
+    // queue, measured when it landed — four failures here from the shifted queue.
+    if (String(url).includes('/api/fleet/watchdog')) {
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) } as Response)
+    }
     const next = answers[Math.min(i, answers.length - 1)]
     i += 1
     return next() as Promise<Response>

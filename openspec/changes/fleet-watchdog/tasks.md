@@ -4,7 +4,7 @@
 - [x] 1.2 `probe.py`: the probe contract (name, interval, `collect(ctx) -> list[Finding]`), the `Finding` dataclass (shape-only evidence), and the registry of built-ins [REQ: probes-are-declared-units-with-a-fingerprint]
 - [x] 1.3 `tick.py`: exclusive `flock`, the `watchdog.enabled` kill switch, running due probes by interval, turning an exception into a `watchdog-probe-error` finding, one tick-log line without evidence [REQ: the-watchdog-runs-as-a-stateless-tick-on-a-timer]
 - [x] 1.4 `bin/set-watchdog` (`tick`, `status [--json]`, `probes`, `mute <fp> --days N`, `dispatch <fp>`), added to the `install.sh` scripts list [REQ: the-watchdog-runs-as-a-stateless-tick-on-a-timer]
-- [ ] 1.5 `templates/systemd/set-watchdog.{service,timer}` (5 min), installed and enabled by `install.sh` the way `set-fleet-idle-close` is [REQ: the-watchdog-runs-as-a-stateless-tick-on-a-timer]
+- [x] 1.5 `templates/systemd/set-watchdog.{service,timer}` (5 min), installed and enabled by `install.sh` the way `set-fleet-idle-close` is [REQ: the-watchdog-runs-as-a-stateless-tick-on-a-timer]
 - [x] 1.6 Unit tests: lock contention, a probe raising, upsert/resolve/mute, no evidence in the tick log [REQ: the-watchdog-runs-as-a-stateless-tick-on-a-timer]
 
 ## 2. Built-in probes
@@ -31,15 +31,15 @@
 
 ## 5. API and fleet UI
 
-- [ ] 5.1 `lib/set_orch/api/watchdog.py`: `GET /api/fleet/watchdog` (last tick, interval, counts, open/untriaged/muted/recent-resolved), `POST …/{fp}/mute`, `POST …/{fp}/dispatch`; registered in `server.py` [REQ: the-fleet-header-shows-the-watchdog-s-state-and-a-dead-watchdog-never-looks-calm]
-- [ ] 5.2 `web/src/components/FleetWatchdog.tsx`: the header badge (ok / count / red / stale) and the overlay panel (absolute, closable, never pushes), wired into `pages/Fleet.tsx` beside the auto-answer control [REQ: the-fleet-header-shows-the-watchdog-s-state-and-a-dead-watchdog-never-looks-calm]
-- [ ] 5.3 Web unit tests for the four badge states and the panel actions; API tests [REQ: the-fleet-header-shows-the-watchdog-s-state-and-a-dead-watchdog-never-looks-calm]
-- [ ] 5.4 `pnpm build` in `web/`, then a **visual check in the browser** (Claude in Chrome) on the running dashboard: badge with a real finding, badge stale (timer stopped), panel open without reflow. If the browser cannot be reached, this task stays OPEN [REQ: the-fleet-header-shows-the-watchdog-s-state-and-a-dead-watchdog-never-looks-calm]
+- [x] 5.1 `lib/set_orch/api/watchdog.py`: `GET /api/fleet/watchdog` (last tick, interval, counts, open/untriaged/muted/recent-resolved), `POST …/{fp}/mute`, `POST …/{fp}/dispatch`; registered in `server.py` [REQ: the-fleet-header-shows-the-watchdog-s-state-and-a-dead-watchdog-never-looks-calm]
+- [x] 5.2 `web/src/components/FleetWatchdog.tsx`: the header badge (ok / count / red / stale) and the overlay panel (absolute, closable, never pushes), wired into `pages/Fleet.tsx` beside the auto-answer control [REQ: the-fleet-header-shows-the-watchdog-s-state-and-a-dead-watchdog-never-looks-calm]
+- [x] 5.3 Web unit tests for the four badge states and the panel actions; API tests [REQ: the-fleet-header-shows-the-watchdog-s-state-and-a-dead-watchdog-never-looks-calm]
+- [x] 5.4 `pnpm build` in `web/`, then a **visual check in the browser** (Claude in Chrome) on the running dashboard: badge with a real finding, badge stale (timer stopped), panel open without reflow. If the browser cannot be reached, this task stays OPEN [REQ: the-fleet-header-shows-the-watchdog-s-state-and-a-dead-watchdog-never-looks-calm]
 
 ## 6. Doctor self-check and docs
 
-- [ ] 6.1 `lib/set_doctor/checks.py`: the `watchdog` record (timer state plus the last tick from the tick log) and its tests [REQ: the-watchdog-itself-is-checked]
-- [ ] 6.2 `docs/reference/set-watchdog.md`: probes, config keys, modes, what leaves the machine, the kill switch; a row in the capability guide [REQ: the-watchdog-runs-as-a-stateless-tick-on-a-timer]
+- [x] 6.1 `lib/set_doctor/checks.py`: the `watchdog` record (timer state plus the last tick from the tick log) and its tests [REQ: the-watchdog-itself-is-checked]
+- [x] 6.2 `docs/reference/set-watchdog.md`: probes, config keys, modes, what leaves the machine, the kill switch; a row in the capability guide [REQ: the-watchdog-runs-as-a-stateless-tick-on-a-timer]
 
 ## Acceptance Criteria (from spec scenarios)
 
@@ -56,5 +56,5 @@
 - [x] AC-11: WHEN a fourth real finding arrives on a day with three dispatches THEN it is held with `daily cap` and dispatch-now is offered [REQ: real-findings-are-dispatched-to-the-owning-project-s-agent-never-fixed-by-the-watchdog, scenario: cap-reached]
 - [x] AC-12: WHEN the last tick is 40 min old at a 5-min interval THEN the badge shows stale and the last tick time, not zero [REQ: the-fleet-header-shows-the-watchdog-s-state-and-a-dead-watchdog-never-looks-calm, scenario: the-timer-stopped]
 - [x] AC-13: WHEN a muted fingerprint recurs THEN it is stored muted, not counted, and listed under muted [REQ: the-fleet-header-shows-the-watchdog-s-state-and-a-dead-watchdog-never-looks-calm, scenario: a-muted-fingerprint-recurs]
-- [ ] AC-14: WHEN the timer is enabled and the last tick is two hours old THEN the doctor's `watchdog` record is fail naming the last tick [REQ: the-watchdog-itself-is-checked, scenario: timer-installed-but-ticks-stopped]
-- [ ] AC-15: WHEN no timer unit exists THEN the `watchdog` record is warn with the install command [REQ: the-watchdog-itself-is-checked, scenario: not-installed]
+- [x] AC-14: WHEN the timer is enabled and the last tick is two hours old THEN the doctor's `watchdog` record is fail naming the last tick [REQ: the-watchdog-itself-is-checked, scenario: timer-installed-but-ticks-stopped]
+- [x] AC-15: WHEN no timer unit exists THEN the `watchdog` record is warn with the install command [REQ: the-watchdog-itself-is-checked, scenario: not-installed]
