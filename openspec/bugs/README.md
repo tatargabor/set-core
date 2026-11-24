@@ -104,7 +104,7 @@ consumer's name, path, or content.
 - **fixed when:** ten consecutive runs of the two files pass with no failure; the root cause (shared module state, a timer, or a query racing a render) is named in the fix.
 
 ### B-236 — the auto-answer panel's "not wired" hint always tells the reader to copy a `question_relay.command` that may not exist
-- **state:** closed 2026-11-24 by `339b2564` — the route reports `relay_command`; the hint is built from it (one line when unset, both with the real value when set). Four tests fail without the fix; live route answers `"relay_command":"set-auto-answer"` after the restart.
+- **state:** closed 2026-11-24 by `aa703a63` — the route reports `relay_command`; the hint is built from it (one line when unset, both with the real value when set). Four tests fail without the fix; live route answers `"relay_command":"set-auto-answer"` after the restart.
 - **reported:** 2026-11-24 by the user, from a screenshot of the fleet header's Automatic answers panel right after switching it on.
 - **measured:** `set-config get question_relay.command` → `unset`, `auto_answer.forward_command` → `unset`; `/api/fleet/auto-answer` → `"enabled":true,"wired":false,"forward":false`. The panel still printed `set-config set auto_answer.forward_command "<the current question_relay.command>"` as the first step. The text is a static literal in `web/src/components/FleetAutoAnswer.tsx` (~line 156), and the route does not say whether a relay command exists, so the panel cannot tell the two cases apart.
 - **fail direction:** loud, misleading — the reader is told to forward to a command that does not exist, and may invent one, or set the forward key to the placeholder text literally.
