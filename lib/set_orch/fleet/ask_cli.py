@@ -92,6 +92,23 @@ def _detail(payload: Any) -> Dict[str, Any]:
     return {"reason": None, "detail": inner if isinstance(inner, str) else str(payload)}
 
 
+#: What the bus says when the addressee shares several rooms with the sender.
+ROOM_REQUIRED = "`room` is required"
+
+
+def _dm_room(seat: str, *, run: Run) -> Optional[str]:
+    """The room of two between this session and `seat` (opened if needed), or None."""
+    try:
+        done = run([SAC, "dm", seat], capture_output=True, text=True, timeout=30)
+        if getattr(done, "returncode", 1) != 0:
+            return None
+        room = json.loads(done.stdout or "{}").get("room")
+    except (OSError, subprocess.SubprocessError, ValueError, AttributeError) as exc:
+        logger.warning("set-fleet-ask: opening a room of two raised %s", type(exc).__name__)
+        return None
+    return room if isinstance(room, str) and room else None
+
+
 def ask(project: str, text: str, *, seat: str, kind: str = "REQUEST", subject: Optional[str] = None,
         http: Http = _http, run: Run = subprocess.run, out=None, err=None) -> int:
     """Resolve, send as the asker, report. Returns the exit code."""
@@ -118,6 +135,15 @@ def ask(project: str, text: str, *, seat: str, kind: str = "REQUEST", subject: O
     try:
         done = run([SAC, "send", kind, text, "--to", desk["seat"]],
                    capture_output=True, text=True, timeout=60)
+        if getattr(done, "returncode", 1) != 0 and ROOM_REQUIRED in (getattr(done, "stderr", "") or ""):
+            # Asking a desk of one's OWN project (measured 2026-11-24): asker and desk share
+            # every project room, so the bus cannot pick one and refuses. A room of two with
+            # the desk's seat is unambiguous, and wakes exactly that seat.
+            room = _dm_room(desk["seat"], run=run)
+            if room:
+                logger.info("set-fleet-ask: the bus needed a room; sending in a room of two")
+                done = run([SAC, "send", room, kind, text, "--to", desk["seat"]],
+                           capture_output=True, text=True, timeout=60)
         sent = json.loads(done.stdout or "{}") if getattr(done, "returncode", 1) == 0 else None
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         logger.warning("set-fleet-ask: the bus send raised %s", type(exc).__name__)

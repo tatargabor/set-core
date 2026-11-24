@@ -27,6 +27,10 @@
 - [ ] 4.2 LIVE — End to end: a request to a desk whose turn is made to hang; observe interrupt, then (if forced) replace, the handover FACT on the bus, and the linked answer closing the engagement. Record in `measurements.md`. [REQ: a-gone-or-still-stalled-desk-is-replaced-by-a-desk-that-takes-the-request-over]
 - [ ] 4.3 LIVE — A desk running a CPU-busy command past the stall bound is NOT interrupted. Record. [REQ: a-desk-is-stalled-only-when-nothing-shows-it-working]
 
+## 5. Found during live verification
+
+- [x] 5.1 FIX — `set-fleet-ask` to one's OWN project's desk failed `send-failed`: asker and desk share every project room, so the bus refused a send without a room. It now falls back to a room of two (`sac dm <desk seat>`). Measured 2026-11-24 11:18; test fails without the fix. [REQ: a-gone-or-still-stalled-desk-is-replaced-by-a-desk-that-takes-the-request-over]
+
 ## Acceptance Criteria (from spec scenarios)
 
 - [x] AC-1: WHEN a desk with an open engagement has not moved past the stall bound and its background CPU is below the bound THEN it is judged stalled [REQ: a-desk-is-stalled-only-when-nothing-shows-it-working, scenario: a-hung-tool-call]

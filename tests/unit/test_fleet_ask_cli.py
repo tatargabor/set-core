@@ -185,3 +185,47 @@ def test_the_list_shows_state_age_and_the_waiting_mark(monkeypatch, capsys):
     assert "e-1" in out and "waiting" in out and "3700" in out and "export" in out
     assert "e-2" in out and "unmeasured" in out and "could not be read" in out
     assert api.calls[0][1] == "/api/fleet/engagements?asker=alpha%23aaaaaaaa"
+
+
+class SharedRoomsBus(Bus):
+    """The bus as measured when a session asks its OWN project's desk: a send without a room
+    is refused because both seats share every project room."""
+
+    def __init__(self, dm_ok=True):
+        super().__init__()
+        self.dm_ok = dm_ok
+
+    def __call__(self, argv, **kw):
+        if argv[1] == "dm":
+            self.calls.append(list(argv))
+            if not self.dm_ok:
+                return SimpleNamespace(returncode=1, stdout="", stderr="sac: no")
+            return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(
+                {"room": "dm-alpha-0000dddd-alpha-aaaaaaaa", "with": DESK["seat"]}))
+        if argv[1] == "send" and argv[2] in ("REQUEST", "QUESTION"):
+            self.calls.append(list(argv))
+            return SimpleNamespace(returncode=1, stdout="", stderr=(
+                "sac: You are in several rooms (a, b), so `room` is required — x"))
+        if argv[1] == "send":
+            self.calls.append(list(argv))
+            return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(
+                {"ts": "2026-11-24T11:20:00.000+01:00", "room": argv[2], "wakes": [DESK["seat"]]}))
+        return super().__call__(argv, **kw)
+
+
+def test_asking_one_s_own_project_falls_back_to_a_room_of_two():
+    api, bus = Api(), SharedRoomsBus()
+    code, out, err = _ask(api, bus)
+    assert code == 0, err
+    assert ["sac", "dm", DESK["seat"]] == [bus.calls[1][0].rsplit("/", 1)[-1]] + bus.calls[1][1:]
+    assert bus.calls[2][1:4] == ["send", "dm-alpha-0000dddd-alpha-aaaaaaaa", "REQUEST"]
+    assert bus.calls[2][-2:] == ["--to", DESK["seat"]]
+    assert ("POST", "/api/fleet/engagements/e-1/sent",
+            {"room": "dm-alpha-0000dddd-alpha-aaaaaaaa", "ts": "2026-11-24T11:20:00.000+01:00"}) in api.calls
+
+
+def test_no_room_of_two_still_fails_the_engagement():
+    api = Api()
+    code, out, err = _ask(api, SharedRoomsBus(dm_ok=False))
+    assert code == 1 and "room` is required" in err
+    assert ("POST", "/api/fleet/engagements/e-1/failed", {"reason": "send-failed"}) in api.calls
