@@ -392,12 +392,75 @@ def outward_hits(texts: Iterable[str], never: Iterable[str] = ()) -> List[str]:
     return hits
 
 
+# Which side of a question the pattern check reads (owner's decision, 2026-11-24).
+#
+# Measured live that morning: 2 of the first 3 proposals were excluded on a WORD, not an
+# act — "Check whether cegadat and crm replied about deleting the hook copies" (a check,
+# fired on the noun "törléséről") and "Install both" (fired on "nothing is pushed" in the
+# question and on the OTHER option "Push set-core"). The owner chose: block only when the
+# CHOSEN answer is itself the outward step. So:
+#
+# - the chosen answer is always read;
+# - the question is read only when the answer is consent ("Yes", "Mehet", or three words
+#   or fewer) — then the act lives in the question: "May I push?" + "Yes" stays excluded;
+# - the options NOT chosen are never read;
+# - a hit in the question preceded within three words by a negator ("nothing is pushed")
+#   does not count, and a hit in a read-only answer ("Check whether …") does not count when
+#   the hit word is a noun of the act ("deletion", "törlés…"), never when it is a verb.
+#
+# The model's own flag still excludes on its own, whatever the words say.
+
+_CONSENT = re.compile(r"^(?:yes|yeah|yep|ok|okay|sure|go|go ahead|do it|proceed|approve\w*|confirm\w*|accept\w*"
+                      r"|igen|mehet|jo|rendben|persze|csinald|csinaljuk|hajra|elfogad\w*|jovahagy\w*)\b")
+_READ_ONLY_LEAD = re.compile(r"^(?:check|verify|see|look|find out|ask|read|review|inspect|confirm whether|watch|wait"
+                             r"|ellenoriz\w*|nezd|nezz|nezzuk|kerdezd|derits|olvasd|figyeld|varj|vard)\b")
+_NOUN_OF_ACT = re.compile(r"^(?:\w+(?:ion|ions|ing|ings|ment|ments)"
+                          r"|torles\w*|kuldes\w*|feltoltes\w*|elesites\w*|kitelepites\w*|publikalas\w*"
+                          r"|pusholas\w*|fizetes\w*|utalas\w*|ertesites\w*|vasarlas\w*)$")
+_NEGATOR = re.compile(r"\b(?:not|nothing|never|no|none|without|n't|nem|nincs|sem|semmi|soha|nelkul)\b")
+
+
+def _bare(text: str) -> str:
+    return re.sub(r"^[\s\u2192>\-–—*•:.]+", "", fold(text or "")).strip()
+
+
+def _is_consent(choice: str) -> bool:
+    b = _bare(choice)
+    return bool(_CONSENT.match(b)) or len(re.findall(r"\w+", b)) <= 3
+
+
+def _word_at(text: str, start: int) -> str:
+    m = re.match(r"[\w-]+", text[start:])
+    return m.group(0) if m else ""
+
+
+def _families(text: str, never: Iterable[str], keep: Callable[[str, re.Match], bool]) -> List[str]:
+    folded = fold(text or "")
+    hits = []
+    for fam, pats in _COMPILED.items():
+        if any(keep(folded, m) for p in pats for m in p.finditer(folded)):
+            hits.append(fam)
+    if any(keep(folded, m) for p in _extra_compiled(never) for m in p.finditer(folded)):
+        hits.append("never_patterns")
+    return hits
+
+
+def _negated(text: str, m: re.Match) -> bool:
+    before = re.findall(r"[\w']+", text[:m.start()].split(".")[-1].split(";")[-1])[-3:]
+    return bool(_NEGATOR.search(" ".join(before)))
+
+
 def exclusion(kind: str, question: Question, choice: str, model_outward: bool,
               never: Iterable[str] = ()) -> Optional[str]:
     """Why this answer may not be written automatically, or None. Any one reason excludes."""
     if kind == KIND_PERMISSION:
         return "permission prompt"
-    hits = outward_hits([question.text, *question.options, choice], never)
+    never = list(never)
+    read_only = bool(_READ_ONLY_LEAD.match(_bare(choice)))
+    hits = _families(choice, never,
+                     lambda t, m: not (read_only and _NOUN_OF_ACT.match(_word_at(t, m.start()))))
+    if _is_consent(choice):
+        hits += [h for h in _families(question.text, never, lambda t, m: not _negated(t, m)) if h not in hits]
     if hits:
         return "outward step: " + ", ".join(hits)
     if model_outward:

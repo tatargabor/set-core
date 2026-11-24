@@ -8,6 +8,8 @@
  */
 
 export interface WaitingQuestion {
+  /** The relayed call's id — what the send-the-proposal button posts to. */
+  id?: string | null
   session_id: string
   project: string | null
   questions: number | null
@@ -150,4 +152,12 @@ export function parseRelayState(d: unknown): RelayState | null {
  */
 export function showUnwired(state: RelayState): boolean {
   return state.enabled && state.unwired.length > 0
+}
+
+/** The proposal the operator can send as their own answer with one click, or null. */
+export function sendable(w: WaitingQuestion): { id: string; choice: string; label: string } | null {
+  const v = w.auto_answer
+  if (!v || !w.id || !v.choice || !v.choice.trim() || v.state === 'done' || w.release_requested) return null
+  const choice = v.choice.replace(/^\s*(?:→|->)\s*/, '')
+  return { id: w.id, choice, label: v.outcome === 'allowed' && v.seconds_left !== null ? 'send now' : 'send it' }
 }

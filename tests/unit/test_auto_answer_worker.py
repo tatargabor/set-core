@@ -364,3 +364,15 @@ def test_the_pending_record_shows_the_proposal_while_it_waits(tmp_path):
     p = seen["p"][0]
     assert p["state"] == "proposed" and p["write_at"] == pytest.approx(r.start + 60, abs=1)
     assert p["questions"][0]["choice"] == "TEAL" and p["questions"][0]["tier"] == "decided"
+
+
+def test_an_excluded_proposal_sent_by_the_operator_is_logged_as_their_answer(tmp_path):
+    """The send button writes through the relay's own answer file, so the worker that is
+    holding the excluded proposal records it as the operator's answer — matched."""
+    d = aa.Decision({"Q1": answer(choice="Yes", refs=[aa.Reference("operator", "push it, as always", checked=True)])},
+                    {}, "fork", [], {}, "anthropic/x")
+    r = Relay(tmp_path, d, events={20: lambda rl: aw.send_proposal(CID, rl.base)})
+    out = r.work(payload=json.dumps(envelope(tmp_path, text="May I push?", options=("Yes", "No"))))
+    rec = r.records()[0]
+    assert rec["outcome"] == "excluded" and rec["human_answer"] == "Yes" and r.answer_text() == "Yes"
+    assert out["Q1"] == "excluded"

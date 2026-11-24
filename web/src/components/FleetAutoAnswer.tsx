@@ -104,7 +104,7 @@ function DecisionSummary({ decisions }: { decisions: DecisionRecord[] }) {
   )
 }
 
-export function FleetAutoAnswerPanel({ state, decisions, readAt, busy, error, onToggle, onCancel, onClose }: {
+export function FleetAutoAnswerPanel({ state, decisions, readAt, busy, error, onToggle, onCancel, onSend, onClose }: {
   state: AutoAnswerState | null
   decisions: DecisionRecord[] | null
   readAt: number
@@ -112,6 +112,7 @@ export function FleetAutoAnswerPanel({ state, decisions, readAt, busy, error, on
   error: string | null
   onToggle: () => void
   onCancel: (id: string) => void
+  onSend?: (id: string) => void
   onClose: () => void
 }) {
   const now = useNow(true)
@@ -176,6 +177,14 @@ export function FleetAutoAnswerPanel({ state, decisions, readAt, busy, error, on
                       <span className="ml-auto tabular-nums text-amber-300 whitespace-nowrap" data-fleet-auto-countdown>
                         writes in {countdown(p.seconds_left === null ? null : p.seconds_left - elapsed)}
                       </span>
+                      {onSend && (
+                        <button type="button" disabled={busy} onClick={() => onSend(p.id)}
+                                className="rounded border border-sky-400/50 px-1.5 text-sky-300 hover:bg-sky-400/10"
+                                title="Send it now as YOUR answer — no need to wait for the window"
+                                data-fleet-auto-send={p.id}>
+                          send now
+                        </button>
+                      )}
                       <button type="button" disabled={busy} onClick={() => onCancel(p.id)}
                               className="rounded border border-surface-line px-1.5 text-fg-strong hover:border-red-400/60 hover:text-red-300"
                               title="Do not write it: the question keeps waiting for your answer"
@@ -320,6 +329,7 @@ export default function FleetAutoAnswer() {
         <FleetAutoAnswerPanel state={state} decisions={decisions} readAt={readAt} busy={busy} error={error}
                               onToggle={() => state && post('/api/fleet/auto-answer', { enabled: !state.enabled })}
                               onCancel={id => post(`/api/fleet/auto-answer/${encodeURIComponent(id)}/cancel`)}
+                              onSend={id => post(`/api/fleet/auto-answer/${encodeURIComponent(id)}/send`)}
                               onClose={() => setOpen(false)} />
       )}
     </>

@@ -226,6 +226,37 @@ def pending_view(now: float, base: Optional[Path] = None) -> List[Dict[str, Any]
     return out
 
 
+def send_proposal(call_id: str, base: Optional[Path] = None) -> Optional[str]:
+    """Send the decider's proposal as the OPERATOR's answer, now. None on success, else why not.
+
+    Asked for by the owner (2026-11-24): an excluded or below-bar proposal is often right, and
+    the one-click way to say so was missing. This is the person answering — through the same
+    answer file the chat bridge and the fleet's own answer box write — so the exclusion, the
+    bar and the window do not apply: they govern what the DECIDER may write on its own. The
+    worker sees the answer like any human one and logs it as the operator's (`overtaken`).
+    """
+    base = base or qr.state_dir()
+    rec = read_pending(base, call_id)
+    if rec is None:
+        return "no proposal is recorded for that question"
+    if rec.get("state") == "done":
+        return "the proposal was already written"
+    questions = rec.get("questions") or []
+    if len(questions) != 1:
+        return "the agent asked several questions at once; answer them in its terminal"
+    choice = questions[0].get("choice")
+    if not isinstance(choice, str) or not choice.strip():
+        return "the decider made no proposal for this question"
+    session_id = str(rec.get("session_id") or "")
+    record = qr.waiting_record(session_id, base)
+    if not record or record.get("id") != call_id:
+        return "the question is no longer waiting on the relay"
+    why = qr.deliver_answer(session_id, choice, base)
+    if why is None:
+        logger.info("auto answer [%s]: the operator sent the proposal from the fleet", qr._safe_id(call_id)[-12:])
+    return why
+
+
 def verdict_view(now: float, base: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
     """The decider's verdict per relayed call, for the relay's waiting list.
 

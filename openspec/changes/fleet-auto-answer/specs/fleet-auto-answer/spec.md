@@ -79,7 +79,7 @@ Before the decision, the decider SHALL run the project knowledge-base search (`s
 - **THEN** the question is forwarded unchanged and no answer is written
 
 ### Requirement: Outward and irreversible steps are never answered automatically
-The decider SHALL NOT write an answer when the blocking point is a permission prompt, or when either check marks the step as outward or irreversible: a deterministic pattern check over the question, its options and the chosen answer (covering at least publishing or pushing, deploying, production, sending a message or email, deleting, paying, and credentials, plus `auto_answer.never_patterns`), or the model's own flag. In those cases the question SHALL be forwarded with the decider's recommendation, its tier and its source attached, and SHALL wait for a human answer.
+The decider SHALL NOT write an answer when the blocking point is a permission prompt, or when either check marks the step as outward or irreversible: a deterministic pattern check over the chosen answer — and over the question too when the answer is consent ("yes", "mehet", or three words or fewer), so the act the question names is checked — (covering at least publishing or pushing, deploying, production, sending a message or email, deleting, paying, and credentials, plus `auto_answer.never_patterns`), or the model's own flag. Options that were not chosen SHALL NOT exclude; a mention in the question preceded by a negator ("nothing is pushed") SHALL NOT exclude; a noun of the act inside a read-only answer ("check whether the deletion finished") SHALL NOT exclude, while a verb of the act in the answer always does. In those cases the question SHALL be forwarded with the decider's recommendation, its tier and its source attached, and SHALL wait for a human answer.
 
 #### Scenario: The agent asks whether to push
 - **WHEN** an agent asks "may I push the 11 commits?" and the record shows the operator approved pushes before
@@ -90,8 +90,12 @@ The decider SHALL NOT write an answer when the blocking point is a permission pr
 - **THEN** no automatic answer is written, whatever the tier
 
 #### Scenario: Only the pattern fires
-- **WHEN** the model marks the step as not outward but the question mentions deploying
+- **WHEN** the model marks the step as not outward but the question mentions deploying and the answer is "Yes"
 - **THEN** no automatic answer is written
+
+#### Scenario: An outward option that was not chosen
+- **WHEN** the options are "Leave as is", "Install both" and "Push set-core", the question says nothing is pushed yet, and the chosen answer is "Install both"
+- **THEN** the pattern check does not exclude the answer
 
 ### Requirement: An automatic answer is proposed before it is written, and a human answer wins
 When the decider has an allowed choice — tier `decided` or `found`, or tier `likely` with a confidence at or above `auto_answer.likely_min` — it SHALL forward the question with the proposed answer, its tier, its source and the time it will be written, and SHALL write the answer only after `auto_answer.window_s` seconds, and only if no answer for that question exists by then and the proposal was not cancelled. The decider SHALL never overwrite an answer that is already present.

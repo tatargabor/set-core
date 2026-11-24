@@ -51,6 +51,8 @@ from ..fleet.discovery import (
 from ..fleet import scopes as fleet_scopes
 from ..fleet import tmux_view as fleet_tmux_view
 from ..fleet import mandate as fleet_mandate
+from ..fleet import desk as fleet_desk
+from ..fleet import engagement as fleet_engagement
 from ..fleet import instruct as fleet_instruct
 from ..fleet import channels as fleet_channels_mod
 from ..fleet import purpose as fleet_purpose
@@ -213,6 +215,37 @@ def _settle_mandates(grouped: List[Dict[str, Any]],
             store.end_missing(alive.keys())
     except Exception as exc:  # noqa: BLE001 — a listing must not fail on its bookkeeping
         logger.warning("fleet api: the mandate store was not updated (%s)", type(exc).__name__)
+
+
+def _attach_desk_forecasts(grouped: List[Dict[str, Any]]) -> None:
+    """`desk_close` on each framework-held desk row: when the quiet sweep will stop it.
+
+    The same decision the sweep makes (`fleet_desk.close_forecast`), so the countdown the tile
+    shows cannot disagree with what happens. The engagement store is read once, and only when
+    a desk row exists; an open engagement whose reply the bus already links is settled first,
+    as the sweep does, or a desk that has answered would show no countdown until the sweep's
+    next round. Anything unreadable leaves the rows without a forecast — never a countdown
+    that is not going to run out.
+    """
+    desks = [row for group in grouped for row in group.get("agents") or []
+             if (row.get("mandate") or {}).get("kind") == "desk"
+             and row.get("population") == "started-here"]
+    if not desks:
+        return
+    try:
+        quiet_after = fleet_desk.quiet_seconds()
+        store = fleet_engagement.EngagementStore()
+        if store.list(state="open"):
+            fleet_engagement.refresh(store)
+    except Exception as exc:  # noqa: BLE001 — a listing must not fail on a forecast
+        logger.warning("fleet api: desk close forecast not computed (%s)", type(exc).__name__)
+        return
+    for row in desks:
+        try:
+            live = store.live_for_desk(str(row["mandate"].get("project")))
+        except Exception:  # noqa: BLE001
+            live = None
+        row["desk_close"] = fleet_desk.close_forecast(row, live_engagements=live, quiet_after=quiet_after)
 
 
 def _terminal_population(
@@ -902,6 +935,7 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
         })
 
     _settle_mandates(grouped, mandates)
+    _attach_desk_forecasts(grouped)
 
     tally = _state_tally(states)
     working, unknown, waiting = tally["working"], tally["unknown"], tally["waiting"]
@@ -2903,6 +2937,7 @@ def _relay_payload() -> Dict[str, Any]:
     for rec in qr.list_waiting():
         started = rec.get("started")
         waiting.append({
+            "id": rec.get("id"),
             "session_id": rec.get("session_id"),
             "project": rec.get("project"),
             "questions": rec.get("questions"),
@@ -2995,6 +3030,18 @@ def fleet_auto_answer_decisions(limit: int = 30) -> Dict[str, Any]:
 
     limit = max(1, min(int(limit), 200))
     return {"decisions": aw.read_log(limit)}
+
+
+@router.post("/api/fleet/auto-answer/{call_id}/send")
+def fleet_auto_answer_send(call_id: str) -> Dict[str, Any]:
+    """Send the decider's proposal as the operator's own answer, now (the person's act, so
+    no exclusion, bar or window applies). 409 with the reason when it cannot be sent."""
+    from ..fleet import auto_answer_worker as aw
+
+    why = aw.send_proposal(call_id)
+    if why is not None:
+        raise HTTPException(status_code=409, detail=why)
+    return aw.status()
 
 
 @router.post("/api/fleet/auto-answer/{call_id}/cancel")

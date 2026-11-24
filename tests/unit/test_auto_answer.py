@@ -176,11 +176,65 @@ def test_exclusion_sides():
     assert aa.exclusion(aa.KIND_ASK, q(text="Deploy now?", options=["Yes", "No"]), "Yes", False)
     # the model's flag alone excludes
     assert aa.exclusion(aa.KIND_ASK, plain, "TEAL", True) == "outward step: flagged by the model"
-    # an OPTION alone is enough: the step is on the table even if another one is chosen
-    assert aa.exclusion(aa.KIND_ASK, q(text="How do we go on?", options=["Push to main", "Keep it local"]),
-                        "Keep it local", False) == "outward step: publish"
-    # the CHOSEN answer is checked too
+    # the CHOSEN answer is checked
     assert aa.exclusion(aa.KIND_CONTINUATION, q(text="Next?", options=[]), "push it", False)
+    assert aa.exclusion(aa.KIND_ASK, q(text="How do we go on?", options=["Push to main", "Keep it local"]),
+                        "Push to main", False) == "outward step: publish"
+
+
+# The owner's decision (2026-11-24): block only when the CHOSEN answer is the outward step.
+# Each case below is either one of the two live false exclusions, or the guard that keeps
+# the narrowing from opening the door it must keep shut.
+
+def test_an_option_not_chosen_does_not_exclude():
+    """Was: an option alone excluded. Measured live: 'Install both' blocked by 'Push set-core'."""
+    assert aa.exclusion(aa.KIND_ASK, q(text="How do we go on?", options=["Push to main", "Keep it local"]),
+                        "Keep it local", False) is None
+
+
+def test_the_live_install_both_case_is_allowed():
+    text = ("set-core desk: the roll is done on 40 trees. Everything is committed locally and nothing is "
+            "pushed. Two trees never had auto-clear. Should I do a full first install there?")
+    assert aa.exclusion(aa.KIND_ASK, q(text=text, options=["Leave as is", "Install both", "Push set-core"]),
+                        "Install both", False) is None
+
+
+def test_the_live_check_about_a_deletion_is_allowed():
+    choice = "→ Ellenőrizd, hogy a cegadat és a crm válaszolt-e a hook copy-k törléséről."
+    assert aa.exclusion(aa.KIND_CONTINUATION, q(text="Finished; what next?", options=[choice]), choice, False) is None
+    assert aa.exclusion(aa.KIND_CONTINUATION, q(text="Next?", options=[]),
+                        "Check whether the deletion of the old branches finished", False) is None
+
+
+@pytest.mark.parametrize("text,choice", [
+    ("May I push the 11 commits?", "Yes"),
+    ("May I push the 11 commits?", "Yes, go ahead and do that now please"),
+    ("Mehet a push?", "Mehet"),
+    ("Töröljem a régi ágat?", "Igen"),
+    ("Push now or after the review?", "Now"),
+    ("Deploy now?", "OK"),
+    ("Should I send the summary to the client?", "Sure"),
+])
+def test_consent_to_an_outward_question_still_excludes(text, choice):
+    assert aa.exclusion(aa.KIND_ASK, q(text=text, options=[choice, "No"]), choice, False)
+
+
+@pytest.mark.parametrize("choice", [
+    "Check the replies, then delete the old branches",     # a verb after a read-only lead
+    "Ellenőrizd, majd töröld a régi ágat",
+    "Push the fix and close the ticket",
+    "Küldd el a levelet",
+    "Deploy to staging",
+])
+def test_an_outward_verb_in_the_chosen_answer_still_excludes(choice):
+    assert aa.exclusion(aa.KIND_CONTINUATION, q(text="Next?", options=[choice]), choice, False)
+
+
+def test_a_negated_mention_does_not_count_but_a_plain_one_does():
+    assert aa.exclusion(aa.KIND_ASK, q(text="Nothing is pushed yet. Keep going?", options=["Yes", "No"]),
+                        "Yes", False) is None
+    assert aa.exclusion(aa.KIND_ASK, q(text="Do not wait for CI. Push now?", options=["Yes", "No"]),
+                        "Yes", False) == "outward step: publish"
 
 
 # --------------------------------------------------------------------------- 2.4

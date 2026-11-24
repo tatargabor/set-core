@@ -3,7 +3,7 @@
  * and the waiting order.
  */
 import { describe, expect, it } from 'vitest'
-import { canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, showUnwired, verdictLine, type RelayState } from '../../src/lib/fleetRelay'
+import { canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, sendable, setupCommands, showUnwired, verdictLine, type RelayState } from '../../src/lib/fleetRelay'
 
 const state = (over: Partial<RelayState> = {}): RelayState =>
   ({ enabled: false, target: 'command', missing: [], ready: true, waiting: [], unwired: [], ...over })
@@ -104,5 +104,20 @@ describe('the decider verdict on a waiting row (fleet-auto-answer, 2026-11-24)',
       .toBe('auto: writes «TEAL» in 42s')
     expect(verdictLine({ ...base, state: 'cancelled', outcome: 'allowed', choice: 'TEAL' })!.text)
       .toBe('auto: cancelled — waits for you')
+  })
+})
+
+describe('the send-the-proposal button (2026-11-24)', () => {
+  const w = { id: 'relay-x', session_id: 's', project: 'p', questions: 1, target: 'command', seconds: 5, release_requested: false }
+  const v = { state: 'forwarded', outcome: 'excluded', reason: 'outward step: publish', choice: '→ Install both', tier: 'decided', seconds_left: null }
+  it('offers an excluded proposal, stripped of its arrow, and a due one as "send now"', () => {
+    expect(sendable({ ...w, auto_answer: v })).toEqual({ id: 'relay-x', choice: 'Install both', label: 'send it' })
+    expect(sendable({ ...w, auto_answer: { ...v, outcome: 'allowed', state: 'proposed', seconds_left: 30 } })!.label).toBe('send now')
+  })
+  it('offers nothing without a proposal, an id, or while releasing', () => {
+    expect(sendable({ ...w, auto_answer: { ...v, choice: null } })).toBeNull()
+    expect(sendable({ ...w, id: null, auto_answer: v })).toBeNull()
+    expect(sendable({ ...w, release_requested: true, auto_answer: v })).toBeNull()
+    expect(sendable({ ...w, auto_answer: null })).toBeNull()
   })
 })

@@ -127,3 +127,40 @@ def test_the_waiting_listing_says_why_an_answer_will_not_be_written(world):
     a = next(w for w in api.fleet_question_relay()["waiting"] if w["session_id"] == SID)["auto_answer"]
     assert a["outcome"] == "excluded" and a["reason"] == "outward step: delete" and a["choice"] == "TEAL"
     assert a["seconds_left"] is None and a["state"] == "forwarded"
+
+
+def test_send_route_answers_with_the_proposal_as_the_operator(world):
+    """The owner's one click (2026-11-24): an EXCLUDED proposal is sent as their own answer,
+    through the relay's answer file; refusals name the reason."""
+    from fastapi import HTTPException
+    from set_orch.api import fleet as api
+    base = world / "state"
+    qr._write_json(qr.waiting_path(SID, base), {"session_id": SID, "id": CID, "project": "proj", "questions": 1,
+                                                 "target": "command", "started": time.time(), "pid": os.getpid()})
+    propose(base, time.time() + 30, state="forwarded", outcome="excluded")
+    row = next(w for w in api.fleet_question_relay()["waiting"] if w["session_id"] == SID)
+    assert row["id"] == CID, "the waiting row carries the call id the button posts to"
+    api.fleet_auto_answer_send(CID)
+    answer = json.loads(qr.answer_file(base / "answers", CID, "Q1").read_text())
+    assert answer == {"valasz": "TEAL"}
+    with pytest.raises(HTTPException) as exc:
+        api.fleet_auto_answer_send("relay-nope")
+    assert exc.value.status_code == 409 and "no proposal" in exc.value.detail
+
+
+def test_send_refuses_without_a_proposal_or_a_waiting_question(world):
+    from fastapi import HTTPException
+    from set_orch.api import fleet as api
+    base = world / "state"
+    propose(base, time.time() + 30, state="forwarded", outcome="excluded")
+    with pytest.raises(HTTPException) as exc:
+        api.fleet_auto_answer_send(CID)
+    assert "no longer waiting" in exc.value.detail
+    rec = aw.read_pending(base, CID)
+    rec["questions"][0]["choice"] = None
+    aw._private_write(aw.pending_path(base, CID), rec)
+    qr._write_json(qr.waiting_path(SID, base), {"session_id": SID, "id": CID, "questions": 1, "pid": os.getpid()})
+    with pytest.raises(HTTPException) as exc:
+        api.fleet_auto_answer_send(CID)
+    assert "no proposal" in exc.value.detail
+    assert not qr.answer_file(base / "answers", CID, "Q1").exists()

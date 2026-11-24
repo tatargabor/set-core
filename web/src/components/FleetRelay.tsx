@@ -21,7 +21,7 @@ import { Hourglass, Send, TriangleAlert, X } from 'lucide-react'
 
 import { age } from '../lib/fleetAge'
 import {
-  canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, showUnwired, verdictLine, type RelayState,
+  canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, sendable, showUnwired, verdictLine, type RelayState,
 } from '../lib/fleetRelay'
 import { agentName, kindLabel, useAgentNames } from '../lib/fleetAutoAnswer'
 
@@ -65,6 +65,22 @@ export default function FleetRelay() {
       document.removeEventListener('pointerdown', onDown)
     }
   }, [open])
+
+  /** The send route answers with the auto-answer state, not the relay's: re-read after. */
+  const send = (id: string) => {
+    setBusy(true)
+    fetch(`/api/fleet/auto-answer/${encodeURIComponent(id)}/send`, { method: 'POST' })
+      .then(async r => {
+        if (!r.ok) {
+          const d = await r.json().catch(() => null)
+          throw new Error(d?.detail ?? `HTTP ${r.status}`)
+        }
+        setError(null)
+        read()
+      })
+      .catch(e => { setError(`not sent: ${String(e?.message ?? e)}`); setOpen(true) })
+      .finally(() => setBusy(false))
+  }
 
   const post = (url: string, body?: unknown) => {
     setBusy(true)
@@ -196,6 +212,7 @@ export default function FleetRelay() {
                 {waiting.map(w => {
                   const n = agentName(w.session_id, w.project ? `${w.project} · ${w.session_id.slice(0, 8)}` : null, w.project)
                   const v = verdictLine(w.auto_answer)
+                  const snd = sendable(w)
                   return (
                   <li key={w.session_id} className="py-1.5" data-fleet-relay-row={w.session_id}>
                     <div className="flex items-center gap-2">
@@ -218,10 +235,20 @@ export default function FleetRelay() {
                         )}
                     </div>
                     {v && (
-                      <p className={`mt-0.5 truncate ${v.tone === 'due' ? 'text-amber-300' : v.tone === 'held' ? 'text-amber-400/80' : 'text-fg-muted'}`}
-                         title={v.text} data-fleet-relay-auto={w.auto_answer?.outcome ?? 'none'}>
-                        {v.text}
-                      </p>
+                      <div className="mt-0.5 flex items-center gap-2 min-w-0">
+                        <p className={`min-w-0 truncate ${v.tone === 'due' ? 'text-amber-300' : v.tone === 'held' ? 'text-amber-400/80' : 'text-fg-muted'}`}
+                           title={v.text} data-fleet-relay-auto={w.auto_answer?.outcome ?? 'none'}>
+                          {v.text}
+                        </p>
+                        {snd && (
+                          <button type="button" disabled={busy} onClick={() => send(snd.id)}
+                                  className="ml-auto shrink-0 rounded border border-sky-400/50 px-1.5 text-sky-300 hover:bg-sky-400/10"
+                                  title={`Answer with «${snd.choice}» as YOUR answer, now — the agent gets it at once`}
+                                  data-fleet-relay-send={snd.id}>
+                            {snd.label}
+                          </button>
+                        )}
+                      </div>
                     )}
                   </li>
                   )
