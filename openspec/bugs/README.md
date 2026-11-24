@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-220 — the wait detector re-asks on the phone when a turn ends waiting on the session's OWN background work, not on the user
+- **state:** open
+- **reported:** 2026-11-24 by this session (set-core#8d47865a), while running the `fleet-engagement-takeover` live tests.
+- **measured:** twice in one session. The turn ended with a status that said, in words, that a background measurement was running and would report back (a `run_in_background` watcher was live, task id in the transcript); the Stop hook `set-hook-wait-detect` answered *"The user is away … You ended your turn waiting on them. Ask it again now with the AskUserQuestion tool"*. Nothing was asked of the user in that turn. The same hook had earlier been right (a real question), so the classifier cannot tell "I wait for my background task" from "I wait for you".
+- **fail direction:** noisy — a phone question with no question in it costs the owner an interruption and, if answered, a turn; worse, a session that obeys invents a question to satisfy the hook. This session did not, and did useful work instead.
+- **fixed when:** a turn end whose session holds a live background task it said it is waiting for produces no re-ask (test on `wait_detect.decide` with a live background-task marker), while a turn that asks the user something still does.
+
 ### B-219 — the wait detector re-asked a `/ds` turn end on the phone while the user was at the microphone, and their `/dd` then queued behind the held question
 - **state:** closed 2026-11-24 in the commit that adds this line. `wait_detect.decide` now skips (verdict `SKIPPED`) while `<cwd>/.set/copilot/<session_id>/capture.pid` names a live pid: that is the folder `/ds` scopes its capture to, and `/dd` ends it from this terminal. `test_a_live_dictation_in_this_session_is_not_reasked` failed against the previous code (stash-and-rerun) and passes with the fix. `test_a_dead_capture_pid_does_not_silence_the_detector` holds the other direction. `tests/unit/test_wait_detect.py`: 24 passed.
 - **reported:** 2026-11-24 by the user, by dictation (*„nem értem, hogy miért jön föl … feldobta a kérdést a diktálás, hogy kész, leállítsam-e. Közben azért, mert benyomtam egyébként a per dd parancsot. És be is tette queue-ba"*).
