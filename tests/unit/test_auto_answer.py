@@ -687,3 +687,23 @@ def test_allow_families_reads_only_known_families_and_tells_the_model():
     prompt = aa.build_prompt(aa.KIND_ASK, [q(text="Push?", options=["Yes"])], [], [], allowed=["push"])
     assert "does NOT need to be asked about: git push" in prompt
     assert "does NOT need" not in aa.build_prompt(aa.KIND_ASK, [q(text="Push?", options=["Yes"])], [], [])
+
+
+def test_a_report_of_a_done_act_is_not_the_act_asked_about():
+    """Live 2026-11-24: 'az aiplus-platform értesítve' (already notified) excluded a question
+    about fixing a test as 'send'. A completed participle reports; it does not ask."""
+    text = ("Az /auto-clear skill felismeri a bekötést (704bcf4, pusholva, az aiplus-platform értesítve), "
+            "215/215 zöld. Maradt egy apróság: a doctor view teszt piros. Javítsam?")
+    assert aa.exclusion(aa.KIND_ASK, q(text=text, options=["Javítsd (Recommended)", "Hagyd"]),
+                        "Javítsd (Recommended)", False) is None
+    assert aa.exclusion(aa.KIND_ASK, q(text="The fix was already pushed and CI is green. Close the ticket?",
+                                       options=["Yes"]), "Yes", False) is None
+
+
+@pytest.mark.parametrize("text", [
+    "Pusholva legyen még ma?",                 # asks for the state
+    "Get it pushed tonight?",                  # a past form that asks, with no auxiliary before it
+    "Elküldve? Küldjem el most a levelet?",    # the plain verb in the next sentence still counts
+])
+def test_a_participle_that_asks_still_excludes(text):
+    assert aa.exclusion(aa.KIND_ASK, q(text=text, options=["Igen"]), "Igen", False)

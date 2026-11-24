@@ -477,6 +477,24 @@ def _negated(text: str, m: re.Match) -> bool:
     return bool(_NEGATED_AFTER.search(" ".join(re.findall(r"[\w']+", after)[:6])))
 
 
+_COMPLETED_AUX = re.compile(r"\b(?:already|was|were|been|has|have|had|is|are|mar|mar is)\b")
+
+
+def _completed(text: str, m: re.Match) -> bool:
+    """A report of an act already done, not the act asked about (live 2026-11-24: "az
+    aiplus-platform értesítve" excluded a question about fixing a test as 'send').
+    Hungarian -va/-ve participles, unless the next word asks for the state ("pusholva
+    legyen?"); English past forms only right after already/was/has/…"""
+    word = _word_at(text, m.start())
+    after = re.findall(r"[\w']+", text[m.start() + len(word):])[:1]
+    if re.fullmatch(r"\w+(?:va|ve)", word):
+        return not (after and after[0] in ("legyen", "lesz", "maradjon", "kell"))
+    if re.fullmatch(r"\w+ed|sent", word):
+        before = re.findall(r"[\w']+", text[:m.start()])[-2:]
+        return bool(_COMPLETED_AUX.search(" ".join(before)))
+    return False
+
+
 def exclusion(kind: str, question: Question, choice: str, model_outward: bool,
               never: Iterable[str] = (), allowed: Iterable[str] = ()) -> Optional[str]:
     """Why this answer may not be written automatically, or None. Any one reason excludes.
@@ -488,7 +506,8 @@ def exclusion(kind: str, question: Question, choice: str, model_outward: bool,
     hits = _families(choice, never,
                      lambda t, m: not (read_only and _NOUN_OF_ACT.match(_word_at(t, m.start()))))
     if _is_consent(choice):
-        hits += [h for h in _families(question.text, never, lambda t, m: not _negated(t, m)) if h not in hits]
+        hits += [h for h in _families(question.text, never,
+                                      lambda t, m: not (_negated(t, m) or _completed(t, m))) if h not in hits]
     allowed = set(allowed)
     hits = [h for h in hits if h not in allowed]
     if hits:
