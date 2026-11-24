@@ -75,8 +75,15 @@ consumer's name, path, or content.
 - **fail direction:** silent, reassuring — "templates current" is true of the disk and false of the process; the cost is a full idle compaction per idle session.
 - **fixed when:** the doctor warns, with `systemctl --user restart <unit>` as the fix, for a watcher unit whose `ExecMainStartTimestamp` is older than its `watch-auto-clear.sh` mtime; and `install.sh` / `set-project init` restart the unit when they rewrite that script. A test covers both the stale and the fresh case.
 
+### B-238 — `fleetSurface.test.tsx` and `fleetArrangement.test.tsx` fail a DIFFERENT subset of their tests on every run
+- **state:** open
+- **reported:** 2026-11-24 by this session, running the web suite before a push.
+- **measured:** three consecutive runs of `npx vitest run tests/unit/fleetArrangement.test.tsx tests/unit/fleetSurface.test.tsx` on one unchanged tree failed 2, 2 and 5 tests, with a different set each time (e.g. "selects back: clicking a tab enlarges that agent instead", "renders a waiting agent as waiting, not as quiet" — `TypeError: Expected container to be an Element … but got null` at `fleetArrangement.test.tsx:554`). A worktree at `github/main` also failed a test of `fleetArrangement.test.tsx` that passed in the next run here. Neither file imports the auto-answer code changed in that push.
+- **fail direction:** loud, random — the worst kind for a gate: a real regression in these files reads as the usual noise, and a green run proves nothing.
+- **fixed when:** ten consecutive runs of the two files pass with no failure; the root cause (shared module state, a timer, or a query racing a render) is named in the fix.
+
 ### B-236 — the auto-answer panel's "not wired" hint always tells the reader to copy a `question_relay.command` that may not exist
-- **state:** closed 2026-11-24 by `d2a28286` — the route reports `relay_command`; the hint is built from it (one line when unset, both with the real value when set). Four tests fail without the fix; live route answers `"relay_command":"set-auto-answer"` after the restart.
+- **state:** closed 2026-11-24 by `339b2564` — the route reports `relay_command`; the hint is built from it (one line when unset, both with the real value when set). Four tests fail without the fix; live route answers `"relay_command":"set-auto-answer"` after the restart.
 - **reported:** 2026-11-24 by the user, from a screenshot of the fleet header's Automatic answers panel right after switching it on.
 - **measured:** `set-config get question_relay.command` → `unset`, `auto_answer.forward_command` → `unset`; `/api/fleet/auto-answer` → `"enabled":true,"wired":false,"forward":false`. The panel still printed `set-config set auto_answer.forward_command "<the current question_relay.command>"` as the first step. The text is a static literal in `web/src/components/FleetAutoAnswer.tsx` (~line 156), and the route does not say whether a relay command exists, so the panel cannot tell the two cases apart.
 - **fail direction:** loud, misleading — the reader is told to forward to a command that does not exist, and may invent one, or set the forward key to the placeholder text literally.

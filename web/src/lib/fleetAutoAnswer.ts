@@ -352,6 +352,7 @@ export async function setAgentOff(entry: string, off: boolean): Promise<AutoAnsw
   if (!parsed) throw new Error('unexpected answer shape')
   publishOffAgents(parsed.off_agents, parsed.enabled)
   return parsed
+}
 
 /**
  * The commands that wire the decider in, built from what IS configured (B-236): with no
