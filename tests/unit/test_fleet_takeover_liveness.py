@@ -61,6 +61,51 @@ def test_a_unit_measurement_that_raises_keeps_the_mandate(tmp_path):
     assert store.get(made["id"])["ended"] is None
 
 
+def _aged_unitless(tmp_path, **over):
+    now = [1000.0]
+    store = MandateStore(str(tmp_path / "m.json"), clock=lambda: now[0])
+    made = _make(store, unit=None, **over)
+    now[0] += 600
+    return store, made
+
+
+def test_a_mandate_without_a_unit_is_measured_through_its_label(tmp_path):
+    """B-224: a started mandate with no unit was ended without any measurement."""
+    store, made = _aged_unitless(tmp_path)
+    asked = []
+
+    def alive(unit):
+        asked.append(unit)
+        return True
+
+    assert store.end_missing([], unit_alive=alive) == []
+    assert store.get(made["id"])["ended"] is None
+    assert asked == ["set-agent-beta-desk.scope"]
+
+
+def test_a_mandate_without_a_unit_whose_label_scope_is_gone_is_ended(tmp_path):
+    store, made = _aged_unitless(tmp_path)
+    assert store.end_missing([], unit_alive=lambda unit: False) == [made["id"]]
+    assert store.get(made["id"])["ended"]["reason"] == "ended"
+
+
+def test_a_mandate_with_neither_unit_nor_label_is_unmeasurable_and_kept(tmp_path):
+    store, made = _aged_unitless(tmp_path, label=None)
+    assert store.end_missing([], unit_alive=lambda unit: False) == []
+    assert store.get(made["id"])["ended"] is None
+
+
+def test_a_kept_mandate_costs_the_store_no_write(tmp_path):
+    """The listing is polled: keeping a mandate must not rewrite the store every round."""
+    store, made = _aged_store(tmp_path)
+    before = (tmp_path / "m.json").stat().st_mtime_ns
+    import os
+    os.utime(tmp_path / "m.json", ns=(before - 10_000_000, before - 10_000_000))
+    stamp = (tmp_path / "m.json").stat().st_mtime_ns
+    assert store.end_missing([], unit_alive=lambda unit: True) == []
+    assert (tmp_path / "m.json").stat().st_mtime_ns == stamp
+
+
 def test_a_unit_measured_gone_ends_the_mandate(tmp_path):
     store, made = _aged_store(tmp_path)
     seen = []

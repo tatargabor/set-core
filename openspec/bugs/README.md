@@ -69,7 +69,7 @@ consumer's name, path, or content.
 ## Open
 
 ### B-224 — `end_missing` ends a desk mandate that has no recorded unit without measuring anything
-- **state:** open
+- **state:** closed 2026-11-24 in the commit that adds this line. `end_missing` measures a unitless record through the scope its label names (`mandate.measured_unit` → `scopes.unit_name(label)`; on the live store the derived name equals the recorded unit in 22/22 started records), keeps one with neither unit nor label as unmeasured, and measures before taking the lock, so a kept mandate costs the polled listing no store write (the old code rewrote the file on every round it ran). Tests `test_a_mandate_without_a_unit_is_measured_through_its_label`, `…_with_neither_unit_nor_label_is_unmeasurable_and_kept` and `test_a_kept_mandate_costs_the_store_no_write` fail against the previous code and pass with the fix.
 - **reported:** 2026-11-24 by this session (set-core#8d47865a), during `/opsx:verify fleet-engagement-takeover`.
 - **measured:** `lib/set_orch/fleet/mandate.py` `end_missing` consults `unit_alive` only `if unit_alive is not None and record["unit"]`; a started mandate with an empty `unit` falls through to `ended`. The spec `engagement-takeover` ("A mandate is ended for a missing agent only when its unit is measured gone") says a mandate whose unit state cannot be measured is kept. Latent today: `~/.local/state/set-core/fleet-mandates.json` holds 22 `source: start` records and all 22 carry a `unit` (counted 2026-11-24 ~13:00).
 - **fail direction:** pass toward ending — a live desk without a recorded unit would lose its mandate on one missed listing, the `desk-not-ready` failure the change was written after.

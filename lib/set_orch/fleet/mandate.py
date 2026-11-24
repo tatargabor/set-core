@@ -34,7 +34,7 @@ import secrets
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Mapping, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -433,35 +433,73 @@ class MandateStore:
         gap, not a zero (measured 2026-11-24: a listing taken while the service was stopping
         ended a desk that ran on for fifteen minutes and kept its label, and the next request
         to that project failed). A unit measured alive — or whose state cannot be measured —
-        keeps its mandate.
+        keeps its mandate. A record with no unit is measured through the scope its label
+        names (the owner names a scope after the label); one with neither is unmeasurable and
+        kept (B-224).
+
+        The scopes are measured BEFORE the store is locked, and the store is written only
+        when something ends: this runs on a polled listing, and a mandate kept on every round
+        must cost no write and no lock held across a process call.
         """
         alive = set(alive_ids)
         now = self._clock()
+
+        def candidates(records: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+            return [r for r in records.values()
+                    if not r["ended"] and r["id"] not in alive and r["source"] == "start"
+                    and now - float(r["declared_at"] or now) >= grace_seconds]
+
+        gone: set = set()
+        for record in candidates(self._load()):
+            if unit_alive is None:
+                gone.add(record["id"])
+                continue
+            unit = measured_unit(record)
+            if unit is None:
+                live: Optional[bool] = None
+            else:
+                try:
+                    live = unit_alive(unit)
+                except Exception as exc:  # noqa: BLE001 — unmeasured, never "gone"
+                    logger.warning("fleet mandate: unit state of %s unreadable (%s)",
+                                   unit, type(exc).__name__)
+                    live = None
+            if live is False:
+                gone.add(record["id"])
+                continue
+            reported = (record["id"], live)
+            log = logger.info if reported not in _KEPT_REPORTED else logger.debug
+            _KEPT_REPORTED.add(reported)
+            log("fleet mandate: %s kept although absent from the listing (unit %s %s)",
+                record["id"], unit or "none recorded",
+                "alive" if live else "unmeasured")
+        if not gone:
+            return []
         ended: List[str] = []
         with self._mutate() as records:
-            for record in records.values():
-                if record["ended"] or record["id"] in alive or record["source"] != "start":
-                    continue
-                if now - float(record["declared_at"] or now) < grace_seconds:
-                    continue
-                if unit_alive is not None and record["unit"]:
-                    try:
-                        live = unit_alive(record["unit"])
-                    except Exception as exc:  # noqa: BLE001 — unmeasured, never "gone"
-                        logger.warning("fleet mandate: unit state of %s unreadable (%s)",
-                                       record["unit"], type(exc).__name__)
-                        live = None
-                    if live is not False:
-                        logger.info("fleet mandate: %s kept although absent from the listing "
-                                    "(unit %s %s)", record["id"], record["unit"],
-                                    "alive" if live else "unmeasured")
-                        continue
-                record["ended"] = {"at": now, "reason": "ended"}
-                ended.append(record["id"])
+            for record in candidates(records):
+                if record["id"] in gone:
+                    record["ended"] = {"at": now, "reason": "ended"}
+                    ended.append(record["id"])
         if ended:
             logger.info("fleet mandate: %d mandate(s) ended — their agents are gone", len(ended))
         return ended
 
+
+# (mandate id, measured liveness) pairs already logged as kept, so a polled listing says it once.
+_KEPT_REPORTED: set = set()
+
+
+def measured_unit(record: Mapping[str, Any]) -> Optional[str]:
+    """The scope unit to measure for a record: its own, else the one its label names, else None."""
+    unit = record.get("unit")
+    if unit:
+        return unit
+    label = record.get("label")
+    if not label:
+        return None
+    from . import scopes
+    return scopes.unit_name(label)
 
 def unit_alive(unit: str) -> Optional[bool]:
     """Whether a framework scope still holds a live agent. None when it cannot be measured."""
