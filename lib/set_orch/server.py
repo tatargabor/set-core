@@ -8,6 +8,7 @@ This is the SINGLE entry point — replaces both set-orch-core and set-manager.
 
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,13 +16,15 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api import router as api_router, include_optional_routers
 from .chat import router as chat_router, session_manager
 from .watcher import WatcherManager
 from .websocket import router as ws_router, connection_manager
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -204,6 +207,20 @@ def create_app(web_dist_dir: str | None = None) -> FastAPI:
 
         @app.get("/{file_path:path}")
         async def spa_catchall(request: Request, file_path: str):
+            # An `/api/` path that reached the catch-all has NO route in this
+            # process. Answering it with index.html (HTTP 200) made a stale
+            # server look like a broken client: measured 2026-11-24, a service
+            # started before a pull answered three new routes with the SPA and
+            # the fleet header read "Unexpected token '<' ... is not valid
+            # JSON". A JSON 404 that names the likely cause is what a reader
+            # can act on.
+            if file_path == "api" or file_path.startswith("api/"):
+                logger.warning("no API route for /%s — server older than the UI? "
+                               "(pid %d)", file_path, os.getpid())
+                return JSONResponse(status_code=404, content={
+                    "detail": f"no API route /{file_path} in this server process",
+                    "hint": "the server may predate the code on disk — restart set-web",
+                })
             real_file = dist_path / file_path
             if file_path and real_file.is_file() and ".." not in file_path:
                 # `/index.html` reached by NAME is the same document as `/`, and
