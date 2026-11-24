@@ -72,6 +72,17 @@ left alone and counted.
 entries skipped). Sessions outside the fleet come from `discovery.discover_agents()`; an open
 question there is reported as `not-fleet-held` and left alone.
 
+**D6′ — Revised after measurement M3: the hook parks what it lets go.** On runtime 2.1.331 a
+scratch session with no hook had an open question on screen and NO `assistant` entry in its
+transcript for minutes; the `tool_use` and its result landed together when the dialog was
+closed (M4). A transcript scan alone therefore misses exactly the question it is for. The hook
+is the one place that holds the call, so every path that releases an `AskUserQuestion` to the
+terminal parks it (`question_relay.park`, a private file per session). The pull-in reads the
+parked records first and the transcript second (older runtimes, a call relayed and then
+released). The carrier's "still open" check reads for a `tool_result` with the call's id only.
+Alternative: read the dialog off the terminal screen (owner `tail`). Rejected: that parses
+rendered UI text, the prose-read-as-fact class, and it loses the option list's structure.
+
 **D7 — Staleness is re-checked at the last moment.** Each poll and once more after an answer
 arrives, the carrier checks: is the `tool_use` still without a `tool_result`, is the release
 marker unset, is the switch on, is the waiting record still its own, is the label still live.

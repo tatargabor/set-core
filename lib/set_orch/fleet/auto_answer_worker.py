@@ -41,6 +41,8 @@ logger = logging.getLogger(__name__)
 Getter = Callable[..., Any]
 
 POLL_S = 1.0
+#: Decide a question already posted, without posting it again (fleet-relay-backfill D5).
+ENV_NO_FORWARD = "SET_RELAY_NO_FORWARD"
 PENDING_RETENTION_S = qr.ANSWER_RETENTION_S
 RECORD_WAIT_S = 15.0          # how long to wait for the relay's waiting record to appear
 EXCERPT_CHARS = 140
@@ -506,7 +508,13 @@ def work(payload: str, relay_vars: Dict[str, str], world: Optional[World] = None
         qr.request_release(session_id, base)
         return _close(w, pending, decision, outcome, reasons, {}, latency, base, cid)
     forward = aa.forward_command(w.get)
-    if forward:
+    # Decide-only (fleet-relay-backfill D5): the question is already on the operator's
+    # channel, so nothing is posted again, and a question this worker cannot answer keeps
+    # waiting there — it is never released to the terminal.
+    no_forward = relay_vars.get(ENV_NO_FORWARD) == "1"
+    if no_forward:
+        logger.info("auto answer [%s]: decide-only — already on the channel, not forwarded again", label)
+    elif forward:
         try:
             code = w.run(forward, json.dumps(shown, ensure_ascii=False),
                          env={k: v for k, v in relay_vars.items() if v})
@@ -639,7 +647,7 @@ def main(argv: List[str]) -> int:
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     payload = sys.stdin.read()
     if "--worker" in argv:
-        relay_vars = {k: os.environ.get(k, "") for k in (qr.ENV_KIND, qr.ENV_SESSION, qr.ENV_CWD)}
+        relay_vars = {k: os.environ.get(k, "") for k in (qr.ENV_KIND, qr.ENV_SESSION, qr.ENV_CWD, ENV_NO_FORWARD)}
         try:
             work(payload, relay_vars)
         except Exception:

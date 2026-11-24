@@ -3002,7 +3002,14 @@ def fleet_question_relay_toggle(body: RelayToggleBody) -> Dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     logger.info("fleet api: question relay %s", "on" if body.enabled else "off")
-    return _relay_payload()
+    payload = _relay_payload()
+    if body.enabled:
+        # A switch-on reaches the questions already open (fleet-relay-backfill): the hook of
+        # a question asked while the switch was off has returned, so nothing else will.
+        from ..fleet import relay_backfill as rb
+        from ..fleet import auto_answer as aa
+        payload["backfill"] = rb.pull_in("relay-on", decide_waiting=aa.enabled())
+    return payload
 
 
 @router.post("/api/fleet/question-relay/release/{session_id}")
@@ -3038,7 +3045,13 @@ def fleet_auto_answer_toggle(body: AutoAnswerToggleBody) -> Dict[str, Any]:
 
     aw.set_enabled(body.enabled)
     logger.info("fleet api: auto answer %s", "on" if body.enabled else "off")
-    return aw.status()
+    payload = aw.status()
+    if body.enabled:
+        # The questions already open reach the decider too (fleet-relay-backfill): those in
+        # fleet terminals are pulled in, those already on the channel are decided, not re-posted.
+        from ..fleet import relay_backfill as rb
+        payload["backfill"] = rb.pull_in("auto-answer-on", decide_waiting=True)
+    return payload
 
 
 @router.get("/api/fleet/auto-answer/decisions")

@@ -33,12 +33,31 @@ A session with such a call SHALL get at most one pulled-in question at a time.
 - **WHEN** a session's open question already has a relay waiting record
 - **THEN** it is not handed over a second time
 
+### Requirement: A question left to the terminal is parked for the next switch-on
+When the relay hook lets an `AskUserQuestion` call go to the terminal unrelayed (the switch
+off, the configuration not ready, the outbound failing, the switch turned off while it waited,
+a release or a timeout), the hook SHALL record the call: session id, tool-use id, the call's
+input, working directory and transcript path, in a private file (mode 600) beside the relay's
+other state, never in a repository. The pull-in SHALL read these records first, because on the
+current runtime an open call whose hook did nothing is not in the transcript until it resolves.
+A record SHALL be removed when it is pulled in, when the same session's next question is
+relayed, when its session is no longer live or its call has a result, and after 24 hours.
+
+#### Scenario: Asked while the relay is off
+- **WHEN** an agent asks while the relay switch is off
+- **THEN** the hook releases the question to the terminal as before and parks it, and a later switch-on pulls it in although the transcript does not yet hold the call
+
+#### Scenario: The session has ended
+- **WHEN** a parked question's session is no longer live at the switch-on
+- **THEN** it is not pulled in and its record is removed
+
 ### Requirement: A pulled-in answer reaches the agent through its terminal
 The answer to a pulled-in question SHALL reach the agent through its fleet terminal, because the
 hook that asked has already returned: Esc to close the open question, then one line naming each
 question and its answer, then Enter. Before typing, the fleet SHALL check the session's
 transcript again, and SHALL type nothing when the call has since been answered in the terminal
-or the session has moved on. The waiting record SHALL be removed before the line is typed.
+or the session has moved on. "Answered" SHALL be read only from a result for the call's id;
+the call's own absence from the transcript SHALL NOT be read as an answer. The waiting record SHALL be removed before the line is typed.
 
 #### Scenario: The operator answers on the channel
 - **WHEN** the operator answers a pulled-in question on the channel

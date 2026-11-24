@@ -9,6 +9,8 @@ bridge use.
 from __future__ import annotations
 
 import json
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +19,7 @@ import pytest
 
 from set_orch.fleet import question_relay as qr
 
+REPO = Path(__file__).resolve().parents[2]
 SESSION = "1bf7b969-5208-4020-9aae-850d27d41dae"
 SECRET = "Should we drop the customers table?"
 
@@ -393,3 +396,47 @@ def test_the_waiting_record_names_the_hook_pid(tmp_path):
     run_relay(tmp_path, config(), on_sleep=on_sleep)
     import os as _os
     assert seen and seen[0]["pid"] == _os.getpid()
+
+
+# --------------------------------------------------------------------------- parking (fleet-relay-backfill)
+
+def test_a_question_left_to_the_terminal_is_parked(tmp_path):
+    """Off → the call is parked, private, with what a switch-on needs to pull it in."""
+    out, _, _ = run_relay(tmp_path, config(**{qr.KEY_ENABLED: None}))
+    assert out is None
+    (rec,) = qr.list_parked(tmp_path)
+    inp = hook_input()
+    assert rec["session_id"] == inp["session_id"] and rec["tool_use_id"] == inp["tool_use_id"]
+    assert rec["tool_input"] == inp["tool_input"]
+    assert stat.S_IMODE(qr.parked_path(inp["session_id"], tmp_path).stat().st_mode) == 0o600
+
+
+def test_a_question_released_when_the_switch_goes_off_is_parked(tmp_path):
+    """The live case of 2026-11-24: the switch went off while questions waited."""
+    get = config()
+
+    def on_sleep(seen, clock):
+        if clock.t >= 9:
+            get.store[qr.KEY_ENABLED] = "false"
+    run_relay(tmp_path, get, on_sleep=on_sleep)
+    assert len(qr.list_parked(tmp_path)) == 1
+
+
+def test_a_relayed_question_removes_the_sessions_parked_one(tmp_path):
+    run_relay(tmp_path, config(**{qr.KEY_ENABLED: None}))
+    assert qr.list_parked(tmp_path)
+
+    def on_sleep(seen, clock):
+        answer(tmp_path, seen["envelope"], "Q1", "TEAL")
+    out, _, _ = run_relay(tmp_path, config(), on_sleep=on_sleep)
+    assert out is not None and qr.list_parked(tmp_path) == []
+
+
+def test_the_real_hook_parks_while_off(tmp_path):
+    """The bin's own off path (it returns before calling relay()) parks too."""
+    (tmp_path / "cfg").mkdir()
+    env = {**os.environ, "SET_CONFIG_DIR": str(tmp_path / "cfg"), "SET_QUESTION_RELAY_DIR": str(tmp_path / "state")}
+    proc = subprocess.run([sys.executable, str(REPO / "bin" / "set-hook-question-relay")],
+                          input=json.dumps(hook_input()), text=True, capture_output=True, env=env, timeout=60)
+    assert proc.returncode == 0 and proc.stdout == ""
+    assert len(qr.list_parked(tmp_path / "state")) == 1

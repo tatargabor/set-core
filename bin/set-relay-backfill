@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""set-relay-backfill — pull the questions already open into the question relay.
+
+Turning the relay switch on (or automatic answers on) does this by itself; this command
+does the same once, by hand, and prints what it pulled in and what it left:
+
+    set-relay-backfill            open questions in fleet terminals → the relay
+    set-relay-backfill --decide   also start the decider on relay-held questions no decider saw
+
+A question open in a terminal the fleet does not hold cannot be typed into, so it is listed
+and left there. `--carry` is the carrier's own entry point (one per pulled-in question).
+Logs: ~/.local/share/set-core/question-relay/relay.log.
+"""
+from __future__ import annotations
+
+import os
+import sys
+
+_SET_TOOLS_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+_LIB = os.path.join(_SET_TOOLS_ROOT, "lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+
+from set_orch.fleet.relay_backfill import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

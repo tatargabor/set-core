@@ -335,7 +335,9 @@ def _write_json(path: Path, data: Dict[str, Any]) -> None:
 #: process (set-web), so a reader started before a new carrier shipped deleted every one of
 #: its records. The shared `set-hook-` prefix covers any carrier, present or future; the
 #: check only guards against a reused pid, which a `set-hook-` process almost never is.
-_CARRIER_MARKS = (b"set-hook-", b"question-relay", b"question_relay")
+#: `relay-backfill` is the carrier of a question pulled in at switch-on (fleet-relay-backfill),
+#: which runs as `set-relay-backfill --carry`, or as the module when the script is missing.
+_CARRIER_MARKS = (b"set-hook-", b"question-relay", b"question_relay", b"relay-backfill", b"relay_backfill")
 
 
 def _hook_alive(pid: Any) -> bool:
@@ -816,7 +818,97 @@ def notify(hook_input: Dict[str, Any], *,
     logger.info("question relay notify [%s]: delivered (%d chars)", sid, len(message))
     return None
 
-def relay(hook_input: Dict[str, Any], *,
+# --------------------------------------------------------------------------- #
+# parked questions — what went to the terminal unrelayed (fleet-relay-backfill)
+# --------------------------------------------------------------------------- #
+
+#: How long a parked question is kept when nothing pulls it in. A question that old has an
+#: owner who came back to the terminal, or a session that ended.
+PARK_RETENTION_S = 24 * 3600
+
+
+def parked_path(session_id: str, base: Optional[Path] = None) -> Path:
+    return (base or state_dir()) / "parked" / f"{_safe_id(session_id)}.json"
+
+
+def park(hook_input: Dict[str, Any], base: Optional[Path] = None, wall: Callable[[], float] = time.time) -> bool:
+    """Record a question that went to the terminal without the relay, so a switch-on finds it.
+
+    Measured 2026-11-24 on runtime 2.1.331: an open `AskUserQuestion` whose hook did nothing
+    is NOT in the transcript until it resolves, so a later scan cannot see it. The hook is
+    the one place that holds the call. The record carries the question (mode 600, beside
+    the relay's other private state, never in a repository) and is removed when pulled in,
+    when the session asks again, or after `PARK_RETENTION_S`. Never raises.
+    """
+    try:
+        if hook_input.get("tool_name") != TOOL:
+            return False
+        tool_input = hook_input.get("tool_input") or {}
+        session_id = str(hook_input.get("session_id") or "")
+        tool_use_id = str(hook_input.get("tool_use_id") or "")
+        if not (session_id and tool_use_id and questions_of(tool_input)):
+            return False
+        base = base or state_dir()
+        folder = base / "parked"
+        folder.mkdir(parents=True, exist_ok=True)
+        now = wall()
+        for old in folder.glob("*.json"):
+            try:
+                if now - old.stat().st_mtime > PARK_RETENTION_S:
+                    old.unlink()
+            except OSError:
+                continue
+        path = parked_path(session_id, base)
+        tmp = path.with_suffix(".tmp")
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"session_id": session_id, "tool_use_id": tool_use_id, "tool_input": tool_input,
+                       "cwd": str(hook_input.get("cwd") or ""), "transcript": str(hook_input.get("transcript_path") or ""),
+                       "parked": now}, fh, ensure_ascii=False)
+        os.replace(tmp, path)
+        logger.info("question relay [%s]: left to the terminal; parked for a switch-on", _safe_id(session_id)[:8])
+        return True
+    except Exception as exc:
+        logger.warning("question relay: could not park a question (%s)", type(exc).__name__)
+        return False
+
+
+def unpark(session_id: str, base: Optional[Path] = None) -> None:
+    try:
+        parked_path(session_id, base).unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        logger.warning("question relay: could not remove a parked question (%s)", type(exc).__name__)
+
+
+def list_parked(base: Optional[Path] = None) -> List[Dict[str, Any]]:
+    folder = (base or state_dir()) / "parked"
+    out: List[Dict[str, Any]] = []
+    if not folder.is_dir():
+        return out
+    for path in sorted(folder.glob("*.json")):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(record, dict) and record.get("session_id") and record.get("tool_use_id"):
+            out.append(record)
+    return out
+
+
+def relay(hook_input: Dict[str, Any], **kwargs: Any) -> Optional[Dict[str, Any]]:
+    """Decide one `AskUserQuestion` call. Returns the hook output to print, or None to release.
+
+    A question released to the terminal is parked, so the next switch-on can pull it in.
+    """
+    out = _relay(hook_input, **kwargs)
+    if out is None and hook_input.get("tool_name") == TOOL:
+        park(hook_input, kwargs.get("base"), kwargs.get("wall") or time.time)
+    return out
+
+
+def _relay(hook_input: Dict[str, Any], *,
           get: Getter = local_config.get,
           run: Callable[..., int] = _run_command,
           post: Callable[[str, str], None] = post_webhook,
@@ -855,7 +947,9 @@ def relay(hook_input: Dict[str, Any], *,
             logger.warning("question relay [%s]: webhook post failed (%s); released", sid, type(exc).__name__)
         return None
 
-    # target == "command": hand over, then wait.
+    # target == "command": hand over, then wait. A parked question of this session is
+    # obsolete: the session has moved on to this one.
+    unpark(session_id, base)
     answer_dir = base / "answers"
     answer_dir.mkdir(parents=True, exist_ok=True)
     prune_answers(base, wall())

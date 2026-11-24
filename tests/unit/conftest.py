@@ -40,6 +40,33 @@ def _no_real_agent_sessions(monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _no_real_relay_backfill(monkeypatch):
+    """No unit test may pull in, or type into, the machine's real open questions.
+
+    Measured 2026-11-24: a route test turned the relay on in a temporary config, the
+    switch-on ran the real pull-in, and three carriers were started against the live
+    machine's fleet terminals and relay state (`systemd-run` does not inherit the test's
+    environment). Nothing was typed, by luck of timing. So for every unit test the reach
+    into the machine is empty and the real launch refuses; a test drives the pull-in
+    through its own `relay_backfill.World`.
+    """
+    try:
+        from set_orch.fleet import relay_backfill as rb
+    except Exception:  # pragma: no cover
+        yield
+        return
+
+    def _refuse(job):
+        raise AssertionError("a unit test reached the real relay-backfill carrier launch; "
+                             "pass `launch` in a relay_backfill.World instead")
+
+    monkeypatch.setattr(rb, "_fleet_agents", lambda: [])
+    monkeypatch.setattr(rb, "_other_agents", lambda: [])
+    monkeypatch.setattr(rb, "launch_carrier", _refuse)
+    yield
+
+
 @pytest.fixture
 def agent_runner(monkeypatch):
     """Install a fake agent runner and return a recorder of what it was asked.

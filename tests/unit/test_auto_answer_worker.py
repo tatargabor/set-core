@@ -458,3 +458,38 @@ def test_a_taught_rule_never_opens_a_permission_prompt(tmp_path):
     r = Relay(tmp_path, d, events={30: lambda rl: qr.waiting_path(SID, rl.base).unlink()})
     payload = json.dumps(envelope(tmp_path, text="proj · s wants to run Bash: deploy", options=("Allow", "Deny")))
     assert r.work(kind="permission", payload=payload) == {"Q1": "excluded"} and r.answer_text() is None
+
+
+# --------------------------------------------------------------------------- decide-only (fleet-relay-backfill D5)
+
+def _decide_only(r: Relay, payload=None):
+    world = aw.World(get=r.get, decide=lambda *a, **k: r.decision, run=r.run, wall=r.wall, sleep=r.sleep, log=r.log)
+    payload = payload or json.dumps(envelope(r.base), ensure_ascii=False)
+    return aw.work(payload, {qr.ENV_KIND: "ask", qr.ENV_SESSION: SID, qr.ENV_CWD: str(r.base),
+                             aw.ENV_NO_FORWARD: "1"}, world)
+
+
+def test_decide_only_writes_an_allowed_answer_without_posting_again(tmp_path):
+    """backfill AC-11: already on the channel — decided, not re-posted, written after the window."""
+    r = Relay(tmp_path, decided())
+    assert _decide_only(r) == {"Q1": "written"} and r.answer_text() == "TEAL"
+    assert r.forwarded == []
+    assert r.records()[0]["outcome"] == "written"
+
+
+def test_decide_only_never_releases_what_it_cannot_answer(tmp_path):
+    """backfill AC-12: excluded → keeps waiting on the channel, no release, no post."""
+    d = aa.Decision({"Q1": answer(choice="Yes")}, {}, "fork")
+    r = Relay(tmp_path, d, events={30: lambda rl: qr.waiting_path(SID, rl.base).unlink()})
+    payload = json.dumps(envelope(tmp_path, text="Deploy the fix to staging?", options=("Yes", "No")))
+    assert _decide_only(r, payload) == {"Q1": "excluded"} and r.answer_text() is None
+    assert r.forwarded == [] and not qr.release_path(SID, tmp_path).exists()
+
+
+def test_decide_only_without_a_forward_command_still_does_not_release(tmp_path):
+    """The no-forward branch that releases must not be reached in decide-only mode."""
+    d = aa.Decision({}, {"Q1": "abstained"}, "fork")
+    r = Relay(tmp_path, d, get=cfg(**{aa.KEY_FORWARD: None}),
+              events={30: lambda rl: qr.waiting_path(SID, rl.base).unlink()})
+    assert _decide_only(r) == {"Q1": "no-decision"}
+    assert not qr.release_path(SID, tmp_path).exists()

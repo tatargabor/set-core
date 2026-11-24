@@ -50,6 +50,9 @@ def main() -> int:
 
         # The common case is "off": answer it before touching the log file.
         if not qr.readiness()["enabled"]:
+            # Parked, so a later switch-on pulls it in (fleet-relay-backfill); no log setup
+            # here — the off path stays as cheap as it was, and park() never raises.
+            qr.park(hook_input)
             return 0
         folder = qr.state_dir()
         folder.mkdir(parents=True, exist_ok=True)

@@ -164,3 +164,19 @@ def test_send_refuses_without_a_proposal_or_a_waiting_question(world):
         api.fleet_auto_answer_send(CID)
     assert "no proposal" in exc.value.detail
     assert not qr.answer_file(base / "answers", CID, "Q1").exists()
+
+
+def test_both_switch_ons_pull_in_what_is_already_open(world, monkeypatch):
+    """fleet-relay-backfill 3.1: each turn-on starts the pull-in and reports it; a turn-off does not."""
+    from set_orch.api import fleet as api
+    from set_orch.fleet import relay_backfill as rb
+    calls = []
+    monkeypatch.setattr(rb, "pull_in", lambda trigger, w=None, decide_waiting=False:
+                        calls.append((trigger, decide_waiting)) or {"trigger": trigger, "pulled": []})
+    monkeypatch.setattr(qr, "set_enabled", lambda enabled, get=None: None)
+    assert api.fleet_auto_answer_toggle(api.AutoAnswerToggleBody(enabled=True))["backfill"]["trigger"] == "auto-answer-on"
+    assert api.fleet_question_relay_toggle(api.RelayToggleBody(enabled=True))["backfill"]["trigger"] == "relay-on"
+    assert calls == [("auto-answer-on", True), ("relay-on", True)], "auto answers are on, so relay-on decides too"
+    api.fleet_auto_answer_toggle(api.AutoAnswerToggleBody(enabled=False))
+    assert "backfill" not in api.fleet_question_relay_toggle(api.RelayToggleBody(enabled=False))
+    assert len(calls) == 2
