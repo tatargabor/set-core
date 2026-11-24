@@ -262,3 +262,29 @@ From `decisions.jsonl` and `auto-answer.log`; aggregates and outcomes only.
   change. The latter was excluded for the wrong reason (words `send`/`delete` in a sentence
   saying both stay forbidden). The right outcome by luck is worth a family of its own later:
   account and security settings.
+
+## S8 — the system fix after the first morning, 2026-11-24 09:40–09:55
+
+**The morning measured (from `decisions.jsonl`, 47 calls):**
+- 8 were written (17 %).
+- `ask`: 11 no-decision, 7 excluded, 6 below the bar, 4 written.
+- `continuation`: 6 no-decision, 4 excluded, 4 written.
+- 8 of the 15 continuations came from sessions with no live session record. Their texts
+  name headless timer runs (`claude -p` checks that exit).
+
+**The causes, and what changed (`62e1d063`, `1200efe9`):**
+- **A pointer is not a reading.** The decider was told to abstain unless the operator's own
+  words settled a question. The owner's standing delegation sat in a file the forks were
+  only pointed at, and a fork carries an older session's context. The configured section now
+  travels in the prompt verbatim, with a DELEGATION policy. Every abstention logs its reason.
+- **Headless runs.** The continuation relay skips a session whose `CLAUDE_CODE_ENTRYPOINT`
+  is not `cli`. Measured on the live process tree: children of `claude -p` carry `sdk-cli`,
+  interactive ones `cli`.
+- **Finished turns.** A continuation with nothing worth doing is answered `done`. It is
+  released without a post and logged `closed`.
+
+**Live dry run of the new decider on two waiting calls** (nothing written):
+- A finished turn that suggested re-checking already tested work came back `done` ("the
+  suggested work is already finished"). It would now close quietly.
+- A three-question design call (stuck-agent takeover) came back `likely` 0.55–0.65 on the
+  design questions. So the call stays with the operator, as the delegation reserves strategy.
