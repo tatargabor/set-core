@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-226 — `set-doctor` and the auto-clear deploy tell the reader to run `set-project add`, a command that does not exist
+- **state:** open
+- **reported:** 2026-11-24 by this session, following the doctor's fix line after a pull.
+- **measured:** `set-doctor --offline` printed `→ set-project add set-claude-handoff <path-to-checkout>` for every project; running `set-project add --help` answered `Error: Unknown command: add`. The hint is built at `lib/set_doctor/auto_clear.py:172` and `lib/set_orch/auto_clear_deploy.py:276`. `set-project register --name set-claude-handoff --path <checkout>` is the command that works, and after it the doctor's auto-clear line moved on to the next condition.
+- **fail direction:** the fix line is the doctor's whole contract ("reports every problem with the command that fixes it"); a dead command makes a reader conclude the fix is broken, or skip it — the line appeared on ~40 projects at once.
+- **fixed when:** both hints print `set-project register --name set-claude-handoff --path <checkout>`, and a test asserts the printed command's subcommand is one `set-project` accepts.
+
 ### B-225 — `set-leakscan`'s private `set-*` class blocks every own private repo name in a public repo, which the owner's 2026-11-24 rule allows
 - **state:** open
 - **reported:** 2026-11-24 by the user, while a public repo's push was blocked over the name of an own private repo (*„leakscan kivihet hivatkozást privat repora ha az a fejleztséshez kell és nem ügyfél név hanem ami saját reponk”*)
