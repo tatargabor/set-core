@@ -53,6 +53,7 @@ OUT_OVERTAKEN = "overtaken"
 OUT_NO_DECISION = "no-decision"
 OUT_RELEASED = "released"         # the question ended with no answer this worker saw
 OUT_FORWARD_FAILED = "forward-failed"
+OUT_CLOSED = "closed"             # a finished turn with nothing worth doing: left idle, not posted
 OUT_HELD = "held"                 # allowed, but another question of the same call is not
 
 
@@ -493,6 +494,15 @@ def work(payload: str, relay_vars: Dict[str, str], world: Optional[World] = None
         key = str(entry.get("key"))
         entry["question"] = str(entry.get("question") or "") + proposal_text(
             a, cwd, write_at=write_at if key in allowed else None, reason=reasons.get(key, ""))
+    if kind == aa.KIND_CONTINUATION and questions and all(
+            reasons.get(q.key, "").startswith(aa.DONE_PREFIX) for q in questions):
+        # Nothing worth doing: close quietly — no post on the channel, no wake, no tokens.
+        for q in questions:
+            outcome[q.key] = OUT_CLOSED
+        logger.info("auto answer [%s]: finished turn, nothing worth doing; left idle, not posted", label)
+        _wait_for_record(base, session_id, cid, w)
+        qr.request_release(session_id, base)
+        return _close(w, pending, decision, outcome, reasons, {}, latency, base, cid)
     forward = aa.forward_command(w.get)
     if forward:
         try:

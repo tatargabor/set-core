@@ -333,6 +333,9 @@ def parse_decision(raw: str, questions: Sequence[Question], kind: str) -> Tuple[
             # The model's own one-line reason is kept: "abstained" alone could not say, on
             # the live morning of 2026-11-24, whether a silence was right or a gap.
             why = _text(e.get("reason"))
+            if kind == KIND_CONTINUATION and _truthy(e.get("done")):
+                refused[q.key] = DONE_PREFIX + (why[:200] if why else "nothing worth doing now")
+                continue
             refused[q.key] = f"abstained: {why[:200]}" if why else "abstained"
             continue
         tier = _text(e.get("tier")).lower()
@@ -558,6 +561,7 @@ def exclusion(kind: str, question: Question, choice: str, model_outward: bool,
 # --------------------------------------------------------------------------- #
 
 OUTCOME_ALLOWED = "allowed"
+DONE_PREFIX = "done: "
 OUTCOME_EXCLUDED = "excluded"
 OUTCOME_BELOW_BAR = "below-bar"
 
@@ -835,6 +839,23 @@ Reply with ONE JSON object and nothing else:
 """
 
 
+#: The policy when the operator has DELEGATED (owner, 2026-11-24: *„mukodnie kellene auto"*,
+#: after 8 of 47 relayed calls were answered — the decider was told to abstain unless the
+#: operator's own words settled a question, so a delegation it could cite went unused).
+DELEGATION = """
+DELEGATION. The operator has delegated what the standing decision above covers. For such a
+question do NOT abstain for lack of the operator's own words: choose the option that moves the
+work forward — the agent's own recommended option unless a source you can cite contradicts it —
+with tier "decided" and a "decision" reference quoting the standing decision verbatim.
+Abstain only when the question falls under what the standing decision says to still ask, when it
+is a matter of strategy or taste the operator must weigh (a release version, what to say in
+public, money, people), or when the options conflict with something the operator said.
+For a finished turn (KIND continuation) whose suggestions are not worth doing now — the thread is
+complete, or the suggestions only re-check finished work — answer {"key": ..., "choice": null,
+"done": true, "reason": "..."}: the session is left idle and nobody is woken.
+"""
+
+
 ALLOWED_WORDS = {"push": "git push (a pre-push leak scan guards what a push publishes)"}
 
 
@@ -846,6 +867,8 @@ def build_prompt(kind: str, questions: Sequence[Question], kb_hits: Sequence[Dic
         parts.append(f"\nSTANDING DECISION of the operator — it settles every question it covers; when it does, "
                      f"answer with tier \"decided\" and a \"decision\" reference quoting it verbatim, path {path}:\n"
                      f"<<<\n{text}\n>>>\n")
+    if standing:
+        parts.append(DELEGATION)
     if allowed:
         named = "; ".join(ALLOWED_WORDS.get(f, f) for f in allowed)
         parts.append(f"\nOn this machine the operator does NOT need to be asked about: {named}. "

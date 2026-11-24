@@ -747,3 +747,18 @@ def test_an_abstention_keeps_the_models_reason():
     d = aa.parse_decision('{"answers": [{"key": "Q1", "choice": null, "reason": "a release version is the owner\'s call"}]}',
                           [q()], aa.KIND_ASK)
     assert d[1]["Q1"] == "abstained: a release version is the owner's call"
+
+
+def test_with_a_delegation_the_prompt_tells_the_model_to_decide_not_to_wait():
+    """Owner 2026-11-24: 'mukodnie kellene auto' — 8 of 47 calls answered, because the model
+    was told to abstain unless the operator's own words settled the question."""
+    standing = [("/x/CLAUDE.md", "## ▶ In-project steps never wait\\nDo it, then report it.")]
+    p = aa.build_prompt(aa.KIND_ASK, [q()], [], [], standing=standing)
+    assert "DELEGATION" in p and "do NOT abstain for lack of the operator's own words" in p
+    assert "DELEGATION" not in aa.build_prompt(aa.KIND_ASK, [q()], [], [])
+
+
+def test_a_finished_turn_can_be_closed_as_done_only_for_a_continuation():
+    raw = '{"answers": [{"key": "Q1", "choice": null, "done": true, "reason": "the thread is complete"}]}'
+    assert aa.parse_decision(raw, [q()], aa.KIND_CONTINUATION)[1]["Q1"] == "done: the thread is complete"
+    assert aa.parse_decision(raw, [q()], aa.KIND_ASK)[1]["Q1"] == "abstained: the thread is complete"

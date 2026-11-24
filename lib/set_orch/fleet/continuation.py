@@ -152,6 +152,9 @@ def instruction(answer: str) -> str:
     return f"The owner answered from the relay channel (they are away from this terminal). Continue with this instruction: {text}"
 
 
+ENTRYPOINT_ENV = "CLAUDE_CODE_ENTRYPOINT"
+
+
 def continue_turn(hook_input: Dict[str, Any], *,
                   get: qr.Getter = local_config.get,
                   run: Callable[..., int] = qr._run_command,
@@ -166,6 +169,14 @@ def continue_turn(hook_input: Dict[str, Any], *,
     """Decide one finished turn. Returns the instruction to wake the session with, or None."""
     env = os.environ if env is None else env
     if env.get(wd.GUARD_ENV):
+        return None
+    # A headless run (`claude -p`, a timer's check) exits when its turn ends: there is no
+    # session to continue, so a "what next?" for it is noise on the operator's channel.
+    # Measured 2026-11-24: 8 of 15 continuations relayed that morning were such runs. The
+    # runtime tells its children which it is: `cli` interactive, `sdk-cli` for `-p`.
+    entry = env.get(ENTRYPOINT_ENV)
+    if entry and entry != "cli":
+        logger.debug("continuation: headless session (%s=%s); nothing posted", ENTRYPOINT_ENV, entry)
         return None
     state = qr.readiness(get)
     if not (state["enabled"] and state["ready"]) or state["target"] != "command":

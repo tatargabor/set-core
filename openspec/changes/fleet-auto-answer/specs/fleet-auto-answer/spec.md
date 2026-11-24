@@ -78,6 +78,24 @@ Before the decision, the decider SHALL run the project knowledge-base search (`s
 - **WHEN** the headless call does not answer within its bound
 - **THEN** the question is forwarded unchanged and no answer is written
 
+### Requirement: A standing delegation is decided on, not waited for
+When the machine names the operator's standing decisions (`auto_answer.standing`, `path#heading` entries), the decider SHALL put each named section into the prompt verbatim and SHALL instruct the model that a question the delegation covers is decided by choosing the option that moves the work forward — the agent's own recommended option unless a citable source contradicts it — with tier `decided` and a decision reference quoting the standing decision. The model SHALL still abstain on what the standing decision reserves, on matters of strategy or taste (a release version, a public statement, money, people), and when the options conflict with something the operator said. Each abstention SHALL be logged with the model's one-line reason.
+
+#### Scenario: An in-project step under a delegation
+- **WHEN** a finished turn suggests running the project's tests and the standing decision says in-project testing never waits
+- **THEN** the decider proposes that step with tier `decided`, citing the standing decision
+
+#### Scenario: A finished turn with nothing worth doing
+- **WHEN** a continuation's suggestions only re-check finished work and the model answers `done`
+- **THEN** nothing is posted to the channel, the call is released so the session stays idle, and the log records the outcome `closed`
+
+### Requirement: A headless run is not continued
+The continuation relay SHALL NOT ask "what next?" for a session started headless (`claude -p`), recognised by the runtime's `CLAUDE_CODE_ENTRYPOINT` being set to anything other than `cli`: such a run exits when its turn ends, so there is no session to continue.
+
+#### Scenario: A timer's check run ends its turn
+- **WHEN** a `claude -p` run's turn ends with the verdict DONE
+- **THEN** no continuation is posted and no waiting record is written
+
 ### Requirement: Outward and irreversible steps are never answered automatically
 The decider SHALL NOT write an answer when the blocking point is a permission prompt, or when either check marks the step as outward or irreversible: a deterministic pattern check over the chosen answer — and over the question too when the answer is consent ("yes", "mehet", or three words or fewer), so the act the question names is checked — (covering at least publishing or pushing, deploying, production, sending a message or email, deleting, paying, and credentials, plus `auto_answer.never_patterns`), or the model's own flag. Options that were not chosen SHALL NOT exclude; a mention in the question preceded by a negator ("nothing is pushed") SHALL NOT exclude; a noun of the act inside a read-only answer ("check whether the deletion finished") SHALL NOT exclude, while a verb of the act in the answer always does. A machine MAY list exclusion families its operator does not want to be asked about in `auto_answer.allow_families` (only `push` is separable this way; a force-push belongs to deleting and is never allowed by it); the model is told so, and its own flag still excludes. In those cases the question SHALL be forwarded with the decider's recommendation, its tier and its source attached, and SHALL wait for a human answer.
 

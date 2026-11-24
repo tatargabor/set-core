@@ -398,3 +398,14 @@ def test_a_call_whose_every_question_is_allowed_is_written_whole(tmp_path):
     r.consume = False
     out = r.work(payload=json.dumps(envelope(tmp_path, keys=("Q1", "Q2"))))
     assert out == {"Q1": "written", "Q2": "written"}
+
+
+def test_a_finished_turn_with_nothing_worth_doing_is_closed_quietly(tmp_path):
+    """No post on the channel, no wake: the call is released and the session stays idle."""
+    d = aa.Decision({}, {"Q1": "done: the thread is complete"}, "fork", [], {}, "anthropic/x")
+    r = Relay(tmp_path, d)
+    out = r.work(kind="continuation")
+    assert out == {"Q1": "closed"}
+    assert r.forwarded == [], "nothing goes to the channel"
+    assert qr.release_path(SID, tmp_path).exists(), "the waiting call is released, so nobody waits on it"
+    assert r.records()[0]["outcome"] == "closed" and r.answer_text() is None

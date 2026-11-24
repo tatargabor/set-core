@@ -77,11 +77,11 @@ class World:
         self._p = self.polls
         return self.suggestion
 
-    def decide(self, get=None, inp=None):
+    def decide(self, get=None, inp=None, env=None):
         return ct.continue_turn(inp or stop_input(), get=get or config(), run=self.run,
                                 project_name=lambda c: "proj", suggester=self.suggester,
                                 clock=lambda: self.t, wall=lambda: self.now, sleep=self.sleep,
-                                read_entries=lambda p: list(self.entries), env={}, base=self.base)
+                                read_entries=lambda p: list(self.entries), env=env or {}, base=self.base)
 
 
 def test_continued_from_the_channel(tmp_path):
@@ -221,3 +221,15 @@ def test_typed_while_the_suggestions_were_made_is_never_posted(tmp_path):
     w.suggester = typed_meanwhile
     verdict(tmp_path, "DONE")
     assert w.decide() is None and w.envelopes == []
+
+
+def test_a_headless_run_gets_no_continuation(tmp_path):
+    """Measured 2026-11-24: 8 of 15 continuations that morning were timer-run `claude -p`
+    checks — they exit at the turn's end, so "what next?" went to the channel for nobody.
+    The runtime marks its children: CLAUDE_CODE_ENTRYPOINT=sdk-cli for -p, cli interactive."""
+    verdict(tmp_path, "DONE")
+    w = World(tmp_path, answer="→ Promote to the test system")
+    assert w.decide(env={"CLAUDE_CODE_ENTRYPOINT": "sdk-cli"}) is None
+    assert w.envelopes == [] and not qr.waiting_path(SID, tmp_path).exists()
+    w2 = World(tmp_path, answer="→ Promote to the test system")
+    assert w2.decide(env={"CLAUDE_CODE_ENTRYPOINT": "cli"}), "an interactive session is still continued"
