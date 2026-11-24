@@ -233,6 +233,24 @@ def test_the_question_ends_elsewhere_before_the_window(tmp_path):
     assert r.work() == {"Q1": "released"} and r.answer_text() is None
 
 
+def test_a_proposal_whose_question_ended_stops_at_once_not_at_the_window(tmp_path):
+    """Measured live 2026-11-24: a continuation superseded by a typed prompt at +10 s stayed
+    'proposed' — on the panel and the tile, counting down to a write that could not happen —
+    until the window ran out at +60 s. The pending record must go the moment the question ends."""
+    seen = {}
+
+    def ended(rl):
+        qr.waiting_path(SID, rl.base).unlink()
+
+    def look(rl):
+        seen["pending_at_20s"] = aw.read_pending(rl.base, CID)
+
+    r = Relay(tmp_path, decided(), events={10: ended, 20: look})
+    assert r.work() == {"Q1": "released"} and r.answer_text() is None
+    assert r.t - r.start < 30, f"the worker held on for {r.t - r.start:.0f} s after the question ended"
+    assert seen.get("pending_at_20s") in (None, {}) or seen["pending_at_20s"].get("state") != "proposed"
+
+
 # --------------------------------------------------------------------------- exclusions and the bar
 
 def test_a_push_question_is_forwarded_with_a_recommendation_not_written(tmp_path):

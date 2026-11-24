@@ -211,3 +211,33 @@ and the recent decisions with the operator's own answer next to the proposal (`y
 The switch read `off` because the machine config was off — the scratch session had it on in its
 own environment only; and the panel's `window 60s` is likewise the machine value, not the 45 s
 the session ran with.
+
+## S6 — the machine wired to the real bridge (task 5.1), 2026-11-24 07:42–07:44
+
+**What happened, in order.** The operator switched `auto_answer.enabled` and the question relay
+ON from the fleet before the outbound was wired, and the panel said so (`on-not-wired`: "the
+question relay does not run the decider, so nothing is decided"). That is the migration plan's
+order inverted — the plan wires first with the switch OFF. The operator's two switches are the
+go-ahead; the config was backed up and wired:
+`auto_answer.forward_command` = the previous `question_relay.command` (the chat bridge),
+`question_relay.command` = the absolute path of `set-auto-answer`. The route then answered
+`wired: true, forward: true`. The launcher was checked to import from a bare environment
+(`env -i HOME PATH=/usr/bin:/bin`), as a hook process would run it.
+
+**The first real relayed question through it** (`auto-answer.log`, `decisions.jsonl`): a
+continuation of a set-core session at 07:43:21 — worker started, fork decision in 11.2 s, one
+answer (`decided`, confidence 0.6, one checked operator quote), forwarded to the bridge
+(no `forward-failed`), window open. At 07:43:45 the relay released the call because a prompt
+reached the session first. Outcome `released`, nothing written — correct.
+
+**The defect it found.** The worker only re-checked whether the question was still live at the
+end of the window, so the released proposal stayed `proposed` — on the panel and on the tile,
+counting down to a write that could not happen — for 48 s after the question ended (released
+07:43:45, worker exit 07:44:33). Fixed: the window loop checks liveness on every pass and closes
+as `released` at once. Test `test_a_proposal_whose_question_ended_stops_at_once_not_at_the_window`
+fails without the fix (held 60 s) and passes with it.
+
+**What is NOT proven here.** The switch-OFF byte-for-byte path on the real bridge was not run
+live, because the operator had already switched on; it is covered by AC-1's unit test and by the
+scratch run in S5. A question that is actually WRITTEN through the real bridge has not happened
+yet — that, and the accuracy figure, are task 5.0.

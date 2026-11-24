@@ -480,6 +480,13 @@ def work(payload: str, relay_vars: Dict[str, str], world: Optional[World] = None
             if key in human:
                 outcome[key] = OUT_OVERTAKEN
                 allowed.remove(key)
+        if allowed and not _record_live(base, session_id, cid):
+            # The question ended elsewhere (typed prompt, terminal answer, the hook gone): stop
+            # now, so the panel and the tile do not count down to a write that cannot happen.
+            for key in allowed:
+                outcome[key] = OUT_RELEASED
+            logger.info("auto answer [%s]: the question ended before the window — nothing written", label)
+            allowed = []
         if allowed and write_at is not None and w.wall() >= write_at:
             if not _record_live(base, session_id, cid):
                 for key in allowed:
