@@ -105,6 +105,7 @@ def test_a_project_with_nothing_installed_gets_everything(box):
     assert f"--dir {tree} " in text and f"{tree}/.claude/hooks/watch-auto-clear.sh" in text
     exec_start = next(l for l in text.splitlines() if l.startswith("ExecStart="))
     assert "--started-after" not in exec_start, "the package's start filter is opt-in; the unit does not opt in"
+    assert "--idle-floor 300000 " in exec_start, "owner decision 2026-11-24: the warm-idle floor is 300k"
     for flag in acd.OVERRIDING:
         assert flag + " " not in text
     assert "daemon-reload" in " ".join(calls(log))

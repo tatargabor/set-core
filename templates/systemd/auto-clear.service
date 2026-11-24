@@ -5,7 +5,8 @@
 # the tree. Opt the project out with `auto_clear: false` in its registry entry.
 #
 # No threshold or background flag: the package defaults apply, so a package upgrade moves
-# them. No --started-after either: since the package's be300a2 the start filter is opt-in,
+# them. The one exception is --idle-floor 300000 (owner decision 2026-11-24): below 300k an
+# idle session is left alone; the package default is 200k, and the 400k size path is unchanged. No --started-after either: since the package's be300a2 the start filter is opt-in,
 # because a running session picks up a reload hook added mid-run (measured on Claude Code
 # 2.1.331), so the filter only excluded sessions that could reload.
 #
@@ -15,7 +16,7 @@ After=default.target
 
 [Service]
 Environment=PATH=%h/.local/bin:@NODE_DIR@:/usr/local/bin:/usr/bin:/bin
-ExecStart=/bin/bash @TREE@/.claude/hooks/watch-auto-clear.sh --dir @TREE@ --interval 60 --auto-continue default
+ExecStart=/bin/bash @TREE@/.claude/hooks/watch-auto-clear.sh --dir @TREE@ --interval 60 --idle-floor 300000 --auto-continue default
 Restart=on-failure
 
 [Install]
