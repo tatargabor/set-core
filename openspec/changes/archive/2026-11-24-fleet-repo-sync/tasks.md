@@ -1,6 +1,6 @@
 ## 1. Collection core (Layer 1: `lib/set_orch/fleet/repo_sync.py`)
 
-- [x] 1.1 Registry walk with the activity window: commits on any local branch and Claude Code transcripts, `days` from request → `fleet_repo_sync_days` → 30; `excluded` counts for archived, e2e-run, inactive and missing [REQ: the-listed-projects-are-the-recently-active-registered-ones]
+- [x] 1.1 Registry walk with the activity window (first commits + transcripts; narrowed to commits by 5.1), `days` from request → `fleet_repo_sync_days` → 30; `excluded` counts for archived, e2e-run, inactive and missing [REQ: the-listed-projects-are-the-recently-active-registered-ones]
 - [x] 1.2 Per-project git state: branch/detached, uncommitted count, upstream + ahead/behind or `no-upstream`, diverged flag, stash count, remote host without credentials, fetch age from `FETCH_HEAD`; every git call timed out at 10 s with `GIT_TERMINAL_PROMPT=0` and `GIT_OPTIONAL_LOCKS=0`, a failure is `null` + reason [REQ: each-project-row-carries-its-commit-and-push-state]
 - [x] 1.3 Unpushed local branches: every local branch with commits on no remote ref, with count and last commit age [REQ: each-project-row-carries-its-commit-and-push-state]
 - [x] 1.4 Worktrees: path, branch, last commit age, uncommitted count, `merged` into the main worktree's branch, `missing` directory [REQ: worktrees-are-listed-with-what-decides-whether-they-are-worth-keeping]
@@ -36,7 +36,7 @@
 - [x] 4.3 Web unit tests for the parser and chip text, including "not measured" before the first answer [REQ: the-chip-never-shows-a-calm-it-did-not-measure]
 - [x] 4.4 Live run against this machine's registry: the answer agrees with a hand loop on at least five projects (ahead/behind, dirty, deploy hint) [REQ: each-project-row-carries-its-commit-and-push-state]
 - [x] 4.5 Visual check in the browser (Claude in Chrome): chip before and after opening, the table floats without moving the header, problem rows first, a deploy hint readable [REQ: the-table-floats-and-is-read-only]
-- [ ] 4.6 `openspec validate --strict`, `/opsx:verify` with `templates/core/rules/spec-verify-gate.md` [REQ: the-state-is-computed-only-when-somebody-asks-for-it]
+- [x] 4.6 `openspec validate --strict`, `/opsx:verify` with `templates/core/rules/spec-verify-gate.md` [REQ: the-state-is-computed-only-when-somebody-asks-for-it]
 
 ## Acceptance Criteria (from spec scenarios)
 

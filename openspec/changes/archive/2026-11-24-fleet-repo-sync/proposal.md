@@ -17,10 +17,13 @@ session's terminal and was gone by the next.
   No polling, no background cycle. The chip shows the problem count of the LAST measurement
   together with its age, and says "not measured" before the first one — never a zero it did not
   measure.
-- **Recently active** means a commit on any local branch, or a session transcript written, within
+- **Recently active** means a commit by anybody, on any local or remote-tracking branch, within
   a window — 30 days by default, adjustable in the table and in machine-local config
-  (`fleet_repo_sync_days`). Archived projects and e2e-run scaffolds are left out, and the table
-  says how many were left out and why.
+  (`fleet_repo_sync_days`). Fetches and sessions are not activity (owner, 2026-11-24). Archived
+  projects, projects the owner hid, and e2e-run scaffolds are left out, and the table says how
+  many were left out and why.
+- The owner can **hide** a project from the table (machine-local `fleet_repo_sync_hidden`) and
+  bring it back from a separate hidden view.
 - A separate **fetch** control runs `git fetch` across the listed projects (bounded concurrency,
   per-repo timeout), because ahead/behind is only as fresh as the remote refs; it is never run
   implicitly.
@@ -42,11 +45,11 @@ session's terminal and was gone by the next.
 
 - **Core (Layer 1):** a new `lib/set_orch/fleet/repo_sync.py` (git state collection, activity
   window, deploy hints — all generic: git, CI files and hosting link files, no web framework
-  logic) and two routes in `lib/set_orch/api/fleet.py` (`GET /api/fleet/repo-sync`,
-  `POST /api/fleet/repo-sync/fetch`).
+  logic) and three routes in `lib/set_orch/api/fleet.py` (`GET /api/fleet/repo-sync`,
+  `POST /api/fleet/repo-sync/fetch`, `POST /api/fleet/repo-sync/hidden`).
 - **Web:** `web/src/components/FleetRepoSync.tsx`, `web/src/lib/fleetRepoSync.ts`, one chip in
   `web/src/pages/Fleet.tsx`, and the rebuilt `web/dist`.
-- **Config:** one machine-local key, `fleet_repo_sync_days`.
+- **Config:** two machine-local keys, `fleet_repo_sync_days` and `fleet_repo_sync_hidden`.
 - **Confidentiality:** the view reads consumer trees at runtime and persists nothing derived from
   them; logs carry counts and project names already in the registry, never file contents or
   commit messages.
