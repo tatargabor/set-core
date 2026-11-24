@@ -18,6 +18,6 @@
 
 - [x] AC-1: WHEN the operator opts out the agent they work at and it asks THEN the question reaches the channel unchanged and nothing is written [REQ: automatic-answers-can-be-turned-off-for-one-agent, scenario: planning-at-one-agent]
 - [x] AC-2: WHEN another agent asks THEN it is decided as before [REQ: automatic-answers-can-be-turned-off-for-one-agent, scenario: the-other-agents-are-unaffected]
-- [ ] AC-3: WHEN the opted-out terminal clears and asks under a new session id THEN it is still opted out [REQ: automatic-answers-can-be-turned-off-for-one-agent, scenario: the-terminal-is-cleared] — unit-tested (two session ids, one label); a live /clear not exercised
+- [x] AC-3: WHEN the opted-out terminal clears and asks under a new session id THEN it is still opted out [REQ: automatic-answers-can-be-turned-off-for-one-agent, scenario: the-terminal-is-cleared] — live in measurements M3 (new session id after /clear, still opted out)
 - [x] AC-4: WHEN `! set-auto-answer here off` runs in a fleet terminal THEN its label is opted out; `on` clears, `status` reports [REQ: automatic-answers-can-be-turned-off-for-one-agent, scenario: from-inside-the-session]
 - [x] AC-5: WHEN the panel clears an opt-out THEN that agent's next question is decided again [REQ: automatic-answers-can-be-turned-off-for-one-agent, scenario: turned-back-on-from-the-panel]

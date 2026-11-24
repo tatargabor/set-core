@@ -37,3 +37,30 @@ second by an auto-answer worker started at 13:46 on the code from before the bac
 existed ("has no live hook"). It is the B-192 shape. In production the carrier's job path
 lies under the relay's state dir (`…/question-relay/backfill/…`), which the old marks
 accept. The test was re-run from a path carrying that mark.
+
+## M3 — an own answer that is also taught, live (AC-6)
+
+Built the same way as fleet-relay-teach M2. A scratch git repository was created in a scratchpad.
+A waiting call and a decider record for it were placed in the live relay state, with a stand-in
+`set-hook-…` process holding the call live. The proposal on record was «Igen, küldd
+(Recommended)», excluded as `outward step: send`.
+
+Steps, in Chrome on `localhost:7400/fleet` at 14:54:
+- Opened `answer…` on that row.
+- Typed the own answer "Nem, csak pénteken küldd".
+- Ticked "also teach it for next time (a project rule, committed there)". This opened a
+  "When / why (optional)" field, and the button changed from `send my answer` to
+  `send + teach`.
+- Typed the condition and pressed `send + teach`.
+
+Results:
+- Overlay: "Answered — the agent has it. Rule committed in teachown-proj (main) as 7f9658f —
+  .claude/rules/auto-answer-taught.md. Not pushed."
+- `git show --stat HEAD`: one file, `.claude/rules/auto-answer-taught.md`, +14, message
+  `auto-answer: taught rule 2026-11-24`. The entry is verbatim: the question, the OWN answer
+  (not the proposal), the `When / why` line and the date.
+- The relay's answer file held `{"valasz": "Nem, csak pénteken küldd"}`.
+- set-web journal: `1 answer(s) handed over from the fleet`, then `relay teach … answered=True
+  written=True commit=7f9658f`, with no rule text.
+
+The fake records were removed afterwards and the stand-in process was stopped.

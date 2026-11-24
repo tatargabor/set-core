@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-234 — `fleetTileClick.test.tsx` "a click in the open tile's BODY leaves it open" fails: the tile body is not recognised as an opening target
+- **state:** open
+- **reported:** 2026-11-24 by this session (set-core#f7306bb0), found by the verifier of `fleet-auto-answer-session-off`.
+- **measured:** `cd web && npx vitest run tests/unit/fleetTileClick.test.tsx` → `1 failed | 16 passed`, `tests/unit/fleetTileClick.test.tsx:213` `expect(tileClickOpens({ target: body, card })).toBe(true)` received `false`. The same run in a detached worktree at `cfa3baef^` and at `cfa3baef` fails identically, so it predates that change; the test renders the whole `Fleet` page, so the cause is somewhere in the tile's markup or `web/src/lib/fleetTileClick.ts`, not yet located.
+- **fail direction:** unknown until located — either the body of an open tile really stops opening it (a lost entry point), or the test's way of finding the body (`!el.hasAttribute(…)`) picks a different child since a markup change (a dead test).
+- **fixed when:** the test passes with the body found by the same rule the click handler uses, and a browser check confirms a click in an open tile's body leaves it open.
+
 ### B-233 — a cross-project request posted straight into a room opens no engagement, so the takeover watch never sees it
 - **state:** open
 - **reported:** 2026-11-24 by this session (set-core#8d47865a), reading the inbox after `fleet-engagement-takeover` was archived.

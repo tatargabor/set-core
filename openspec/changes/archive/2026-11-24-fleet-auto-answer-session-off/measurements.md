@@ -26,3 +26,20 @@ here — click to turn them off for this terminal only". One click turned it amb
 on again". "on again" removed the row, emptied the config list (`[]`), and turned the header
 icon back to `on`. Nothing under the header or the panel moved. The panel's own content got
 one section shorter.
+
+## M3 — the opt-out survives a /clear (AC-3)
+
+The same isolated relay world as M1, with `auto_answer.off_agents = ["label:scratch-clearoff"]`.
+A scratch fleet agent labelled `scratch-clearoff` (haiku, only the question hook wired) first
+answered a prompt that asks nothing; its session record said `ee7e2ad5…`, `idle`. `/clear` was
+typed into its terminal through the owner daemon. The record then said `28d14bb8…`, `idle`, so it
+was a new session id under the same label. The question prompt was typed next. At 14:52:37 its
+`auto-answer.log` said:
+
+- `auto answer: off for this agent (label:scratch-clearoff) — forwarding unchanged`
+- `auto answer: off — forwarded unchanged (exit 0)`
+- relay: `question relay [28d14bb8]: 1 question(s) handed over … waiting`
+
+No worker started and there was no `auto-answer/` directory in the state dir. The opt-out is
+stored by terminal label, and it held for a session id the configuration never named. The
+agent was stopped afterwards. The machine's real `auto_answer.off_agents` stayed `[]`.
