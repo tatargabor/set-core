@@ -31,7 +31,7 @@ works the same way.
 ## Capabilities
 
 ### New Capabilities
-- `relay-discord-bridge`: a two-way Discord bridge for the question relay. It covers the post, the
+- `relay-discord-bridge`: a two-way Discord bridge for the question relay, plus its one-way notifications. It covers the post, the
   answer rules (reactions, replies, defer, multi-select close), allowed users, the acknowledgement,
   closing stale posts, and the setup that wires it.
 

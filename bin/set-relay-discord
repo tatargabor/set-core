@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+"""set-relay-discord — a two-way Discord bridge for the question relay.
+
+Set up one machine (a bot in your server, with the Message Content intent on):
+
+    echo "$BOT_TOKEN" | set-relay-discord setup --token-stdin --channel <channel id> --allow <your user id>
+    set-relay-discord test            # posts a probe; reply to it, then:
+    set-relay-discord test --check    # can the bot read replies?
+    set-relay-discord status
+
+Then switch the question relay on (fleet header, or `set-config set question_relay.enabled true`).
+Questions arrive in the channel with numbered reactions: tap a number, or reply with text
+("2, …" adds a note), ❌ leaves it for later, ✅ sends a multi-select. Only the allowed users'
+answers count. `setup --remove` stops the timer and restores the commands it replaced.
+
+Subcommands the relay and the timer run: `post` (forward command), `notify` (notify command),
+`poll` (every minute). Log: ~/.local/share/set-core/question-relay/relay-discord.log.
+"""
+from __future__ import annotations
+
+import os
+import sys
+
+_SET_TOOLS_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+_LIB = os.path.join(_SET_TOOLS_ROOT, "lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+
+from set_orch.fleet.relay_discord import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -39,6 +39,16 @@ with more than five options SHALL list the rest as text, answerable by reply.
 - **WHEN** `post` runs with no token file, no channel id, or no allowed users
 - **THEN** it posts nothing and exits non-zero with a line naming what is missing
 
+### Requirement: The bridge also posts the relay's notifications
+`set-relay-discord notify` SHALL read the relay's notification envelope
+(`{"kind": "notification", "agent", "message"}`) from stdin and post one plain message naming the
+agent, with no reactions and no post record. It SHALL exit 0 only when the post landed. Setup SHALL
+wire it as `question_relay.notify_command` when that key is empty, or with `--replace`.
+
+#### Scenario: An agent needs attention
+- **WHEN** the relay's notify outbound pipes a notification envelope
+- **THEN** one message naming the agent and the message is posted, and the command exits 0
+
 ### Requirement: Only allowed users answer
 The bridge SHALL count reactions and replies only from the Discord user ids listed in
 `relay_discord.allowed_users`. The bot's own reactions SHALL never count. With the list empty,
