@@ -74,3 +74,45 @@ carried a `unit`: a test driving the thing with an input the live system does no
 Fix: the cgroup is read from the process itself (`/proc/<pid>/cgroup` → `cpu.stat`), keyed by
 pid, no `systemctl` call. A test now drives the real readers with the live row shape (no unit,
 this process's pid) and fails on the previous code.
+
+## M7 — 4.3 and the interrupt half of 4.2 pass live (11:27-11:40, after the M6 fix)
+
+Same request to the framework's own desk: a 420 s CPU loop, then `sleep 600`. A round every
+45 s (plus the service's own every 60 s) logged each decision:
+
+| time | moved (s) | background CPU | decision |
+|---|---|---|---|
+| 11:27:43 | 0 | pending (first sample) | none — cpu-sampling |
+| 11:28:28 … 11:34:33 | 39 → 404 | 91 – 101 % | none — working (past the 300 s bound at 11:33:02 and 11:34:33) |
+| 11:33:47 | 358 | pending | none — cpu-sampling: the service was restarted by another session at 11:33:14, so the sampler started fresh |
+| 11:35:19 … 11:39:09 | 25 → 254 | 0.4 – 0.8 % | none — moving |
+| 11:39:54 | 301.8 | 0.8 % | **interrupt — stalled (movement+cpu)** |
+| 11:40:07 | — | — | engagement `answered` |
+
+The desk's own report (reply linked to the request): the CPU loop ran its full 420 s
+(11:27:48 → 11:34:48) without interruption; the sleep was interrupted by the `[fleet]` line and
+nothing was re-run.
+
+## M8 — The replace path live (11:41-11:44), and two defects it exposed
+
+A request to the framework's own desk (`sleep 90`, then answer); the desk was stopped through
+the fleet's stop route 28 s later (11:41:38).
+
+- 11:42:36 the round decided `replace (desk-gone)`; 11:42:37 a desk was started; 11:42:42 the
+  engagement was handed over (`handovers=1`) to the new seat.
+- 11:43:38 the successor posted the unlinked handover FACT in the request's room.
+- 11:43:57 it answered with a reply linked to the original request; 11:44:01 `answered`.
+
+What it reported in that answer, verified:
+
+1. **It could not read the request.** The request had gone into a room of two (the fallback
+   from task 5.1 for asking one's own project's desk), and a room of two is readable by its two
+   seats only — `sac join` does not change that. Sending there works. Probed alternative: a
+   normal project room does not wake a desk that has not joined it (`wakes: []`, with the bus's
+   own notice). So the room of two stays (it delivers and wakes), and the takeover context now
+   says: if the room refuses you, ask the asker once (`sac dm <asker>`) to re-send; answer in
+   the original room, linked — sending works where reading does not.
+2. **"Unaddressed, wakes nobody" was false in a room of two** — the bus lists both other seats
+   in `wakes`. The context now states the rule as the bus applies it.
+3. Also seen here: the handover carried no predecessor session, because a gone desk has no
+   inventory row. It is now taken from the predecessor's mandate (`session_ids`).

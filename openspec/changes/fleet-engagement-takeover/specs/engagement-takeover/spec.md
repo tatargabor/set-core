@@ -65,11 +65,11 @@ An open engagement SHALL be taken over when its desk is not live, or when one st
 - **THEN** nothing is replaced
 
 ### Requirement: The taking-over desk is told where the work got and says on the bus that it took over
-A takeover mandate SHALL carry the request's room and timestamp, the asker, the predecessor's seat and session id. The desk's session-start context SHALL tell it to read the request on the bus, read where the predecessor got — the end of the predecessor's transcript and the project's open OpenSpec changes — and continue rather than restart; its first bus act SHALL be an unaddressed FACT in the request's room naming the request, the predecessor seat and itself; and its answer SHALL be linked to the original request.
+A takeover mandate SHALL carry the request's room and timestamp, the asker, the predecessor's seat and session id (from the predecessor's mandate when its agent is gone). The desk's session-start context SHALL tell it to read the request on the bus — and, when that room refuses it, to ask the asker once to re-send the request — read where the predecessor got — the end of the predecessor's transcript and the project's open OpenSpec changes — and continue rather than restart; its first bus act SHALL be an unlinked FACT in the request's room naming the request, the predecessor seat and itself; and its answer SHALL be sent in the request's room, linked to the original request.
 
 #### Scenario: Context of a taking-over desk
 - **WHEN** a desk started with a takeover begins a session
-- **THEN** its context names the request's room and timestamp, the asker, the predecessor seat and session id, and the instruction to continue the predecessor's work and post the unaddressed handover FACT first
+- **THEN** its context names the request's room and timestamp, the asker, the predecessor seat and session id, the re-send fallback for an unreadable room, and the instruction to continue the predecessor's work, post the unlinked handover FACT first and answer in the request's room
 
 #### Scenario: The handover notice does not close the request
 - **WHEN** the new desk posts its handover FACT without a reply link

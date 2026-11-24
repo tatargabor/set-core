@@ -358,6 +358,12 @@ class TakeoverWatch:
 
     def _replace(self, record: Dict[str, Any], row: Optional[Dict[str, Any]]) -> Optional[str]:
         from_session = row.get("session_id") if row else None
+        if not from_session and record.get("desk_mandate"):
+            # The desk is gone, so there is no row — but its mandate listed the sessions it ran
+            # (measured live: a replaced-because-gone desk handed over with no session).
+            held = self.mandates.get(record["desk_mandate"]) or {}
+            sessions = held.get("session_ids") or []
+            from_session = sessions[-1] if sessions else None
         if row is not None:
             self.stop(row["terminal_label"])
         if record.get("desk_mandate"):

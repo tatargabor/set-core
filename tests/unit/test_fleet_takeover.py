@@ -265,7 +265,16 @@ def test_watch_replaces_a_gone_desk_without_stopping_anything(tmp_path):
     f = Fakes(tmp_path)
     out = f.watch([]).run()
     assert out[0]["decision"] == tk.REPLACE and f.stops == [] and len(f.starts) == 1
-    assert f.starts[0][2]["from_session"] is None
+    assert f.starts[0][2]["from_session"] is None      # the mandate never saw a session
+
+
+def test_a_gone_desk_s_session_comes_from_its_mandate(tmp_path):
+    """Measured live: a desk replaced because it was gone handed over with no session."""
+    f = Fakes(tmp_path)
+    f.mandates.observe_session(f.old_mandate, "sess-1")
+    f.mandates.observe_session(f.old_mandate, "sess-2")
+    f.watch([]).run()
+    assert f.starts[0][2]["from_session"] == "sess-2"
 
 
 def test_watch_leaves_a_busy_desk_alone(tmp_path):
@@ -309,7 +318,8 @@ def test_the_takeover_is_kept_on_the_mandate_and_shown_to_the_desk(tmp_path):
     assert "text" not in record["takeover"]
     context = mandate_delivery.render_context(record)
     for needle in ("TAKING OVER", "dm-a--b", "T1", "alpha#a", "beta#d", "sess-old",
-                   "WITHOUT `--to` and WITHOUT `--re`", "`--re T1`", "openspec"):
+                   "WITHOUT `--re`", "`--re T1`", "openspec", "`sac dm alpha#a`",
+                   "answer IN `dm-a--b`"):
         assert needle in context, needle
 
 
