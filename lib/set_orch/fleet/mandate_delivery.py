@@ -147,6 +147,9 @@ def render_context(record: Mapping[str, Any]) -> str:
             "An unlinked reply does not close the request.",
             "- When nothing addressed to you is open, stop. The fleet closes a quiet desk on its own.",
         ]
+        takeover = record.get("takeover")
+        if takeover:
+            lines += _takeover_lines(takeover)
     else:
         lines += [
             "This is why this session exists. Work towards it, and say so when something would "
@@ -175,6 +178,35 @@ def render_context(record: Mapping[str, Any]) -> str:
         "starts that project's desk and records the request.",
     ]
     return "\n".join(lines)
+
+
+def _takeover_lines(takeover: Mapping[str, Any]) -> List[str]:
+    """What a desk started to take a request over is told (fleet-engagement-takeover)."""
+    room, ts = takeover.get("room"), takeover.get("ts")
+    before = takeover.get("from_seat") or "an earlier desk"
+    session = takeover.get("from_session")
+    lines = [
+        "",
+        "## You are TAKING OVER a request — continue it, do not start over",
+        "",
+        f"- The request: bus room `{room}`, entry `{ts}`, asked by "
+        f"{takeover.get('asker') or 'another agent'}. Read it with `sac history {room}`.",
+        f"- It was held by {before}, which stalled or stopped; the fleet stopped it and started you.",
+    ]
+    if session:
+        lines.append(
+            f"- Its session id is `{session}`. Its transcript is that id's `.jsonl` under this "
+            "project's folder in `~/.claude/projects/`. Read only its END (e.g. `tail -c 30000`) "
+            "to see where it got — not the whole file.")
+    lines += [
+        "- Also check this project's open OpenSpec changes (`openspec list`, their tasks.md): "
+        "what is ticked is done; carry on from there.",
+        f"- FIRST, before any work: post one FACT in `{room}` WITHOUT `--to` and WITHOUT `--re`, "
+        f"saying the request {ts} moved from {before} to you. Unaddressed, so it wakes nobody; "
+        "unlinked, so it does not close the request.",
+        f"- When done, answer with a reply linked to the ORIGINAL request (`--re {ts}`).",
+    ]
+    return lines
 
 
 def hook_output(

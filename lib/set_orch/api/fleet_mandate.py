@@ -6,6 +6,7 @@
     POST /api/fleet/engagements/{id}/failed     — the asker reports that the send did not happen
     POST /api/fleet/engagements/{id}/withdraw   — the asker takes a request back
     GET  /api/fleet/engagements                 — engagements, by asker / project / state
+    POST /api/fleet/engagements/takeover-round  — interrupt or replace stalled desks, once
     GET  /api/fleet/map                         — projects, agents, and the relations between them
 
 Kept out of `api/fleet.py` on purpose: that module is the inventory and the terminal, and it
@@ -32,6 +33,7 @@ from pydantic import BaseModel, ConfigDict
 from ..fleet import desk as fleet_desk
 from ..fleet import engagement as fleet_engagement
 from ..fleet import mandate as fleet_mandate
+from ..fleet import takeover as fleet_takeover
 from ..fleet.owner_client import OwnerClient, OwnerClientError, OwnerUnavailable
 from . import fleet as fleet_api
 
@@ -408,6 +410,67 @@ async def sweep_loop(interval: float = SWEEP_INTERVAL_SECONDS) -> None:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("fleet work sweep: a round failed (%s)", type(exc).__name__)
+
+
+# --------------------------------------------------------------------------- #
+# The takeover watch (fleet-engagement-takeover)
+# --------------------------------------------------------------------------- #
+
+#: One sampler for the life of the service: the background CPU rate is a difference between
+#: two rounds, so the previous sample must outlive the round.
+_CPU = fleet_takeover.CpuSampler()
+
+#: Shorter than the stall bound by design — the sweep's 300 s would act up to ten minutes late.
+TAKEOVER_INTERVAL_SECONDS = 60.0
+
+
+def _start_takeover_desk(project: str, *, requested_by: Optional[str],
+                         takeover: Dict[str, Any]) -> fleet_desk.Desk:
+    return _resolver().resolve(project, requested_by=requested_by, takeover=takeover)
+
+
+def takeover_round() -> Dict[str, Any]:
+    """Interrupt or replace the desk of every open request that stopped moving.
+
+    Costs one engagement-store read when nothing is open: the inventory is built only when
+    there is a request to watch.
+    """
+    engagements = fleet_engagement.EngagementStore()
+    if not engagements.list(state="open"):
+        return {"measured": True, "open": 0, "actions": []}
+    refreshed = fleet_engagement.refresh(engagements)
+    if not engagements.list(state="open"):
+        return {"measured": True, "open": 0, "actions": []}
+    rows = _live_rows()
+    if rows is None:
+        logger.warning("fleet takeover: the inventory could not be read; nothing decided")
+        return {"measured": False, "actions": []}
+    watch = fleet_takeover.TakeoverWatch(
+        engagements=engagements, mandates=fleet_mandate.MandateStore(), rows=rows,
+        cpu=_CPU.rate, interrupt=fleet_takeover.owner_interrupt,
+        stop=lambda label: OwnerClient().stop(label), start_desk=_start_takeover_desk,
+        b=fleet_takeover.bounds(),
+    )
+    actions = watch.run()
+    return {"measured": refreshed.get("measured", True), "actions": actions}
+
+
+async def takeover_loop(interval: float = TAKEOVER_INTERVAL_SECONDS) -> None:
+    """The periodic carrier of `takeover_round`. A failed round is logged; the loop goes on."""
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await asyncio.to_thread(takeover_round)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("fleet takeover: a round failed (%s)", type(exc).__name__)
+
+
+@router.post("/api/fleet/engagements/takeover-round")
+def fleet_takeover_round() -> Dict[str, Any]:
+    """Run one takeover round now — what the loop does every minute. For the operator and tests."""
+    return takeover_round()
 
 
 # --------------------------------------------------------------------------- #

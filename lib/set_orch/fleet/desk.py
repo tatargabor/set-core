@@ -271,8 +271,14 @@ class DeskResolver:
                 return row
         raise DeskRefused("unknown-project", f"{name} is not a registered project")
 
-    def resolve(self, project: str, *, requested_by: Optional[str]) -> Desk:
-        """The project's desk, started if none is live. Raises `DeskRefused` with a reason."""
+    def resolve(self, project: str, *, requested_by: Optional[str],
+                takeover: Optional[Dict[str, Any]] = None) -> Desk:
+        """The project's desk, started if none is live. Raises `DeskRefused` with a reason.
+
+        `takeover` (fleet-engagement-takeover) is recorded on a NEWLY started desk's mandate:
+        the request it takes over and the predecessor it continues. A live desk found instead
+        is returned as it is.
+        """
         row = self._project(project)
         if row.get("archived"):
             raise DeskRefused("archived", f"{project} is archived and is not to be developed")
@@ -302,7 +308,7 @@ class DeskResolver:
         label = mandate.desk_label(project)
         record = self.mandates.create(
             kind="desk", goal=desk_goal(project), project=project, cwd=root, label=label,
-            requested_by=requested_by, source="start", carrier=True,
+            requested_by=requested_by, source="start", carrier=True, takeover=takeover,
         )
         try:
             started = self._start(label=label, cwd=root, project=project, mandate_id=record["id"],

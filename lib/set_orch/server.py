@@ -86,11 +86,23 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[SET] Desk sweep startup failed: {e}", flush=True)
 
+    # The takeover watch: an open request whose desk stopped moving is interrupted, then
+    # handed to a fresh desk (fleet-engagement-takeover).
+    takeover_watch = None
+    try:
+        import asyncio
+        from .api.fleet_mandate import takeover_loop
+        takeover_watch = asyncio.create_task(takeover_loop())
+    except Exception as e:
+        print(f"[SET] Takeover watch startup failed: {e}", flush=True)
+
     yield
 
     # Shutdown: desk sweep → Discord → service → sessions → watchers
     if desk_sweep is not None:
         desk_sweep.cancel()
+    if takeover_watch is not None:
+        takeover_watch.cancel()
     if discord_bot:
         try:
             await discord_bot.stop()

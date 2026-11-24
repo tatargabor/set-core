@@ -156,6 +156,11 @@ def _normalise(raw: Any) -> Optional[Dict[str, Any]]:
         "sent_at": raw.get("sent_at") if isinstance(raw.get("sent_at"), (int, float)) else None,
         "closed_at": raw.get("closed_at") if isinstance(raw.get("closed_at"), (int, float)) else None,
         "answer_ts": _text(raw.get("answer_ts")),
+        # fleet-engagement-takeover: when the desk was last interrupted for this request, and
+        # how many times the request has been handed to a fresh desk.
+        "nudged_at": raw.get("nudged_at") if isinstance(raw.get("nudged_at"), (int, float)) else None,
+        "handovers": raw.get("handovers") if isinstance(raw.get("handovers"), int)
+        and not isinstance(raw.get("handovers"), bool) and raw.get("handovers") > 0 else 0,
     }
 
 
@@ -302,6 +307,28 @@ class EngagementStore:
         return self._transition(engagement_id, LIVE_STATES, state="withdrawn",
                                 closed_at=self._clock())
 
+    def mark_nudged(self, engagement_id: str) -> Optional[Dict[str, Any]]:
+        """The desk was interrupted for this request. The state stays `open`."""
+        return self._transition(engagement_id, ("open",), state="open", nudged_at=self._clock())
+
+    def mark_handover(self, engagement_id: str, *, label: Optional[str], seat: Optional[str],
+                      mandate_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        """The request now belongs to a fresh desk. Still `open`; the ladder starts over."""
+        with file_lock(self.path):
+            records = self._load()
+            record = records.get(engagement_id)
+            if record is None:
+                return None
+            if record["state"] != "open":
+                logger.info("fleet engagement: %s is %s; handover ignored", engagement_id, record["state"])
+                return dict(record)
+            record.update(desk_label=_text(label), desk_seat=_text(seat),
+                          desk_mandate=_text(mandate_id), nudged_at=None,
+                          handovers=record["handovers"] + 1)
+            self._save(records)
+        logger.info("fleet engagement: %s handed over (handovers=%d)", engagement_id, record["handovers"])
+        return dict(record)
+
     def mark_answered(self, engagement_id: str, answer_ts: str) -> Optional[Dict[str, Any]]:
         return self._transition(engagement_id, ("open",), state="answered",
                                 answer_ts=_text(answer_ts), closed_at=self._clock())
@@ -390,4 +417,6 @@ def view(record: Dict[str, Any], *, now: Optional[float] = None,
         "reason": record["reason"],
         "age_seconds": round(age, 1) if age is not None else None,
         "waiting": bool(state == "open" and not unmeasured and age is not None and age > waiting_after),
+        "handovers": record.get("handovers", 0),
+        "nudged": record.get("nudged_at") is not None,
     }
