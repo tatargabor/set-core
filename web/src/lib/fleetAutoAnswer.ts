@@ -47,6 +47,8 @@ export interface AutoAnswerState {
   window_s: number
   likely_min: number
   pending: PendingProposal[]
+  /** Agents left alone while the switch is on: `label:<terminal>` or `session:<id>`. */
+  off_agents: string[]
 }
 
 export interface DecisionRecord {
@@ -97,6 +99,9 @@ export function parseAutoAnswerState(d: unknown): AutoAnswerState | null {
     window_s: num(o.window_s) ?? 60,
     likely_min: num(o.likely_min) ?? 0.8,
     pending,
+    off_agents: Array.isArray(o.off_agents)
+      ? (o.off_agents as unknown[]).filter((e): e is string => typeof e === 'string' && /^(label|session):./.test(e))
+      : [],
   }
 }
 
@@ -283,4 +288,65 @@ export function kindLabel(kind: string | null): string {
 /** A continuation's suggestions already start with an arrow; the row draws its own. */
 export function shownChoice(choice: string): string {
   return choice.replace(/^\s*(?:→|->)\s*/, '')
+}
+
+// --------------------------------------------------------------------------- //
+// One agent left alone (fleet-auto-answer-session-off)
+// --------------------------------------------------------------------------- //
+
+/**
+ * Asked for by the owner (2026-11-24): automatic answers must be turn-off-able for the agent
+ * he is working at, while the rest of the fleet keeps them. The opt-out names the TERMINAL
+ * (`label:<label>`), so a `/clear` in it — a new session id — keeps it.
+ */
+let offAgents: string[] = []
+let machineOn = false
+const offListeners = new Set<() => void>()
+
+/** Called by the header control after every read; the terminal headers subscribe. */
+export function publishOffAgents(list: string[], enabled: boolean): void {
+  if (list.length === offAgents.length && list.every((e, i) => e === offAgents[i]) && enabled === machineOn) return
+  offAgents = [...list]
+  machineOn = enabled
+  offListeners.forEach(l => l())
+}
+
+/** `off` — opted out; `on` — answered automatically; `machine-off` — the switch itself is off. */
+export type HereState = 'off' | 'on' | 'machine-off'
+
+export function hereState(label: string | null | undefined, list: string[] = offAgents, enabled = machineOn): HereState {
+  if (label && list.includes(`label:${label}`)) return 'off'
+  return enabled ? 'on' : 'machine-off'
+}
+
+export function useHereState(label: string | null | undefined): HereState {
+  return useSyncExternalStore(
+    cb => { offListeners.add(cb); return () => { offListeners.delete(cb) } },
+    () => hereState(label), () => 'machine-off' as HereState)
+}
+
+/** The opt-out entries as the panel lists them: what is named, and how. */
+export function offAgentRows(list: string[]): { entry: string; name: string; kind: 'terminal' | 'session' }[] {
+  return list.map(entry => {
+    const [kind, ...rest] = entry.split(':')
+    const value = rest.join(':')
+    return kind === 'label'
+      ? { entry, name: value, kind: 'terminal' as const }
+      : { entry, name: value.slice(0, 8), kind: 'session' as const }
+  })
+}
+
+/** Turn one agent off or back on; returns the new state, or throws the route's reason. */
+export async function setAgentOff(entry: string, off: boolean): Promise<AutoAnswerState> {
+  const [kind, ...rest] = entry.split(':')
+  const body = kind === 'label' ? { label: rest.join(':'), off } : { session: rest.join(':'), off }
+  const r = await fetch('/api/fleet/auto-answer/agent', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const d = await r.json().catch(() => null)
+  if (!r.ok) throw new Error(d?.detail ?? `HTTP ${r.status}`)
+  const parsed = parseAutoAnswerState(d)
+  if (!parsed) throw new Error('unexpected answer shape')
+  publishOffAgents(parsed.off_agents, parsed.enabled)
+  return parsed
 }

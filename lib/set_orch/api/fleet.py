@@ -3054,6 +3054,29 @@ def fleet_auto_answer_toggle(body: AutoAnswerToggleBody) -> Dict[str, Any]:
     return payload
 
 
+class AutoAnswerAgentBody(BaseModel):
+    label: Optional[str] = None
+    session: Optional[str] = None
+    off: bool
+
+
+@router.post("/api/fleet/auto-answer/agent")
+def fleet_auto_answer_agent(body: AutoAnswerAgentBody) -> Dict[str, Any]:
+    """Turn automatic answers off (or back on) for ONE agent — by its fleet terminal label, or
+    by session id for a session outside the fleet (fleet-auto-answer-session-off)."""
+    from ..fleet import auto_answer as aa
+    from ..fleet import auto_answer_worker as aw
+
+    if bool(body.label) == bool(body.session):
+        raise HTTPException(status_code=422, detail="name the agent by label or by session, one of them")
+    entry = f"label:{body.label}" if body.label else f"session:{body.session}"
+    try:
+        aa.set_agent_off(entry, body.off)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return aw.status()
+
+
 @router.get("/api/fleet/auto-answer/decisions")
 def fleet_auto_answer_decisions(limit: int = 30) -> Dict[str, Any]:
     """The newest decision-log records, newest first. Read on request, never cached (D13)."""

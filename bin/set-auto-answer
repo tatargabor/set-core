@@ -11,6 +11,12 @@ detached worker decides by forking the asking session, forwards the question wit
 proposal attached, and writes an allowed answer after `auto_answer.window_s` unless a
 human answered first. Outward steps and permission prompts are never written.
 
+One agent can be left alone while the switch stays on — from inside it:
+
+    ! set-auto-answer here off      # this fleet terminal (or session) is answered by you only
+    ! set-auto-answer here on
+    ! set-auto-answer here status
+
 Machine-local configuration (`set-config set <key> <value>`):
     auto_answer.enabled          true | false (default false)
     auto_answer.forward_command  the operator's real two-way outbound
@@ -21,6 +27,7 @@ Machine-local configuration (`set-config set <key> <value>`):
     auto_answer.extra_paths      extra decision locations for the fork to read
     auto_answer.log_days         decision-log retention (90)
     auto_answer.decide_timeout_s the decision's time bound (120)
+    auto_answer.off_agents       agents left alone: ["label:<terminal>", "session:<id>"]
 
 The decision log is ~/.local/share/set-core/auto-answer/decisions.jsonl (mode 600), never
 in a repository. Logs: ~/.local/share/set-core/question-relay/auto-answer.log.

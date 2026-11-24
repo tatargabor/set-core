@@ -59,6 +59,10 @@ KEY_LOG_DAYS = "auto_answer.log_days"
 KEY_DECIDE_TIMEOUT = "auto_answer.decide_timeout_s"
 KEY_ALLOW_FAMILIES = "auto_answer.allow_families"
 KEY_STANDING = "auto_answer.standing"
+#: Agents the decider leaves alone while the switch is on (fleet-auto-answer-session-off):
+#: `label:<fleet terminal label>` or `session:<session id>`.
+KEY_OFF_AGENTS = "auto_answer.off_agents"
+SESSION_RECORDS = Path.home() / ".claude" / "sessions"
 
 DEFAULT_WINDOW_S = 60.0
 DEFAULT_LIKELY_MIN = 0.8
@@ -150,6 +154,62 @@ def _list(get: Getter, key: str) -> List[str]:
         except ValueError:
             logger.warning("auto answer: %s is not a valid JSON list; read one entry per line", key)
     return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def off_agents(get: Getter = local_config.get) -> List[str]:
+    return [e for e in _list(get, KEY_OFF_AGENTS) if e.startswith(("label:", "session:"))]
+
+
+def set_agent_off(entry: str, off: bool, get: Getter = local_config.get) -> List[str]:
+    """Add or remove one opt-out entry; returns the new list. Machine-local config (D4)."""
+    if not entry.startswith(("label:", "session:")) or not entry.split(":", 1)[1].strip():
+        raise ValueError("an opt-out names `label:<label>` or `session:<id>`")
+    current = off_agents(get)
+    new = ([*current, entry] if entry not in current else current) if off else [e for e in current if e != entry]
+    local_config.set_value(KEY_OFF_AGENTS, json.dumps(new, ensure_ascii=False))
+    logger.info("auto answer: %s %s", entry if entry.startswith("label:") else entry[:16], "off" if off else "on again")
+    return new
+
+
+def label_of_session(session_id: str, records: Optional[Path] = None) -> Optional[str]:
+    """The fleet terminal label holding this session: owner agent pid → its session record."""
+    from .owner_client import OwnerClient
+    records = records or SESSION_RECORDS
+    for agent in OwnerClient().list_agents():
+        try:
+            data = json.loads((records / f"{int(agent.get('pid'))}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            continue
+        if isinstance(data, dict) and data.get("sessionId") == session_id:
+            return str(agent.get("label") or "") or None
+    return None
+
+
+def agent_off(session_id: str, get: Getter = local_config.get,
+              resolve_label: Optional[Callable[[str], Optional[str]]] = None) -> Optional[str]:
+    """The opt-out entry that covers this session, or None (fleet-auto-answer-session-off).
+
+    `session:` entries match directly. A `label:` entry needs the session's current fleet
+    label, read through the owner — so a `/clear`, which gives a new session id, keeps it
+    (design D1). When the label cannot be read, a label opt-out cannot hold: said at WARNING,
+    because that is the calm direction.
+    """
+    entries = off_agents(get)
+    if not entries or not session_id:
+        return None
+    if f"session:{session_id}" in entries:
+        return f"session:{session_id}"
+    labels = [e for e in entries if e.startswith("label:")]
+    if not labels:
+        return None
+    try:
+        label = (resolve_label or label_of_session)(session_id)
+    except Exception as exc:
+        logger.warning("auto answer: the fleet label of session %s could not be read (%s); "
+                       "a label opt-out cannot hold for it", session_id[:8], type(exc).__name__)
+        return None
+    entry = f"label:{label}" if label else None
+    return entry if entry in labels else None
 
 
 def never_patterns(get: Getter = local_config.get) -> List[str]:

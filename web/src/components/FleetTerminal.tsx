@@ -1,7 +1,7 @@
 import { tabSwitchDirection } from '../lib/fleetLatest'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, MousePointer2, Scissors, X } from 'lucide-react'
+import { Bot, BotOff, ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, MousePointer2, Scissors, X } from 'lucide-react'
 import {
   buildListingIndex, referenceAtColumn, terminalReferences, terminalTarget, unprovenInBase, type FileRef, type ListingIndex,
   type TerminalTarget,
@@ -24,6 +24,7 @@ import {
   terminalUrl,
 } from '../lib/fleetTerminal'
 import { IconButton } from './TileControls'
+import { setAgentOff, useHereState } from '../lib/fleetAutoAnswer'
 
 /**
  * One framework-owned terminal, in the browser — task 8.1.
@@ -252,6 +253,42 @@ type Phase =
   | { kind: 'attached'; ack: AttachedEvent }
   | { kind: 'refused'; reason: string }
   | { kind: 'closed'; reason: string }
+
+/**
+ * Automatic answers off for THIS terminal only (fleet-auto-answer-session-off). Asked for by
+ * the owner, 2026-11-24: at the agent he is working at, the decider must not answer for him,
+ * while the rest of the fleet keeps it. Amber while off — the reader at the terminal is the
+ * one it concerns, so the state is shown where they stand.
+ */
+function AutoAnswerHere({ label }: { label: string }) {
+  const state = useHereState(label)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const off = state === 'off'
+  const toggle = () => {
+    if (busy) return
+    setBusy(true)
+    setAgentOff(`label:${label}`, !off)
+      .then(() => setError(null))
+      .catch(e => setError(String(e?.message ?? e)))
+      .finally(() => setBusy(false))
+  }
+  const text = error ? `could not change automatic answers here: ${error}`
+    : off ? 'automatic answers are OFF for this terminal — its questions go to you unchanged; click to turn them back on'
+      : state === 'on' ? 'automatic answers are on here — click to turn them off for this terminal only (e.g. while you work in it)'
+        : 'automatic answers are off machine-wide; click to keep them off for this terminal even after they are turned on'
+  return (
+    <IconButton
+      icon={off ? BotOff : Bot}
+      tone={off || error ? 'amber' : state === 'machine-off' ? 'ghost' : 'default'}
+      active={off}
+      testId="auto-answer-here"
+      mark={{ 'data-fleet-terminal-auto-answer': off ? 'off' : state }}
+      label={text}
+      onClick={toggle}
+    />
+  )
+}
 
 export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput, headerSlot, projectRoot, knownFiles, agentCwd, onOpenFile, checkouts, home, onReveal, releaseTabKeys = false, tmuxViewer = false }: Props) {
   const host = useRef<HTMLDivElement | null>(null)
@@ -1383,6 +1420,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         />
 
         <span className={`flex items-center gap-0.5 shrink-0${merged ? '' : ' ml-auto'}`}>
+          {!tmuxViewer && <AutoAnswerHere label={label} />}
           {/* Two controls, never one. Requirement 5.4: closing the view is not a
               stop, so the stop has to be its own act — and it still says so, in
               the accessible name that replaced the sentence. The confirm step is

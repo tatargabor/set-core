@@ -64,6 +64,9 @@ def _no_real_relay_backfill(monkeypatch):
     monkeypatch.setattr(rb, "_fleet_agents", lambda: [])
     monkeypatch.setattr(rb, "_other_agents", lambda: [])
     monkeypatch.setattr(rb, "launch_carrier", _refuse)
+    # Nor may a test read the machine's fleet labels for an agent opt-out.
+    from set_orch.fleet import auto_answer as aa
+    monkeypatch.setattr(aa, "label_of_session", lambda session_id, records=None: None)
     yield
 
 

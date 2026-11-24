@@ -30,7 +30,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .. import local_config
 from . import auto_answer as aa
@@ -292,6 +292,7 @@ def status(get: Getter = local_config.get, base: Optional[Path] = None,
     now = time.time() if now is None else now
     pending = pending_view(now, base)
     return {"enabled": aa.enabled(get), "wired": wired(get), "forward": bool(aa.forward_command(get)),
+            "off_agents": aa.off_agents(get),
             "window_s": aa.window_s(get), "likely_min": aa.likely_min(get),
             "pending": pending, "pending_count": len(pending)}
 
@@ -341,12 +342,21 @@ Runner = Callable[..., int]
 
 
 def outbound(payload: str, *, get: Getter = local_config.get, environ: Optional[Dict[str, str]] = None,
-             run: Runner = qr._run_command, spawn: Optional[Callable[[str, Dict[str, str]], None]] = None) -> int:
+             run: Runner = qr._run_command, spawn: Optional[Callable[[str, Dict[str, str]], None]] = None,
+             opted_out: Optional[Callable[[str], Optional[str]]] = None) -> int:
     """What `set-auto-answer` does with one envelope. Returns its exit code."""
     environ = dict(os.environ if environ is None else environ)
     forward = aa.forward_command(get)
     relay_vars = {k: environ.get(k, "") for k in (qr.ENV_KIND, qr.ENV_SESSION, qr.ENV_CWD)}
-    if not aa.enabled(get):
+    off_here = None
+    if aa.enabled(get):
+        # One agent's opt-out takes the switch-off path for that agent only
+        # (fleet-auto-answer-session-off D2): the channel sees what it sees with the switch off.
+        off_here = (opted_out or (lambda sid: aa.agent_off(sid, get)))(relay_vars.get(qr.ENV_SESSION) or "")
+        if off_here:
+            logger.info("auto answer: off for this agent (%s) — forwarding unchanged",
+                        off_here if off_here.startswith("label:") else off_here[:16])
+    if not aa.enabled(get) or off_here:
         if not forward:
             logger.warning("auto answer: off and %s is not set; nothing to forward to", aa.KEY_FORWARD)
             return 1
@@ -639,7 +649,65 @@ def _close(w: World, pending: Dict[str, Any], decision: aa.Decision, outcome: Di
     return outcome
 
 
+# --------------------------------------------------------------------------- #
+# `set-auto-answer here off|on|status` (fleet-auto-answer-session-off D3)
+# --------------------------------------------------------------------------- #
+
+def _ppid(pid: int, proc_root: str = "/proc") -> Optional[int]:
+    try:
+        stat = Path(f"{proc_root}/{pid}/stat").read_text()
+        return int(stat.rsplit(")", 1)[1].split()[1])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def own_session(start: Optional[int] = None, records: Optional[Path] = None,
+                ppid: Callable[[int], Optional[int]] = _ppid) -> Optional[str]:
+    """The session this command runs inside: the first ancestor with a session record."""
+    records = records or aa.SESSION_RECORDS
+    pid = start if start is not None else os.getppid()
+    for _ in range(32):
+        if not pid or pid <= 1:
+            return None
+        try:
+            data = json.loads((records / f"{pid}.json").read_text(encoding="utf-8"))
+            if isinstance(data, dict) and data.get("sessionId"):
+                return str(data["sessionId"])
+        except (OSError, ValueError):
+            pass
+        pid = ppid(pid)
+    return None
+
+
+def here(action: str, *, session_id: Optional[str] = None, get: Getter = local_config.get,
+         resolve_label: Optional[Callable[[str], Optional[str]]] = None) -> Tuple[int, str]:
+    """Opt this agent out, back in, or report it. Returns (exit code, the line to print)."""
+    sid = session_id or own_session()
+    if not sid:
+        return 1, "No agent session found above this command; run it inside the agent (`! set-auto-answer here off`)."
+    try:
+        label = (resolve_label or aa.label_of_session)(sid)
+    except Exception as exc:
+        logger.warning("auto answer here: the fleet label could not be read (%s)", type(exc).__name__)
+        label = None
+    entry = f"label:{label}" if label else f"session:{sid}"
+    who = f"this fleet terminal ({label})" if label else f"this session ({sid[:8]}, not a fleet terminal — a /clear ends it)"
+    if action == "status":
+        covered = aa.agent_off(sid, get, resolve_label=lambda _s: label)
+        state = "OFF" if covered else ("on" if aa.enabled(get) else "on here, but the machine switch is off")
+        return 0, f"Automatic answers for {who}: {state}."
+    if action not in ("off", "on"):
+        return 2, "usage: set-auto-answer here off|on|status"
+    aa.set_agent_off(entry, action == "off", get)
+    return 0, (f"Automatic answers are OFF for {who}; its questions go to you unchanged." if action == "off"
+               else f"Automatic answers are back on for {who}.")
+
+
 def main(argv: List[str]) -> int:
+    if argv[:1] == ["here"]:
+        code, line = here(argv[1] if len(argv) > 1 else "status")
+        print(line)
+        return code
     # Logs go to a file beside the relay's, never to stderr: the relay discards the
     # outbound's output, and the worker has no terminal at all.
     qr.state_dir().mkdir(parents=True, exist_ok=True)

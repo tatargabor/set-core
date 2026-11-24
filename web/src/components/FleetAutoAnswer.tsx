@@ -18,8 +18,8 @@ import { Bot, X } from 'lucide-react'
 
 import { age } from '../lib/fleetAge'
 import {
-  agentName, autoMode, autoTitle, countdown, kindLabel, matched, outcomeLabel, parseAutoAnswerState,
-  parseDecisions, publishPending, questionBody, shownChoice, tierLabel, useAgentNames, usePendingFor,
+  agentName, autoMode, autoTitle, countdown, kindLabel, matched, offAgentRows, outcomeLabel, parseAutoAnswerState,
+  parseDecisions, publishOffAgents, publishPending, questionBody, shownChoice, tierLabel, useAgentNames, usePendingFor,
   type AutoAnswerState, type DecisionRecord, type PendingProposal,
 } from '../lib/fleetAutoAnswer'
 
@@ -104,7 +104,7 @@ function DecisionSummary({ decisions }: { decisions: DecisionRecord[] }) {
   )
 }
 
-export function FleetAutoAnswerPanel({ state, decisions, readAt, busy, error, onToggle, onCancel, onSend, onClose }: {
+export function FleetAutoAnswerPanel({ state, decisions, readAt, busy, error, onToggle, onCancel, onSend, onAgentOn, onClose }: {
   state: AutoAnswerState | null
   decisions: DecisionRecord[] | null
   readAt: number
@@ -113,6 +113,7 @@ export function FleetAutoAnswerPanel({ state, decisions, readAt, busy, error, on
   onToggle: () => void
   onCancel: (id: string) => void
   onSend?: (id: string) => void
+  onAgentOn?: (entry: string) => void
   onClose: () => void
 }) {
   const now = useNow(true)
@@ -156,6 +157,30 @@ export function FleetAutoAnswerPanel({ state, decisions, readAt, busy, error, on
               {'set-config set auto_answer.forward_command "<the current question_relay.command>"\nset-config set question_relay.command set-auto-answer'}
             </pre>
           </div>
+        )}
+
+        {state && state.off_agents.length > 0 && (
+          <section data-fleet-auto-off-agents={state.off_agents.length}>
+            <h3 className="flex items-baseline gap-2 text-fg-strong font-semibold">
+              Off for these agents
+              <span className="font-normal text-fg-muted">their questions go to you unchanged</span>
+            </h3>
+            <ul className="mt-1 space-y-0.5">
+              {offAgentRows(state.off_agents).map(r => (
+                <li key={r.entry} className="flex items-center gap-2" data-fleet-auto-off-row={r.entry}>
+                  <span className="text-amber-300">{r.name}</span>
+                  <span className="text-fg-muted">{r.kind === 'terminal' ? 'fleet terminal' : 'session'}</span>
+                  {onAgentOn && (
+                    <button type="button" disabled={busy} onClick={() => onAgentOn(r.entry)}
+                            className="ml-auto underline decoration-dotted text-fg-muted hover:text-fg-strong"
+                            data-fleet-auto-off-clear={r.entry}>
+                      on again
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         <section>
@@ -266,6 +291,7 @@ export default function FleetAutoAnswer() {
     setReadAt(Date.now())
     setError(null)
     publishPending(parsed.pending)
+    publishOffAgents(parsed.off_agents, parsed.enabled)
   }, [])
 
   const read = useCallback(() => {
@@ -330,6 +356,11 @@ export default function FleetAutoAnswer() {
                               onToggle={() => state && post('/api/fleet/auto-answer', { enabled: !state.enabled })}
                               onCancel={id => post(`/api/fleet/auto-answer/${encodeURIComponent(id)}/cancel`)}
                               onSend={id => post(`/api/fleet/auto-answer/${encodeURIComponent(id)}/send`)}
+                              onAgentOn={entry => {
+                                const [kind, ...rest] = entry.split(':')
+                                post('/api/fleet/auto-answer/agent', kind === 'label'
+                                  ? { label: rest.join(':'), off: false } : { session: rest.join(':'), off: false })
+                              }}
                               onClose={() => setOpen(false)} />
       )}
     </>

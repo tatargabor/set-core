@@ -120,6 +120,11 @@ def _other_agents() -> List[Any]:
     return discovery.discover_agents()
 
 
+def _agent_off(session_id: str) -> Optional[str]:
+    from . import auto_answer as aa
+    return aa.agent_off(session_id)
+
+
 def _log_for(session_id: str) -> Optional[str]:
     from . import discovery
     return discovery._session_log_for(session_id)
@@ -142,6 +147,7 @@ class World:
     launch: Optional[Callable[[Dict[str, Any]], None]] = None
     spawn_worker: Optional[Callable[[str, Dict[str, str]], None]] = None
     wall: Callable[[], float] = time.time
+    agent_off: Callable[[str], Optional[str]] = lambda sid: _agent_off(sid)
 
 
 def open_questions(w: World) -> List[OpenQuestion]:
@@ -404,6 +410,10 @@ def undecided_waiting(w: World) -> Dict[str, Any]:
         if not cid or aw.read_pending(base, cid) is not None:
             continue
         session_id = str(rec.get("session_id") or "")
+        off_here = w.agent_off(session_id)
+        if off_here:
+            skipped.append({"project": rec.get("project"), "session": sid, "why": f"automatic answers are off here ({off_here.split(':')[0]})"})
+            continue
         transcript = rec.get("transcript") or w.log_for(session_id)
         call = next((c for c in open_calls(w.read(transcript))
                      if qr.call_id(session_id, c["tool_use_id"]) == cid), None)

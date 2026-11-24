@@ -180,3 +180,15 @@ def test_both_switch_ons_pull_in_what_is_already_open(world, monkeypatch):
     api.fleet_auto_answer_toggle(api.AutoAnswerToggleBody(enabled=False))
     assert "backfill" not in api.fleet_question_relay_toggle(api.RelayToggleBody(enabled=False))
     assert len(calls) == 2
+
+
+def test_one_agent_is_turned_off_and_on_again(world):
+    """fleet-auto-answer-session-off 2.1: the route stores the entry; the state carries the list."""
+    from fastapi import HTTPException
+    from set_orch.api import fleet as api
+    s = api.fleet_auto_answer_agent(api.AutoAnswerAgentBody(label="planner", off=True))
+    assert s["off_agents"] == ["label:planner"] and api.fleet_auto_answer()["off_agents"] == ["label:planner"]
+    s = api.fleet_auto_answer_agent(api.AutoAnswerAgentBody(label="planner", off=False))
+    assert s["off_agents"] == []
+    with pytest.raises(HTTPException):
+        api.fleet_auto_answer_agent(api.AutoAnswerAgentBody(off=True))
