@@ -429,6 +429,12 @@ def _start_takeover_desk(project: str, *, requested_by: Optional[str],
     return _resolver().resolve(project, requested_by=requested_by, takeover=takeover)
 
 
+def _auto_answer_off_here(label: Optional[str]) -> bool:
+    """The operator turned automatic answers off for this terminal: they are working there."""
+    from ..fleet import auto_answer as aa
+    return bool(label) and f"label:{label}" in aa.off_agents()
+
+
 def takeover_round() -> Dict[str, Any]:
     """Interrupt or replace the desk of every open request that stopped moving.
 
@@ -436,15 +442,22 @@ def takeover_round() -> Dict[str, Any]:
     there is a request to watch.
     """
     engagements = fleet_engagement.EngagementStore()
-    if not engagements.list(state="open"):
-        return {"measured": True, "open": 0, "actions": []}
-    refreshed = fleet_engagement.refresh(engagements)
-    if not engagements.list(state="open"):
+    refreshed: Dict[str, Any] = {"measured": True}
+    if engagements.list(state="open"):
+        refreshed = fleet_engagement.refresh(engagements)
+    open_now = engagements.list(state="open")
+    # fleet-reply-wake: an answered request wakes its idle asker once. Checked before the
+    # early return, so a round with nothing open still wakes.
+    unwoken = engagements.answered_unwoken()
+    if not open_now and not unwoken:
         return {"measured": True, "open": 0, "actions": []}
     rows = _live_rows()
     if rows is None:
         logger.warning("fleet takeover: the inventory could not be read; nothing decided")
         return {"measured": False, "actions": []}
+    wakes = fleet_takeover.wake_askers(engagements, rows, off_here=_auto_answer_off_here) if unwoken else []
+    if not open_now:
+        return {"measured": refreshed.get("measured", True), "open": 0, "actions": [], "wakes": wakes}
     watch = fleet_takeover.TakeoverWatch(
         engagements=engagements, mandates=fleet_mandate.MandateStore(), rows=rows,
         cpu=_CPU.rate, interrupt=fleet_takeover.owner_interrupt,
@@ -452,7 +465,7 @@ def takeover_round() -> Dict[str, Any]:
         b=fleet_takeover.bounds(),
     )
     actions = watch.run()
-    return {"measured": refreshed.get("measured", True), "actions": actions}
+    return {"measured": refreshed.get("measured", True), "actions": actions, "wakes": wakes}
 
 
 async def takeover_loop(interval: float = TAKEOVER_INTERVAL_SECONDS) -> None:

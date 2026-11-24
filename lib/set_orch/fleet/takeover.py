@@ -280,6 +280,114 @@ def owner_interrupt(label: str, line: str, *, client: Any = None,
     client.write(label, b"\r")
 
 
+# -- waking the asker when its request is answered (fleet-reply-wake) -------------------
+
+#: A reply older than this wakes nobody: it predates the wake, or something else long since
+#: brought it to the asker.
+WAKE_MAX_AGE_SECONDS = 2 * 3600.0
+#: Somebody typed into the asker this recently: they are at it, and an Esc-free line would
+#: still land in the middle of their typing.
+OPERATOR_PRESENT_SECONDS = 120.0
+#: The bus's stop hook writes its own entry just after the reply; movement within this slack
+#: of the reply is not "moved on".
+MOVED_SLACK_SECONDS = 30.0
+_IDLE_STATUSES = ("idle", "shell")
+
+
+def _iso_epoch(value: Any) -> Optional[float]:
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def _asker_row(asker: Optional[str], rows: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The live row of the asking seat: by seat name, else by its session-id suffix (D4)."""
+    if not asker:
+        return None
+    for row in rows:
+        if row.get("seat") == asker:
+            return row
+    suffix = asker.split("#", 1)[1] if "#" in asker else ""
+    if len(suffix) >= 8:
+        for row in rows:
+            if str(row.get("session_id") or "").startswith(suffix):
+                return row
+    return None
+
+
+def wake_decision(record: Dict[str, Any], rows: List[Dict[str, Any]], *, now: float,
+                  off_here: Callable[[Optional[str]], bool] = lambda label: False) -> Tuple[str, Optional[Dict[str, Any]]]:
+    """Whether to wake the asker of an answered engagement, and the row to type into.
+
+    `busy` means: not now, look again next round. Every other outcome but `woken` means: never.
+    """
+    answered_at = _iso_epoch(record.get("answer_ts")) or _number(record.get("closed_at"))
+    if answered_at is None or now - answered_at > WAKE_MAX_AGE_SECONDS:
+        return "too-old", None
+    row = _asker_row(record.get("asker"), rows)
+    if row is None:
+        return "gone", None
+    if row.get("population") != "started-here" or not row.get("terminal_label"):
+        return "not-fleet-held", row
+    moved = _number(row.get("last_movement_seconds"))
+    if moved is not None and moved < (now - answered_at) - MOVED_SLACK_SECONDS:
+        return "moved", row
+    if row.get("runtime_status") not in _IDLE_STATUSES or row.get("state") not in ("quiet",):
+        return "busy", row
+    human = _number(row.get("last_human_input_seconds"))
+    if human is not None and human < OPERATOR_PRESENT_SECONDS:
+        return "operator-present", row
+    if off_here(row.get("terminal_label")):
+        return "off-here", row
+    return "woken", row
+
+
+def wake_line(record: Dict[str, Any]) -> str:
+    """The one line typed into the asker. Pointers only — never the request's or reply's text."""
+    return (f"[fleet] Your request in bus room {record.get('room')} at {record.get('ts')} was answered "
+            f"(reply at {record.get('answer_ts')}). Read the reply on the bus and continue your thread.")
+
+
+def owner_type(label: str, line: str, *, client: Any = None,
+               sleep: Callable[[float], None] = time.sleep) -> None:
+    """The line, then Enter, into a framework-held terminal at a free prompt — no Esc (D3)."""
+    if client is None:
+        from .owner_client import OwnerClient
+        client = OwnerClient()
+    client.write(label, " ".join(line.split()).encode("utf-8"))
+    sleep(SUBMIT_PAUSE_SECONDS)
+    client.write(label, b"\r")
+
+
+def wake_askers(engagements: engagement_mod.EngagementStore, rows: List[Dict[str, Any]], *,
+                type_line: Callable[[str, str], None] = owner_type,
+                off_here: Callable[[Optional[str]], bool] = lambda label: False,
+                clock: Callable[[], float] = time.time) -> List[Dict[str, Any]]:
+    """One pass over answered engagements whose asker has no wake outcome yet."""
+    out = []
+    now = clock()
+    for record in engagements.answered_unwoken():
+        outcome, row = wake_decision(record, rows, now=now, off_here=off_here)
+        if outcome == "busy":
+            logger.debug("fleet reply wake: %s asker busy; next round", record["id"])
+            out.append({"id": record["id"], "wake": outcome})
+            continue
+        if outcome == "woken":
+            try:
+                type_line(row["terminal_label"], wake_line(record))
+            except Exception as exc:  # noqa: BLE001 — the owner may be restarting
+                logger.warning("fleet reply wake: %s could not type into %s (%s); next round",
+                               record["id"], row["terminal_label"], type(exc).__name__)
+                out.append({"id": record["id"], "wake": "error"})
+                continue
+            logger.info("fleet reply wake: %s woke %s", record["id"], row["terminal_label"])
+        engagements.mark_asker_wake(record["id"], outcome)
+        out.append({"id": record["id"], "wake": outcome})
+    return out
+
+
 # -- the watch -------------------------------------------------------------------------
 
 

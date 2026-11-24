@@ -57,6 +57,11 @@ FAIL_CLASSES = (
     "unmeasured", "desk-not-ready", "start-refused", "owner-unavailable", "send-failed",
 )
 
+#: What became of waking the asker when its request was answered (fleet-reply-wake). Every
+#: outcome is final: one reply wakes at most once. `busy` is never recorded — the next round
+#: looks again.
+WAKE_OUTCOMES = ("woken", "moved", "operator-present", "off-here", "not-fleet-held", "gone", "too-old")
+
 CONFIG_WAITING_MINUTES = "fleet_engagement_waiting_minutes"
 CONFIG_MAX_OPEN = "fleet_engagement_max_open"
 DEFAULT_WAITING_MINUTES = 30.0
@@ -75,7 +80,7 @@ _HEADING = re.compile(
 )
 
 __all__ = [
-    "STATES", "LIVE_STATES", "KINDS", "FAIL_CLASSES", "EngagementError", "BusUnreadable",
+    "STATES", "LIVE_STATES", "KINDS", "WAKE_OUTCOMES", "FAIL_CLASSES", "EngagementError", "BusUnreadable",
     "EngagementStore", "default_store_path", "project_of", "linked_reply", "refresh",
     "waiting_seconds", "max_open", "view",
 ]
@@ -161,6 +166,9 @@ def _normalise(raw: Any) -> Optional[Dict[str, Any]]:
         "nudged_at": raw.get("nudged_at") if isinstance(raw.get("nudged_at"), (int, float)) else None,
         "handovers": raw.get("handovers") if isinstance(raw.get("handovers"), int)
         and not isinstance(raw.get("handovers"), bool) and raw.get("handovers") > 0 else 0,
+        # fleet-reply-wake: whether the asker was woken when the reply arrived, and when.
+        "asker_wake": raw.get("asker_wake") if raw.get("asker_wake") in WAKE_OUTCOMES else None,
+        "asker_wake_at": raw.get("asker_wake_at") if isinstance(raw.get("asker_wake_at"), (int, float)) else None,
     }
 
 
@@ -327,6 +335,23 @@ class EngagementStore:
                           handovers=record["handovers"] + 1)
             self._save(records)
         logger.info("fleet engagement: %s handed over (handovers=%d)", engagement_id, record["handovers"])
+        return dict(record)
+
+    def answered_unwoken(self) -> List[Dict[str, Any]]:
+        """Answered engagements whose asker has no wake outcome yet (fleet-reply-wake)."""
+        return [dict(r) for r in self._load().values() if r["state"] == "answered" and not r.get("asker_wake")]
+
+    def mark_asker_wake(self, engagement_id: str, outcome: str) -> Optional[Dict[str, Any]]:
+        if outcome not in WAKE_OUTCOMES:
+            raise ValueError(f"unknown wake outcome {outcome!r}")
+        with file_lock(self.path):
+            records = self._load()
+            record = records.get(engagement_id)
+            if record is None or record.get("asker_wake"):
+                return dict(record) if record else None
+            record.update(asker_wake=outcome, asker_wake_at=self._clock())
+            self._save(records)
+        logger.info("fleet engagement: %s asker wake: %s", engagement_id, outcome)
         return dict(record)
 
     def mark_answered(self, engagement_id: str, answer_ts: str) -> Optional[Dict[str, Any]]:
