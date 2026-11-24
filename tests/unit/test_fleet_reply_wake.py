@@ -112,8 +112,11 @@ def test_the_asker_is_found_by_its_session_suffix_when_the_seat_is_not_on_the_ro
 
 def test_the_line_carries_pointers_only(store):
     eid = answered(store)
-    line = tk.wake_line(store.get(eid))
+    rec = dict(store.get(eid), subject="SECRET-SUBJECT-7Q", text="SECRET-BODY-7Q",
+               reply="SECRET-REPLY-7Q")
+    line = tk.wake_line(rec)
     assert set(line.split()) >= {"[fleet]", "dm-a--b"} and "\n" not in line
+    assert "7Q" not in line, "the line names pointers only, never a record's text"
 
 
 def test_typing_without_esc():
