@@ -28,10 +28,14 @@ is empty, or when it runs inside the classifier's own session.
 
 While the relay is on and ready, the hook SHALL classify the final message with a small
 model (`question_relay.classifier_model`, default `haiku`), run headless with all hooks
-disabled and no session persisted. When the classifier answers that the agent is waiting on
-the user, the hook SHALL return `decision: "block"` with a reason instructing the agent to
-ask again with `AskUserQuestion`, putting into the question the context needed to answer
-without the terminal and offering short options that fit.
+disabled and no session persisted. The classifier SHALL answer one of three words: WAITING
+(the agent's next step is blocked on the user), SELF (the next step waits only on work the
+agent started itself or asked another agent for, which wakes it), or DONE. A message that
+waits on its own work and also asks the user something it needs SHALL be WAITING. Only when
+the classifier answers WAITING SHALL the hook return `decision: "block"`, with a reason
+instructing the agent to ask again with `AskUserQuestion`, putting into the question the
+context needed to answer without the terminal and offering short options that fit. A SELF
+verdict SHALL be recorded as SELF, so that neither the re-ask nor the continuation acts on it.
 
 #### Scenario: A manual-step wait
 
@@ -43,10 +47,15 @@ without the terminal and offering short options that fit.
 - **WHEN** the classifier answers that the agent is not waiting
 - **THEN** the hook exits with no output and the turn ends
 
+#### Scenario: A turn waiting on its own background work
+
+- **WHEN** the final message says the agent continues once its own subagent, build or bus reply arrives, and asks the user nothing
+- **THEN** the classifier answers SELF, the hook exits with no output, and the recorded verdict is SELF
+
 ### Requirement: Every classifier failure lets the turn end
 
 If the classifier cannot be started, exceeds its timeout, exits non-zero, or answers
-anything other than the two expected words, the hook SHALL exit 0 with no output.
+anything other than the three expected words, the hook SHALL exit 0 with no output.
 Diagnostics SHALL name the outcome and the latency, never the message text.
 
 #### Scenario: Classifier times out

@@ -145,10 +145,11 @@ def _fake_claude(tmp_path, body):
 @pytest.mark.parametrize("body,expected", [
     ("cat >/dev/null; echo WAITING\n", "WAITING"),
     ("cat >/dev/null; echo ' done.'\n", "DONE"),
+    ("cat >/dev/null; echo SELF\n", "SELF"),
     ("cat >/dev/null; echo 'I think it is waiting'\n", None),   # not exactly one of the words
     ("cat >/dev/null; echo WAITING; exit 3\n", None),   # a valid word from a failed run is not a verdict
 ])
-def test_classify_parses_only_the_two_words(tmp_path, monkeypatch, body, expected):
+def test_classify_parses_only_the_three_words(tmp_path, monkeypatch, body, expected):
     monkeypatch.setenv("PATH", _fake_claude(tmp_path, body) + os.pathsep + os.environ["PATH"])
     assert wd.classify("x", get=config()) == expected
 
@@ -211,6 +212,17 @@ def test_the_prompt_scopes_waiting_to_this_agent_and_frees_status_reports():
     from set_orch.fleet import wait_detect as wd
     assert "THIS agent's own next step is blocked" in wd.PROMPT
     assert "lists things that wait for the user ELSEWHERE" in wd.PROMPT
+
+
+def test_a_turn_waiting_on_its_own_work_is_not_reasked(tmp_path):
+    """Measured 2026-11-24: "Once the verify result arrives I'll commit" (a subagent of its own)
+    was classified WAITING and the agent was told to ask the user a question it did not have.
+    The three-word prompt (3 samples x 8 messages: 24/24 against 17/24) names it SELF: the turn
+    ends, the verdict is recorded, and the continuation (DONE only) leaves it alone."""
+    assert "SELF —" in wd.PROMPT and "WAITING, SELF or DONE" in wd.PROMPT
+    hook = stop_input("Once the verify result arrives I'll commit and archive.")
+    assert wd.decide(hook, get=config(), classifier=Spy("SELF"), env={}, base=tmp_path) is None
+    assert wd.read_verdict(hook["session_id"], tmp_path)["verdict"] == "SELF"
 
 
 def _dictation(tmp_path, pid):

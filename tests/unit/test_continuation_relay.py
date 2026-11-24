@@ -103,7 +103,7 @@ def test_free_text_answer(tmp_path):
     assert text.endswith("run the e2e suite first")
 
 
-@pytest.mark.parametrize("word", ["WAITING", "SKIPPED", "UNKNOWN"])
+@pytest.mark.parametrize("word", ["WAITING", "SELF", "SKIPPED", "UNKNOWN"])
 def test_only_a_done_turn_is_posted(tmp_path, word):
     """AC-8: a WAITING turn belongs to the re-ask path; nothing else is posted either."""
     verdict(tmp_path, word)

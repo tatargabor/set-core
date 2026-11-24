@@ -46,14 +46,18 @@ GUARD_ENV = "SET_WAIT_DETECT_CLASSIFIER"
 DICTATION_PID = Path(".set") / "copilot" / "{session}" / "capture.pid"
 
 PROMPT = """You classify the final message an AI coding agent sent before ending its turn.
-Answer with exactly one word.
+Answer with exactly one word: WAITING, SELF or DONE.
 
-WAITING — THIS agent's own next step is blocked until the user answers a question, makes a
-decision, confirms something, or does something and reports back (e.g. "tell me when done").
-DONE — the agent finished or reported, and any closing offer ("tell me if you want more",
-"if it still fails, let me know") does not block the work. A status report is DONE even when it
-lists things that wait for the user ELSEWHERE — in other sessions, on a chat channel, in a queue —
-or says the agent keeps watching something in the background.
+WAITING — THIS agent's own next step is blocked until the USER answers a question, makes a
+decision, confirms something, or does something by hand and reports back (e.g. "tell me when done").
+SELF — the agent's next step waits only for work it started itself or asked another agent for: a
+subagent, a verifier, a build, a test run, a background command, a reply on the agent bus. That work
+wakes the agent when it ends; the user is asked nothing.
+DONE — the agent finished or reported, and any closing offer ("tell me if you want more") does not
+block the work. A status report is DONE even when it lists things that wait for the user ELSEWHERE —
+in other sessions, on a chat channel, in a queue.
+
+If the message both waits on its own work AND asks the user something it needs, answer WAITING.
 
 MESSAGE:
 """
@@ -71,7 +75,7 @@ Classifier = Callable[[str], Optional[str]]
 
 #: The verdict a turn got, for the continuation carrier (`continuation.py`): it acts only on
 #: DONE, so a WAITING turn is never asked twice. No message text is ever written here.
-VERDICTS = ("WAITING", "DONE", "SKIPPED", "UNKNOWN")
+VERDICTS = ("WAITING", "SELF", "DONE", "SKIPPED", "UNKNOWN")
 
 
 def turn_key(hook_input: Dict[str, Any]) -> str:
@@ -145,14 +149,20 @@ def run_headless(prompt: str, get=local_config.get, timeout: float = CLASSIFY_TI
 
 
 def classify(message: str, get=local_config.get) -> Optional[str]:
-    """`WAITING`, `DONE`, or None when the classifier could not give one of the two."""
+    """`WAITING`, `SELF`, `DONE`, or None when the classifier gave none of the three.
+
+    `SELF` (the turn waits only on the agent's own background work, which wakes it) was split
+    out of the two-word prompt on 2026-11-24: measured 3 samples x 8 real-shaped messages, the
+    two-word prompt was right 17/24 (a bus-reply wait was WAITING 3/3, so the agent was told to
+    ask the user a question it did not have) and the three-word one 24/24. Only `WAITING` blocks;
+    the continuation acts only on `DONE`, so a `SELF` turn gets neither."""
     t0 = time.monotonic()
     out = run_headless(PROMPT + message[-MAX_CHARS:], get, CLASSIFY_TIMEOUT_S)
     if out is None:
         return None
     took = time.monotonic() - t0
     word = out.strip().strip(".").upper()
-    if word not in ("WAITING", "DONE"):
+    if word not in ("WAITING", "SELF", "DONE"):
         logger.warning("wait detect: classifier gave an unexpected answer (%d chars) after %.1fs",
                        len(out), took)
         return None
