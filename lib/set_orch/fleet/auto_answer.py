@@ -821,7 +821,9 @@ operator would most likely reply with something other than the offered options (
 condition, ask back). Abstaining is a good answer; a wrong confident answer is a bad one.
 
 Mark "outward": true when the answer would publish, push, deploy, touch production, send a \
-message or email, delete, pay, or use a credential — whatever the answer is.
+message or email to a PERSON, delete, pay, or use a credential — whatever the answer is. A request \
+to another agent of this machine over the agent bus (sac, set-fleet-ask) is coordination between \
+the operator's own agents, not outward.
 
 References are checked mechanically and verbatim. An "operator" reference must quote the \
 operator's own words from this conversation exactly; a "file" reference must give the path and \

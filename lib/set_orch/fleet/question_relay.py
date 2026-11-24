@@ -592,13 +592,28 @@ def post_webhook(url: str, content: str, timeout: float = 10.0) -> None:
 # the decision loop
 # --------------------------------------------------------------------------- #
 
+def _repo_root_by_walk(cwd: str) -> Optional[str]:
+    """The nearest ancestor holding `.git` (a directory, or a worktree's file) — no subprocess."""
+    p = Path(cwd).resolve() if cwd else None
+    while p is not None:
+        if (p / ".git").exists():
+            return str(p)
+        p = p.parent if p.parent != p else None
+    return None
+
+
 def _project_name(cwd: str) -> str:
     try:
         from ..paths import resolve_project_name
-        return resolve_project_name(cwd)
+        name = resolve_project_name(cwd)
+        if name and name != "_global":
+            return name
     except Exception as exc:  # a project name is a label; never let it stop the relay
-        logger.debug("question relay: project name unresolved: %s", type(exc).__name__)
-        return os.path.basename(cwd.rstrip("/")) or "unknown"
+        # Measured 2026-11-24: in a Stop hook this raised and the fallback named a session
+        # after its CURRENT directory ("lib") — logged at debug, so nobody saw why.
+        logger.warning("question relay: project name unresolved (%s); walking up for .git", type(exc).__name__)
+    root = _repo_root_by_walk(cwd)
+    return os.path.basename(root) if root else (os.path.basename(cwd.rstrip("/")) or "unknown")
 
 
 #: What the relay tells its outbound about the call, beside the envelope (fleet-auto-answer

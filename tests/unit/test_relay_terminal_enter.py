@@ -51,3 +51,17 @@ def test_nothing_waiting_or_no_session_record_is_a_no_op(tmp_path):
     qr.waiting_path(SID, base).unlink()
     assert qr.release_on_terminal_enter(PID, base, records) is None
     assert qr.release_on_terminal_enter(12345, base, records) is None
+
+
+def test_project_name_falls_back_to_the_repo_root_not_the_current_directory(tmp_path, monkeypatch):
+    """Measured 2026-11-24: a Stop hook in <repo>/lib was labelled 'lib' when the git lookup
+    raised. The fallback now walks up to the directory holding .git."""
+    import set_orch.paths as paths
+    repo = tmp_path / "myrepo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / "lib" / "deep").mkdir(parents=True)
+    def boom(_cwd):
+        raise OSError("git not reachable")
+    monkeypatch.setattr(paths, "resolve_project_name", boom)
+    assert qr._project_name(str(repo / "lib" / "deep")) == "myrepo"
+    assert qr._project_name(str(tmp_path / "nowhere")) == "nowhere"
