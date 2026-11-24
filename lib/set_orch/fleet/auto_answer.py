@@ -505,7 +505,9 @@ def _families(text: str, never: Iterable[str], keep: Callable[[str, re.Match], b
 # A prohibition AFTER the act in the same clause: "a küldés és a törlés továbbra is tiltva
 # marad" — the live case of 2026-11-24 that excluded an unrelated settings question.
 _NEGATED_AFTER = re.compile(r"\b(?:tiltva|tilos|tiltott|letiltva|forbidden|disabled|blocked|prohibited"
-                            r"|not allowed|nem engedelyezett|stays? off|remains? off)\b")
+                            r"|not allowed|nem engedelyezett|stays? off|remains? off"
+                            # "Production deploy nincs benne" (live 2026-11-24): there is none in it
+                            r"|nincs|nincsen|nem lesz|nem kell|is not (?:included|involved|part)|not included)\b")
 
 
 def _negated(text: str, m: re.Match) -> bool:

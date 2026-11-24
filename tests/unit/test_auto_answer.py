@@ -763,3 +763,10 @@ def test_a_finished_turn_can_be_closed_as_done_only_for_a_continuation():
     raw = '{"answers": [{"key": "Q1", "choice": null, "done": true, "reason": "the thread is complete"}]}'
     assert aa.parse_decision(raw, [q()], aa.KIND_CONTINUATION)[1]["Q1"] == "done: the thread is complete"
     assert aa.parse_decision(raw, [q()], aa.KIND_ASK)[1]["Q1"] == "abstained: the thread is complete"
+
+
+def test_there_is_no_deploy_in_it_is_not_a_deploy():
+    """Live 2026-11-24: '… kipróbálhatom-e az élő desk-eken? Production deploy nincs benne.'"""
+    assert aa.exclusion(aa.KIND_ASK, q(text="Kipróbálhatom a mechanizmust? Production deploy nincs benne.",
+                                       options=["Igen"]), "Igen", False) is None
+    assert aa.exclusion(aa.KIND_ASK, q(text="Nincs teszt. Deploy most?", options=["Igen"]), "Igen", False)
