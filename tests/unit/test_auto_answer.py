@@ -137,6 +137,8 @@ def test_one_bad_answer_does_not_sink_the_other():
     ("Send the summary to the client?", "send"),
     ("Küldjem el a levelet?", "send"),
     ("Email the report?", "send"),
+    ("Should I email it to the client?", "send"),
+    ("I emailed nobody yet; email them now?", "send"),
     ("Delete the old branch?", "delete"),
     ("Töröljem a régi ágat?", "delete"),
     ("drop table orders?", "delete"),
@@ -158,6 +160,7 @@ def test_each_family_fires(text, family):
     "Which release colour should the banner use?",  # about a release, not releasing
     "Use the elegant layout?",                      # eles (élesít) as a substring
     "Keep the products and the prodigy tests?",
+    "The admin requires approval before email is read. Change the setting?",  # email as a noun
 ])
 def test_a_substring_of_a_pattern_word_does_not_fire(text):
     assert aa.outward_hits([text]) == []

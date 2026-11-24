@@ -341,7 +341,10 @@ EXCLUSION_FAMILIES: Dict[str, Tuple[str, ...]] = {
                 r"ship (?:it|this|them|the)"),
     "deploy": (r"deploy\w*", r"elesit\w*", r"rollout\w*", r"roll out", r"kitelepit\w*"),
     "production": (r"prod", r"production\w*", r"produkci\w*", r"eles\w*", r"live (?:system|site|server)"),
-    "send": (r"send\w*", r"sent", r"e-?mail\w*", r"kuld\w*", r"uzen\w*",
+    # "email" only as a verb: the noun ("before email is read", in a quoted error) is not
+    # sending anything — measured live 2026-11-24 on a settings question.
+    "send": (r"send\w*", r"sent", r"e-?mail(?:ed|ing)",
+             r"e-?mail (?:it|this|that|them|the|him|her|to|everyone|back|a|an)", r"kuld\w*", r"uzen\w*",
              r"post(?:s|ed|ing)? (?:to|in|on)", r"notify\w*", r"ertesit\w*"),
     "delete": (r"delete\w*", r"torol\w*", r"torl\w*", r"purge\w*", r"wipe\w*", r"destroy\w*",
                r"drop (?:the )?(?:table|database|schema|db)\w*", r"rm -rf", r"reset --hard",
