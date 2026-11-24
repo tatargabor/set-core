@@ -116,3 +116,23 @@ What it reported in that answer, verified:
    in `wakes`. The context now states the rule as the bus applies it.
 3. Also seen here: the handover carried no predecessor session, because a gone desk has no
    inventory row. It is now taken from the predecessor's mandate (`session_ids`).
+
+## M9 — The replace path live after the M8 fix (11:45-11:48)
+
+Same shape as M8; the desk was stopped 25 s after the request.
+
+| time | event |
+|---|---|
+| 11:45:58 | request sent (engagement e-f4bcaec1534f) |
+| 11:46:23 | desk stopped through the fleet's stop route |
+| 11:46:49 | round: `replace (desk-gone)` |
+| 11:46:59 | successor posted the unlinked handover FACT in the original room |
+| 11:47:00 | engagement handed over (`handovers=1`), predecessor session carried (from its mandate) |
+| 11:47:23 | the original room refused the successor as a reader; it opened a room of two with the asker and sent ONE QUESTION asking for the text |
+| 11:47:33 | the asker re-sent it there |
+| 11:48:10 | the successor answered in the original room, linked to the original request |
+| 11:48:11 | engagement `answered` |
+
+The successor named the predecessor's seat and session, and said it had read the end of the
+predecessor's transcript first. The request's own step (`sleep 90`) did not run — the
+successor's runtime refuses a foreground sleep — which is the test payload, not the mechanism.

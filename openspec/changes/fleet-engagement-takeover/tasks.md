@@ -23,9 +23,9 @@
 
 ## 4. Live verification
 
-- [ ] 4.1 LIVE — Restart the dashboard service; confirm its start time is after the commit. [REQ: a-gone-or-still-stalled-desk-is-replaced-by-a-desk-that-takes-the-request-over]
-- [ ] 4.2 LIVE — End to end: a request to a desk whose turn is made to hang; observe interrupt, then (if forced) replace, the handover FACT on the bus, and the linked answer closing the engagement. Record in `measurements.md`. [REQ: a-gone-or-still-stalled-desk-is-replaced-by-a-desk-that-takes-the-request-over]
-- [ ] 4.3 LIVE — A desk running a CPU-busy command past the stall bound is NOT interrupted. Record. [REQ: a-desk-is-stalled-only-when-nothing-shows-it-working]
+- [x] 4.1 LIVE — Restart the dashboard service; confirm its start time is after the commit. (11:22:08 > 83f6000f 11:20:08; re-done after each later fix, last 11:45:33 after 5fef1a24.) [REQ: a-gone-or-still-stalled-desk-is-replaced-by-a-desk-that-takes-the-request-over]
+- [x] 4.2 LIVE — End to end: a request to a desk whose turn is made to hang; observe interrupt, then (if forced) replace, the handover FACT on the bus, and the linked answer closing the engagement. Record in `measurements.md`. (Interrupt: M7, 11:39:54 → answered 11:40:07. Replace: M8 exposed two defects, fixed in 5fef1a24; M9 passes end to end.) [REQ: a-gone-or-still-stalled-desk-is-replaced-by-a-desk-that-takes-the-request-over]
+- [x] 4.3 LIVE — A desk running a CPU-busy command past the stall bound is NOT interrupted. Record. (FAILED first — M6, fixed in 31d20580; passes in M7: 91-101 % CPU, `working` at 312 s and 404 s.) [REQ: a-desk-is-stalled-only-when-nothing-shows-it-working]
 
 ## 5. Found during live verification
 
