@@ -39,3 +39,13 @@ is idle helper servers. A running test suite or build is far above 5 %.
 The engagement held open behind the hung desk was asked by another project's desk, which the
 quiet sweep stopped at 08:17:40 — the sweep counts engagements addressed TO a desk's project,
 not those the desk itself asked.
+
+## M4 — The first live round (11:16, right after the service restart)
+
+One open request, 12 minutes old, addressed to a consumer desk that had sat idle at its prompt
+since 09:48 — the bus never woke it for the new request. The round decided `interrupt`
+(`stalled (movement-only)`, moved 1824 s ago, CPU unmeasured). The line reached the desk, which
+began working on the request within 30 s. The decision was right; its basis was not: on the
+first round after a restart NO desk has a CPU sample, so a long test run that writes nothing to
+the transcript would have been interrupted too. Fixed: a unit's first sample answers `pending`
+and the stall decision waits one round (a gone desk still needs none).

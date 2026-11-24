@@ -60,6 +60,12 @@ DEFAULT_MAX = 2
 #: build uses tens to hundreds of percent.
 DEFAULT_CPU_PERCENT = 5.0
 
+#: What the sampler answers on the first sample of a unit: not "no work" and not "cannot be
+#: measured" — "ask again next round". Measured on the first live round after a service
+#: restart: every desk was unsampled, so every decision fell back to movement alone, which
+#: would interrupt a long test run that writes nothing to the transcript.
+PENDING = "pending"
+
 NONE = "none"
 INTERRUPT = "interrupt"
 REPLACE = "replace"
@@ -71,7 +77,7 @@ ESC_PAUSE_SECONDS = 1.0
 SUBMIT_PAUSE_SECONDS = 0.8
 
 __all__ = [
-    "NONE", "INTERRUPT", "REPLACE", "BOUND", "Bounds", "bounds", "decide", "CpuSampler",
+    "NONE", "INTERRUPT", "REPLACE", "BOUND", "PENDING", "Bounds", "bounds", "decide", "CpuSampler",
     "interrupt_line", "TakeoverWatch", "owner_interrupt",
 ]
 
@@ -117,7 +123,7 @@ def _number(value: Any) -> Optional[float]:
 
 
 def decide(engagement: Dict[str, Any], desk_row: Optional[Dict[str, Any]], *,
-           cpu_percent: Optional[float], asking: int, now: float, b: Bounds) -> Tuple[str, str]:
+           cpu_percent: Any, asking: int, now: float, b: Bounds) -> Tuple[str, str]:
     """(decision, why) for one OPEN engagement. Pure.
 
     `desk_row` is the live inventory row of the engagement's desk, or None when it is not
@@ -139,6 +145,8 @@ def decide(engagement: Dict[str, Any], desk_row: Optional[Dict[str, Any]], *,
     if asking > 0:
         return NONE, "desk-waiting-on-its-own-request"
 
+    if cpu_percent == PENDING:
+        return NONE, "cpu-sampling"
     moved = _number(desk_row.get("last_movement_seconds"))
     busy = cpu_percent is not None and cpu_percent >= b.cpu_percent
     stalled = moved is not None and moved > b.stall_seconds and not busy
@@ -204,7 +212,8 @@ class CpuSampler:
         self._clock = clock
         self._last: Dict[str, Tuple[float, int, int, int]] = {}
 
-    def rate(self, unit: Optional[str], pid: Optional[int]) -> Optional[float]:
+    def rate(self, unit: Optional[str], pid: Optional[int]) -> Any:
+        """Percent of one core, `PENDING` on a unit's first sample, None when unmeasurable."""
         if not unit or not isinstance(pid, int):
             return None
         total, own, now = self._cgroup(unit), self._process(pid), self._clock()
@@ -214,7 +223,7 @@ class CpuSampler:
         previous = self._last.get(unit)
         self._last[unit] = (now, total, own, pid)
         if previous is None or previous[3] != pid:
-            return None
+            return PENDING
         elapsed = now - previous[0]
         background = (total - previous[1]) - (own - previous[2])
         if elapsed <= 0 or total < previous[1] or own < previous[2]:
@@ -321,7 +330,8 @@ class TakeoverWatch:
             return result
         logger.info("fleet takeover: %s -> %s (%s; desk=%s moved=%s cpu=%s handovers=%s)",
                     record["id"], decision, why, record.get("desk_label"), moved,
-                    "unmeasured" if cpu is None else f"{cpu:.1f}%", record.get("handovers"))
+                    f"{cpu:.1f}%" if isinstance(cpu, float) else (cpu or "unmeasured"),
+                    record.get("handovers"))
         if decision == INTERRUPT:
             self.interrupt(row["terminal_label"], interrupt_line(record, why, now=now))
             self.engagements.mark_nudged(record["id"])

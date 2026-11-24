@@ -56,6 +56,17 @@ def test_unmeasured_cpu_decides_on_movement_alone_and_says_so():
     assert decide(eng(), row(), cpu=None) == (tk.INTERRUPT, "stalled (movement-only)")
 
 
+def test_a_first_cpu_sample_defers_the_stall_decision_one_round():
+    """After a service restart every desk is unsampled; a quiet transcript alone must not
+    interrupt what may be a long test run."""
+    assert decide(eng(), row(), cpu=tk.PENDING) == (tk.NONE, "cpu-sampling")
+    assert decide(eng(sent_at=NOW - 9999), row(), cpu=tk.PENDING)[0] == tk.NONE
+
+
+def test_a_gone_desk_needs_no_cpu_sample():
+    assert decide(eng(), None, cpu=tk.PENDING)[0] == tk.REPLACE
+
+
 @pytest.mark.parametrize("moved", [10.0, 299.0, 300.0])
 def test_a_moving_desk_is_left_alone(moved):
     assert decide(eng(), row(last_movement_seconds=moved))[0] == tk.NONE
@@ -125,7 +136,7 @@ def test_cpu_rate_excludes_the_agent_s_own_process():
         return current["s"][0]
 
     sampler = tk.CpuSampler(cgroup=cg, process=lambda pid: current["s"][1], clock=lambda: next(clock))
-    assert sampler.rate("u", 42) is None          # first sample: unmeasured, never zero
+    assert sampler.rate("u", 42) == tk.PENDING    # first sample: ask again, never zero
     # measured on the hung desk: 258 ms cgroup, 90 ms the agent itself, over 10 s
     assert sampler.rate("u", 42) == pytest.approx(1.68)
 
@@ -133,10 +144,10 @@ def test_cpu_rate_excludes_the_agent_s_own_process():
 def test_a_failed_read_or_a_new_pid_is_unmeasured():
     vals = iter([10, None, 20, 30])
     sampler = tk.CpuSampler(cgroup=lambda u: next(vals), process=lambda pid: 0, clock=iter([1.0, 2.0, 3.0, 4.0]).__next__)
-    assert sampler.rate("u", 1) is None
-    assert sampler.rate("u", 1) is None           # read failed
-    assert sampler.rate("u", 1) is None           # first sample after the failure
-    assert sampler.rate("u", 2) is None           # a different process under the same unit
+    assert sampler.rate("u", 1) == tk.PENDING
+    assert sampler.rate("u", 1) is None           # read failed: unmeasurable
+    assert sampler.rate("u", 1) == tk.PENDING     # first sample after the failure
+    assert sampler.rate("u", 2) == tk.PENDING     # a different process under the same unit
 
 
 # -- the interrupt line ----------------------------------------------------------------
