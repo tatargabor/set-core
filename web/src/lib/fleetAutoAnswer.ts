@@ -158,6 +158,7 @@ export function outcomeLabel(outcome: string | null): { text: string; tone: 'lou
     case 'no-decision': return { text: 'no decision', tone: 'muted' }
     case 'forward-failed': return { text: 'forward failed — released', tone: 'warn' }
     case 'released': return { text: 'ended elsewhere', tone: 'muted' }
+    case 'held': return { text: 'held — another question needed you', tone: 'warn' }
     default: return { text: outcome ?? '?', tone: 'muted' }
   }
 }

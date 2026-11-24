@@ -121,3 +121,15 @@ describe('the send-the-proposal button (2026-11-24)', () => {
     expect(sendable({ ...w, auto_answer: null })).toBeNull()
   })
 })
+
+describe('a several-question call (2026-11-24)', () => {
+  const w = { id: 'relay-y', session_id: 's', project: 'p', questions: 2, target: 'command', seconds: 5, release_requested: false }
+  const v = { state: 'forwarded', outcome: 'held', reason: '', choice: 'Igen', tier: 'decided', seconds_left: null }
+  it('says why it was held, and offers no one-click send', () => {
+    expect(verdictLine(v)!.text).toBe('auto: not written — another question in this call needs you; it proposed «Igen»')
+    expect(sendable({ ...w, auto_answer: v })).toBeNull()
+  })
+  it('a written proposal says so instead of a bare "allowed"', () => {
+    expect(verdictLine({ ...v, outcome: 'allowed', state: 'done' })!.text).toBe('auto: written «Igen»')
+  })
+})

@@ -53,6 +53,7 @@ OUT_OVERTAKEN = "overtaken"
 OUT_NO_DECISION = "no-decision"
 OUT_RELEASED = "released"         # the question ended with no answer this worker saw
 OUT_FORWARD_FAILED = "forward-failed"
+OUT_HELD = "held"                 # allowed, but another question of the same call is not
 
 
 # --------------------------------------------------------------------------- #
@@ -454,6 +455,16 @@ def work(payload: str, relay_vars: Dict[str, str], world: Optional[World] = None
         reasons[q.key] = excl or ("" if outcome[q.key] == aa.OUTCOME_ALLOWED else
                                   f"likely {a.confidence:.2f} below {bar:.2f}")
     allowed = [q.key for q in questions if outcome[q.key] == aa.OUTCOME_ALLOWED]
+    if allowed and len(allowed) < len(questions):
+        # All or nothing (measured live 2026-11-24): a two-question call had Q1 written and
+        # Q2 abstained. The relay waits for EVERY key, so the agent stayed blocked for 27 min,
+        # and the written Q1 would have pre-empted the operator's own Q1 answer. One call is
+        # answered by one party: the decider only when it may answer all of it.
+        for key in allowed:
+            outcome[key], reasons[key] = OUT_HELD, "another question in the same call needs you"
+        logger.info("auto answer [%s]: %d of %d questions allowed — none written, all forwarded",
+                    qr._safe_id(cid)[-12:], len(allowed), len(questions))
+        allowed = []
 
     forwarded_at = w.wall()
     write_at = forwarded_at + aa.window_s(w.get) if allowed else None

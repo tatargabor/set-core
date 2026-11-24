@@ -376,3 +376,25 @@ def test_an_excluded_proposal_sent_by_the_operator_is_logged_as_their_answer(tmp
     rec = r.records()[0]
     assert rec["outcome"] == "excluded" and rec["human_answer"] == "Yes" and r.answer_text() == "Yes"
     assert out["Q1"] == "excluded"
+
+
+def test_a_call_is_answered_whole_or_not_at_all(tmp_path):
+    """Measured live 2026-11-24: Q1 allowed and written, Q2 abstained — the relay waits for
+    every key, so the agent stayed blocked 27 min, and the written Q1 would have pre-empted
+    the operator's own Q1 answer. Now nothing is written unless every question is allowed."""
+    d = aa.Decision({"Q1": answer()}, {"Q2": "abstained"}, "fork", [], {}, "anthropic/x")
+    r = Relay(tmp_path, d)
+    out = r.work(payload=json.dumps(envelope(tmp_path, keys=("Q1", "Q2"))))
+    assert out == {"Q1": "held", "Q2": "no-decision"}
+    assert not list((tmp_path / "answers").glob("*")), "no answer file may be written for a partial call"
+    recs = {x["key"]: x for x in r.records()}
+    assert recs["Q1"]["reason"] == "another question in the same call needs you"
+    assert r.forwarded, "the whole call still goes to the operator"
+
+
+def test_a_call_whose_every_question_is_allowed_is_written_whole(tmp_path):
+    d = aa.Decision({"Q1": answer(), "Q2": answer(choice="ORANGE")}, {}, "fork", [], {}, "anthropic/x")
+    r = Relay(tmp_path, d)
+    r.consume = False
+    out = r.work(payload=json.dumps(envelope(tmp_path, keys=("Q1", "Q2"))))
+    assert out == {"Q1": "written", "Q2": "written"}

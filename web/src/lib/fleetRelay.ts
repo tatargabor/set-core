@@ -38,6 +38,10 @@ export function verdictLine(v: AutoVerdict | null | undefined): { text: string; 
   if (v.state === 'cancelled') return { text: 'auto: cancelled — waits for you', tone: 'muted' }
   if (v.outcome === 'allowed' && v.seconds_left !== null)
     return { text: `auto: writes ${choice ?? 'its answer'} in ${Math.max(0, Math.round(v.seconds_left))}s`, tone: 'due' }
+  if (v.outcome === 'allowed' && v.state === 'done')
+    return { text: `auto: written ${choice ?? ''}`.trim(), tone: 'due' }
+  if (v.outcome === 'held')
+    return { text: `auto: not written — another question in this call needs you${choice ? `; it proposed ${choice}` : ''}`, tone: 'held' }
   if (v.outcome === 'excluded')
     return { text: `auto: not written — ${v.reason || 'outward step'}${choice ? `; it proposed ${choice}` : ''}`, tone: 'held' }
   if (v.outcome === 'below-bar')
@@ -158,6 +162,8 @@ export function showUnwired(state: RelayState): boolean {
 export function sendable(w: WaitingQuestion): { id: string; choice: string; label: string } | null {
   const v = w.auto_answer
   if (!v || !w.id || !v.choice || !v.choice.trim() || v.state === 'done' || w.release_requested) return null
+  // One text answers one question; a several-question call is answered in the terminal.
+  if (w.questions !== null && w.questions !== 1) return null
   const choice = v.choice.replace(/^\s*(?:→|->)\s*/, '')
   return { id: w.id, choice, label: v.outcome === 'allowed' && v.seconds_left !== null ? 'send now' : 'send it' }
 }
