@@ -195,7 +195,7 @@ consumer's name, path, or content.
 - **fixed when:** a range or a staged index that only deletes a deny-named path scans clean, and one that adds such a path still blocks.
 
 ### B-215 — a reply to an agent's own request does not wake it, and an idle turn end never continues on its own
-- **state:** open
+- **state:** open — part (2) closed by change `fleet-reply-wake` (2026-11-24): an answered fleet request wakes its idle, unmoved asker once, measured live (that change's `measurements.md` M2). Part (1), the bus's own wake, remains set-agent-comm's; no answer seen yet.
 - **reported:** 2026-11-24 by an itline-ai-plus session on the bus, at the owner's request (*„amikor végzett, le kellett volna egy auto beírásnak futnia, pedig nem volt kérdés, és ha ismerjük a célokat, akkor automatikusan beírhatta volna a kérdésem nélkül"*). The owner added the constraints below the same morning.
 - **measured:**
   - The session asked aiplus-kereso through `set-fleet-ask` (REQUEST 08:00:29 in `dm-aiplus-kereso--itline-ai-plus`). The ANSWER landed at 08:08:24 (`ANSWER (re: 2026-11-24T08:00:29…)`, in `channels/dm-aiplus-kereso--itline-ai-plus/aiplus-kereso#d0f60431.md`).

@@ -15,7 +15,8 @@ because every needless wake re-reads a whole context.
   the request, so the agent reads the reply and continues.
 - Only when the asker is a fleet-held terminal, its turn has ended (the prompt is free), and
   it has not moved since the reply arrived. Also not while the operator typed into it in the
-  last two minutes, and not while automatic answers are off for that terminal.
+  last two minutes, and not while automatic answers are off for that terminal. A reply older
+  than 20 minutes wakes nobody.
 - Each answered engagement records whether and why it was or was not woken, so a reply wakes
   at most once and the reason stays readable.
 

@@ -13,7 +13,7 @@ reply text. The fleet SHALL wake only when all of these hold:
 - automatic answers are not turned off for that terminal.
 
 Nothing is typed before the line (no Esc), so a free prompt is not disturbed. A reply older
-than two hours SHALL NOT wake anybody. The engagement SHALL record the outcome (`woken`,
+than 20 minutes SHALL NOT wake anybody. The engagement SHALL record the outcome (`woken`,
 `moved`, `busy`, `operator-present`, `off-here`, `not-fleet-held`, `gone`, `too-old`) and when.
 A `busy` asker SHALL be looked at again in the next round, and every other outcome SHALL be
 final, so one reply wakes at most once. Unrelated room traffic SHALL never wake an agent.

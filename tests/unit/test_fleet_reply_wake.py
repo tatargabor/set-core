@@ -99,7 +99,7 @@ def test_a_gone_asker_and_an_old_reply(store):
     eid = answered(store)
     run(store, [row(seat="someone#else", session_id="zzzzzzzz")])
     assert store.get(eid)["asker_wake"] == "gone"
-    old = answered(store, reply_age=3 * 3600.0)
+    old = answered(store, reply_age=34 * 60.0)
     out, typed = run(store, [row()])
     assert typed == [] and store.get(old)["asker_wake"] == "too-old"
 

@@ -283,8 +283,10 @@ def owner_interrupt(label: str, line: str, *, client: Any = None,
 # -- waking the asker when its request is answered (fleet-reply-wake) -------------------
 
 #: A reply older than this wakes nobody: it predates the wake, or something else long since
-#: brought it to the asker.
-WAKE_MAX_AGE_SECONDS = 2 * 3600.0
+#: brought it to the asker. 20 min, not the first draft's 2 h: the owner read a 34-minute-old
+#: reply as old (2026-11-24, *„ezek régiek 34 percesek"*), and a live wake lands within one
+#: round (60 s) of the reply anyway.
+WAKE_MAX_AGE_SECONDS = 20 * 60.0
 #: Somebody typed into the asker this recently: they are at it, and an Esc-free line would
 #: still land in the middle of their typing.
 OPERATOR_PRESENT_SECONDS = 120.0

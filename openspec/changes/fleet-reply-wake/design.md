@@ -31,7 +31,8 @@ stated, not hidden: part 1 of B-215, the bus's own wake, is set-agent-comm's.
 
 ## Risks / Trade-offs
 
-- [An answered engagement from before this ships wakes somebody] → replies older than 2 h are
-  recorded `too-old` and never wake.
+- [An answered engagement from before this ships wakes somebody] → replies older than 20 min are
+  recorded `too-old` and never wake (first drafted as 2 h; the owner read a 34-minute-old reply
+  as old, 2026-11-24).
 - [The owner is about to type] → the two-minute operator-present guard. The opt-out from
   `fleet-auto-answer-session-off` holds here too.
