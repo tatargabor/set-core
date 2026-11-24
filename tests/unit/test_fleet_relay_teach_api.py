@@ -111,3 +111,68 @@ def test_the_route_is_registered_before_the_project_families():
     i = paths.index("/api/fleet/question-relay/{call_id}/detail")
     j = next(k for k, p in enumerate(paths) if p.startswith("/api/{project}"))
     assert i < j
+
+
+# --------------------------------------------------------------------------- fleet-relay-answer-own
+
+def answers_written(world, n):
+    return [json.loads(qr.answer_file(world / "state" / "answers", CID, f"Q{i}").read_text())["valasz"]
+            if qr.answer_file(world / "state" / "answers", CID, f"Q{i}").exists() else None
+            for i in range(1, n + 1)]
+
+
+def test_an_own_answer_differs_from_the_proposal(world, caplog):
+    """own-answer AC-1: the text goes to the store verbatim; the log carries no text."""
+    from set_orch.api import fleet_relay_teach as api
+    caplog.set_level("INFO")
+    wait(world)
+    pending(world, outcome="excluded", choice="Igen, draftold (Recommended)")
+    text = "Nem — és ne küldd minden beszélgetés után"
+    assert api.question_relay_answer(CID, api.AnswerBody(answers=[text])) == {"answered": True, "count": 1}
+    assert answers_written(world, 1) == [text]
+    assert text not in caplog.text
+
+
+def test_a_two_question_call_is_answered_in_order(world):
+    """own-answer AC-2."""
+    from set_orch.api import fleet_relay_teach as api
+    wait(world, questions=2)
+    api.question_relay_answer(CID, api.AnswerBody(answers=["első", "második"]))
+    assert answers_written(world, 2) == ["első", "második"]
+
+
+@pytest.mark.parametrize("answers,why", [([""], "every question needs an answer"),
+                                         (["a", "b"], "1 question(s) and 2 answer(s)")])
+def test_an_empty_or_miscounted_answer_writes_nothing(world, answers, why):
+    """own-answer AC-3 (the route's half; the screen disables send)."""
+    from set_orch.api import fleet_relay_teach as api
+    wait(world)
+    with pytest.raises(HTTPException) as refused:
+        api.question_relay_answer(CID, api.AnswerBody(answers=answers))
+    assert refused.value.status_code == 409 and why in refused.value.detail
+    assert answers_written(world, 2) == [None, None]
+
+
+def test_a_call_that_ended_is_not_answered(world):
+    """own-answer AC-4."""
+    from set_orch.api import fleet_relay_teach as api
+    with pytest.raises(HTTPException) as gone:
+        api.question_relay_answer(CID, api.AnswerBody(answers=["x"]))
+    assert gone.value.status_code == 404 and "no longer waiting" in gone.value.detail
+    wait(world)
+    qr.request_release(SID, world / "state")
+    with pytest.raises(HTTPException) as released:
+        api.question_relay_answer(CID, api.AnswerBody(answers=["x"]))
+    assert released.value.status_code == 409 and "handed back" in released.value.detail
+
+
+def test_a_permission_prompt_gets_no_free_text_but_keeps_the_send_button(world):
+    """own-answer AC-5, and the send button's one-click Allow is untouched."""
+    from set_orch.api import fleet_relay_teach as api
+    wait(world, kind="permission")
+    with pytest.raises(HTTPException) as refused:
+        api.question_relay_answer(CID, api.AnswerBody(answers=["Allow"]))
+    assert refused.value.status_code == 409
+    assert answers_written(world, 1) == [None]
+    assert qr.deliver_answer(SID, "Allow", world / "state") is None
+    assert answers_written(world, 1) == ["Allow"]

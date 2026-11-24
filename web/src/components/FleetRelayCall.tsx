@@ -18,15 +18,18 @@ import { X } from 'lucide-react'
 import { age } from '../lib/fleetAge'
 import { kindLabel } from '../lib/fleetAutoAnswer'
 import {
-  parseDetail, prefillAnswer, teachResultLines, waitsForText, type RelayDetail, type TeachResult,
+  answerFieldCount, canAlsoTeach, canSendOwn, ownAnswerBlocked, parseDetail, prefillAnswer, teachResultLines,
+  waitsForText, type RelayDetail, type TeachResult,
 } from '../lib/fleetRelayTeach'
+
+export type RelayCallMode = 'details' | 'teach' | 'answer'
 
 const DONE_CLOSE_MS = 10_000
 
 export default function FleetRelayCall({ id, mode, onMode, onClose, onSaved }: {
   id: string
-  mode: 'details' | 'teach'
-  onMode: (m: 'details' | 'teach') => void
+  mode: RelayCallMode
+  onMode: (m: RelayCallMode) => void
   onClose: () => void
   onSaved: () => void
 }) {
@@ -36,6 +39,10 @@ export default function FleetRelayCall({ id, mode, onMode, onClose, onSaved }: {
   const [explanation, setExplanation] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ lines: string[]; ok: boolean } | null>(null)
+  // fleet-relay-answer-own: one EMPTY field per question — the control exists for answering
+  // differently from the proposal, so the proposal is not pre-filled (design D3).
+  const [fields, setFields] = useState<string[]>([])
+  const [alsoTeach, setAlsoTeach] = useState(false)
   const prefilled = useRef(false)
 
   useEffect(() => {
@@ -48,7 +55,11 @@ export default function FleetRelayCall({ id, mode, onMode, onClose, onSaved }: {
         if (!parsed) throw new Error('unexpected answer shape')
         if (!live) return
         setDetail(parsed)
-        if (!prefilled.current) { setAnswer(prefillAnswer(parsed)); prefilled.current = true }
+        if (!prefilled.current) {
+          setAnswer(prefillAnswer(parsed))
+          setFields(Array.from({ length: answerFieldCount(parsed) }, () => ''))
+          prefilled.current = true
+        }
       })
       .catch(e => { if (live) setError(String(e?.message ?? e)) })
     return () => { live = false }
@@ -76,14 +87,31 @@ export default function FleetRelayCall({ id, mode, onMode, onClose, onSaved }: {
       .finally(() => setBusy(false))
   }
 
+  const sendOwn = () => {
+    setBusy(true)
+    const teach = alsoTeach && detail !== null && canAlsoTeach(detail)
+    const url = `/api/fleet/question-relay/${encodeURIComponent(id)}/${teach ? 'teach' : 'answer'}`
+    const body = teach ? { answer: fields[0], explanation } : { answers: fields }
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(async r => {
+        const d = await r.json().catch(() => null)
+        if (!r.ok) throw new Error(d?.detail ?? `HTTP ${r.status}`)
+        setResult(teach ? teachResultLines(d as TeachResult) : { lines: ['Answered — the agent has your answer.'], ok: true })
+        onSaved()
+      })
+      .catch(e => setResult({ lines: [`Not sent: ${String(e?.message ?? e)}`], ok: false }))
+      .finally(() => setBusy(false))
+  }
+
+  const setField = (i: number, v: string) => setFields(f => f.map((x, j) => (j === i ? v : x)))
   const q0 = detail?.decider?.questions[0]
   return (
     <div className="absolute left-2 right-2 top-8 z-40 max-h-[70vh] overflow-auto rounded border border-surface-line
                     bg-surface-raised px-3 py-2 shadow-xl text-xs"
-         role="dialog" aria-label={mode === 'teach' ? 'Teach an answer' : 'Question details'}
+         role="dialog" aria-label={mode === 'teach' ? 'Teach an answer' : mode === 'answer' ? 'Your own answer' : 'Question details'}
          data-fleet-relay-call={mode}>
       <div className="flex items-center gap-2 pb-1 border-b border-surface-line">
-        <span className="font-semibold text-fg-loud">{mode === 'teach' ? 'Teach' : 'Details'}</span>
+        <span className="font-semibold text-fg-loud">{mode === 'teach' ? 'Teach' : mode === 'answer' ? 'Your answer' : 'Details'}</span>
         {detail && (
           <span className="text-fg-muted truncate">
             {detail.project ?? 'unknown project'} · {kindLabel(detail.kind === 'question' ? 'ask' : detail.kind)}
@@ -136,11 +164,84 @@ export default function FleetRelayCall({ id, mode, onMode, onClose, onSaved }: {
             </div>
           ))}
           <div className="pt-1 border-t border-surface-line flex items-center gap-2">
+            {!ownAnswerBlocked(detail) && (
+              <button type="button" onClick={() => onMode('answer')} data-fleet-relay-to-answer
+                      className="rounded border border-amber-400/50 px-1.5 text-amber-300 hover:bg-amber-400/10">answer…</button>
+            )}
             {detail.teach.allowed
               ? <button type="button" onClick={() => onMode('teach')} data-fleet-relay-to-teach
                         className="rounded border border-sky-400/50 px-1.5 text-sky-300 hover:bg-sky-400/10">teach…</button>
               : <span className="text-fg-muted" data-fleet-relay-no-teach>Teach is not available: {detail.teach.reason}</span>}
           </div>
+        </div>
+      )}
+
+      {detail && mode === 'answer' && (
+        <div className="mt-1.5 space-y-1.5" data-fleet-relay-answer-form>
+          {ownAnswerBlocked(detail)
+            ? <p className="text-amber-400" data-fleet-relay-answer-blocked>{ownAnswerBlocked(detail)}</p>
+            : (
+              <>
+                {!detail.decider && (
+                  <p className="text-fg-muted">
+                    The decider has no record of this call, so its text is not shown here — read it on the channel.
+                  </p>
+                )}
+                {fields.map((value, i) => {
+                  const q = detail.decider?.questions[i]
+                  return (
+                    <div key={i} className="space-y-1" data-fleet-relay-answer-question={i + 1}>
+                      {q && <p className="whitespace-pre-wrap break-words text-fg-loud max-h-24 overflow-auto">{q.question}</p>}
+                      {q?.choice && <p className="text-fg-muted">proposed «{q.choice}» — write what you want instead</p>}
+                      {q && q.options.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {q.options.map(o => (
+                            <button key={o} type="button" onClick={() => setField(i, o)}
+                                    className={`rounded border px-1.5 ${value === o ? 'border-sky-400/60 text-sky-300' : 'border-surface-line text-fg-muted hover:text-fg-strong'}`}>
+                              {o}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <textarea value={value} onChange={e => setField(i, e.target.value)} rows={2}
+                                placeholder={fields.length > 1 ? `Your answer to question ${i + 1}` : 'Your answer, in your own words'}
+                                className="w-full rounded border border-surface-line bg-surface-panel px-1.5 py-1 text-fg-strong"
+                                data-fleet-relay-answer-field={i + 1} />
+                    </div>
+                  )
+                })}
+                {canAlsoTeach(detail) && (
+                  <div className="space-y-1">
+                    <label className="flex items-center gap-1.5 text-fg-muted">
+                      <input type="checkbox" checked={alsoTeach} onChange={e => setAlsoTeach(e.target.checked)}
+                             data-fleet-relay-answer-teach />
+                      also teach it for next time (a project rule, committed there)
+                    </label>
+                    {alsoTeach && (
+                      <textarea value={explanation} onChange={e => setExplanation(e.target.value)} rows={2}
+                                placeholder="When / why (optional) — the condition the agents and the decider check"
+                                className="w-full rounded border border-surface-line bg-surface-panel px-1.5 py-1 text-fg-strong" />
+                    )}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={sendOwn}
+                          disabled={busy || !canSendOwn(fields, fields.length) || !!result}
+                          className="rounded border border-amber-400/50 px-2 text-amber-300 hover:bg-amber-400/10 disabled:opacity-40"
+                          data-fleet-relay-answer-send>
+                    {busy ? 'sending…' : alsoTeach && canAlsoTeach(detail) ? 'send + teach' : 'send my answer'}
+                  </button>
+                  <button type="button" onClick={() => onMode('details')} className="text-fg-muted hover:text-fg-strong underline decoration-dotted">
+                    details
+                  </button>
+                </div>
+              </>
+            )}
+          {result && (
+            <ul className={result.ok ? 'text-emerald-300' : 'text-amber-400'} data-fleet-relay-answer-result={result.ok ? 'ok' : 'failed'}>
+              {result.lines.map(l => <li key={l}>{l}</li>)}
+            </ul>
+          )}
         </div>
       )}
 

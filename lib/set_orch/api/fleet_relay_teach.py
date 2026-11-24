@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -20,6 +20,10 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class AnswerBody(BaseModel):
+    answers: List[str]
 
 
 class TeachBody(BaseModel):
@@ -105,3 +109,23 @@ def question_relay_teach(call_id: str, body: TeachBody) -> Dict[str, Any]:
     logger.info("fleet api: relay teach %s — answered=%s written=%s commit=%s",
                 qr._safe_id(call_id)[-12:], res.answered, res.written, res.commit.sha or "none")
     return res.as_dict()
+
+
+@router.post("/api/fleet/question-relay/{call_id}/answer")
+def question_relay_answer(call_id: str, body: AnswerBody) -> Dict[str, Any]:
+    """The operator's own answer, in their own words, to every question of a waiting call
+    (fleet-relay-answer-own). Written to the relay's answer store, like the chat bridge does."""
+    from ..fleet import question_relay as qr
+    from ..fleet import relay_teach as rt
+
+    waiting = rt.find_waiting(call_id)
+    if waiting is None:
+        raise HTTPException(status_code=404, detail="the question is no longer waiting on the relay")
+    if waiting.get("kind") == "permission":
+        # D4: two fixed answers, on the channel and in the terminal; free text is not one.
+        raise HTTPException(status_code=409, detail="a permission prompt is answered with Allow or Deny")
+    why = qr.deliver_answers(str(waiting.get("session_id") or ""), body.answers)
+    if why is not None:
+        raise HTTPException(status_code=409, detail=why)
+    logger.info("fleet api: own answer to %s — %d answer(s)", qr._safe_id(call_id)[-12:], len(body.answers))
+    return {"answered": True, "count": len(body.answers)}

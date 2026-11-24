@@ -115,3 +115,29 @@ export function teachResultLines(r: TeachResult): { lines: string[]; ok: boolean
   const answeredOrGone = r.answered || /no longer waiting/.test(r.answer_reason)
   return { lines, ok: answeredOrGone && r.written && !!r.commit.sha }
 }
+
+// --------------------------------------------------------------------------- own answer (fleet-relay-answer-own)
+
+/** How many answer fields the call needs: the decider's question list, else the relay's count. */
+export function answerFieldCount(d: RelayDetail): number {
+  const fromDecider = d.decider?.questions.length ?? 0
+  if (fromDecider > 0) return fromDecider
+  return d.questions !== null && d.questions > 0 ? d.questions : 1
+}
+
+/** Whether the own-answer overlay is offered at all, and why not. */
+export function ownAnswerBlocked(d: RelayDetail): string | null {
+  if (d.kind === 'permission') return 'A permission prompt is answered with Allow or Deny, on the channel or in the terminal.'
+  if (d.release_requested) return 'It was handed back to the terminal; answer it there.'
+  return null
+}
+
+/** Send is offered only when every field holds something. */
+export function canSendOwn(fields: string[], count: number): boolean {
+  return fields.length === count && fields.every(f => f.trim().length > 0)
+}
+
+/** "Also teach it" needs one question and the teach route's own permission. */
+export function canAlsoTeach(d: RelayDetail): boolean {
+  return d.teach.allowed && answerFieldCount(d) === 1
+}

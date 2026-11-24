@@ -25,7 +25,7 @@ import {
   canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, sendable, showUnwired, verdictLine, type RelayState,
 } from '../lib/fleetRelay'
 import { agentName, kindLabel, useAgentNames } from '../lib/fleetAutoAnswer'
-import FleetRelayCall from './FleetRelayCall'
+import FleetRelayCall, { type RelayCallMode } from './FleetRelayCall'
 
 /** Waiting questions come and go on the scale of seconds; the hook polls every 3 s. */
 const READ_INTERVAL_MS = 5_000
@@ -37,7 +37,7 @@ export default function FleetRelay() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   /** fleet-relay-teach: the call opened over the panel, and how. */
-  const [call, setCall] = useState<{ id: string; mode: 'details' | 'teach' } | null>(null)
+  const [call, setCall] = useState<{ id: string; mode: RelayCallMode } | null>(null)
   const closeCall = useCallback(() => setCall(null), [])
   const rootRef = useRef<HTMLSpanElement>(null)
 
@@ -238,6 +238,14 @@ export default function FleetRelay() {
                                   data-fleet-relay-details={w.id}>
                             details
                           </button>
+                          {w.kind !== 'permission' && !w.release_requested && (
+                            <button type="button" onClick={() => setCall({ id: w.id as string, mode: 'answer' })}
+                                    className="underline decoration-dotted text-amber-300/80 hover:text-amber-300"
+                                    title="Answer it yourself, in your own words — different from what the decider proposed. The agent gets it at once."
+                                    data-fleet-relay-answer={w.id}>
+                              answer…
+                            </button>
+                          )}
                           {w.kind !== 'permission' && (w.questions ?? 1) === 1 && (
                             <button type="button" onClick={() => setCall({ id: w.id as string, mode: 'teach' })}
                                     className="underline decoration-dotted text-sky-300/80 hover:text-sky-300"

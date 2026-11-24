@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseDetail, prefillAnswer, teachResultLines, waitsForText, type TeachResult } from '../../src/lib/fleetRelayTeach'
+import {
+  answerFieldCount, canAlsoTeach, canSendOwn, ownAnswerBlocked, parseDetail, prefillAnswer, teachResultLines, waitsForText,
+  type TeachResult,
+} from '../../src/lib/fleetRelayTeach'
 
 const base = {
   id: 'relay-1', project: 'proj', kind: 'question', questions: 1, seconds: 120, release_requested: false,
@@ -45,5 +48,32 @@ describe('fleet-relay-teach helpers', () => {
     expect(teachResultLines({ ...r, answered: false, answer_reason: 'boom' }).ok).toBe(false)
     expect(teachResultLines({ ...r, written: false, commit: { sha: '', branch: '', reason: 'not a git repository' } }).lines[1])
       .toBe('Rule not written: not a git repository')
+  })
+})
+
+describe('fleet-relay-answer-own helpers', () => {
+  it('counts one field per question: the decider list first, else the relay count', () => {
+    expect(answerFieldCount(parseDetail(base)!)).toBe(1)
+    expect(answerFieldCount(parseDetail({ ...base, decider: null, questions: 3 })!)).toBe(3)
+    expect(answerFieldCount(parseDetail({ ...base, decider: null, questions: null })!)).toBe(1)
+  })
+
+  it('is not offered for a permission prompt or a released call', () => {
+    expect(ownAnswerBlocked(parseDetail(base)!)).toBeNull()
+    expect(ownAnswerBlocked(parseDetail({ ...base, kind: 'permission' })!)).toMatch(/Allow or Deny/)
+    expect(ownAnswerBlocked(parseDetail({ ...base, release_requested: true })!)).toMatch(/terminal/)
+  })
+
+  it('sends only when every field holds text', () => {
+    expect(canSendOwn(['Nem'], 1)).toBe(true)
+    expect(canSendOwn(['  '], 1)).toBe(false)
+    expect(canSendOwn(['a', ''], 2)).toBe(false)
+    expect(canSendOwn(['a'], 2)).toBe(false)
+  })
+
+  it('offers also-teach only for one question where teach is allowed', () => {
+    expect(canAlsoTeach(parseDetail(base)!)).toBe(true)
+    expect(canAlsoTeach(parseDetail({ ...base, teach: { ...base.teach, allowed: false } })!)).toBe(false)
+    expect(canAlsoTeach(parseDetail({ ...base, decider: null, questions: 2 })!)).toBe(false)
   })
 })

@@ -523,29 +523,50 @@ def waiting_record(session_id: str, base: Optional[Path] = None) -> Optional[Dic
     return None
 
 
-def deliver_answer(session_id: str, text: str, base: Optional[Path] = None) -> Optional[str]:
-    """Answer a waiting single-question call through the relay's own answer store.
+def deliver_answers(session_id: str, texts: List[str], base: Optional[Path] = None) -> Optional[str]:
+    """Answer a waiting call — every question of it — through the relay's own answer store.
 
-    The same file the chat bridge writes (`answers/<id>__Q1.json`, `{"valasz": …}`): the
-    waiting hook reads it within one poll, answers the tool call and deletes the file.
-    Returns None on success, else the reason it could not be delivered. A call with more
-    than one question is refused — one text cannot answer several questions honestly.
+    The same files the chat bridge writes (`answers/<id>__Q<n>.json`, `{"valasz": …}`): the
+    waiting carrier reads them within one poll and answers the tool call. Returns None on
+    success, else the reason nothing was written. The operator's own answer, so no exclusion
+    applies. (The free-text route refuses a permission prompt itself; the send button's
+    one-click Allow/Deny comes through here and stays allowed.) Logs carry the session and
+    the count, never the text.
     """
     record = waiting_record(session_id, base)
     if record is None:
         return "no relayed question is waiting for that agent"
     if record.get("release_requested"):
         return "the question was already handed back to the terminal"
-    if int(record.get("questions") or 0) != 1:
-        return "the agent asked several questions at once; answer them in its terminal"
+    count = int(record.get("questions") or 0)
+    cleaned = [t.strip() for t in texts if isinstance(t, str)]
+    if count != len(cleaned):
+        return f"the call has {count} question(s) and {len(cleaned)} answer(s) were given"
+    if not all(cleaned):
+        return "every question needs an answer"
     cid = str(record.get("id") or "")
-    if not cid or not text.strip():
+    if not cid:
         return "nothing to deliver"
     answer_dir = (base or state_dir()) / "answers"
-    _write_json(answer_file(answer_dir, cid, "Q1"), {"valasz": text.strip()})
-    logger.info("question relay [%s]: answer handed over from the fleet (%s)",
-                _safe_id(session_id)[:8], cid)
+    for i, text in enumerate(cleaned, start=1):
+        _write_json(answer_file(answer_dir, cid, f"Q{i}"), {"valasz": text})
+    logger.info("question relay [%s]: %d answer(s) handed over from the fleet (%s)",
+                _safe_id(session_id)[:8], count, cid)
     return None
+
+
+def deliver_answer(session_id: str, text: str, base: Optional[Path] = None) -> Optional[str]:
+    """Answer a waiting single-question call (`deliver_answers` with one text).
+
+    A call with more than one question is refused — one text cannot answer several
+    questions honestly.
+    """
+    record = waiting_record(session_id, base)
+    if record is not None and int(record.get("questions") or 0) != 1 and not record.get("release_requested"):
+        return "the agent asked several questions at once; answer them in its terminal"
+    if not (text or "").strip():
+        return "nothing to deliver" if record is not None else "no relayed question is waiting for that agent"
+    return deliver_answers(session_id, [text], base)
 
 
 def answer_output(tool_input: Dict[str, Any], texts: List[str]) -> Dict[str, Any]:
