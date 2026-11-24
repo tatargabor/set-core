@@ -179,11 +179,19 @@
   matching path's history is unioned. Proven on the real package (old code: both trees'
   blobs unknown; new: known) and in `test_the_packages_own_deployed_copy_does_not_hide_older_shipped_versions`,
   which fails against the old code. The two trees were then re-rolled with the fix.
-- Open: the unit template still passes `--started-after <stamp>`. Since `ab74cdd` the watcher
-  reads the stamp itself and, without the flag, uses each WORKTREE's own stamp; an explicit
-  flag wins and disables that. The existing units pin the same value the stamp holds, so
-  nothing is wrong today — but the flag can go from the template, and from existing units by
-  hand (init never rewrites a unit).
+- 2026-11-24 ~09:20, closed: the unit template no longer passes `--started-after`. The package's
+  `be300a2` made the start filter opt-in (owner decision, measured on Claude Code 2.1.331: a
+  session that started with no reload hook picked one up mid-run and its /clear reloaded), so the
+  flag only excluded sessions that could reload. Init-written units get the flag removed by hand
+  during the be300a2 roll; hand-written units are left to their owners and named in the roll report.
+- 2026-11-24, defect found by the be300a2 roll's dry run, fixed before the roll: `shipped_blobs()`
+  walked `git log --follow` WITHOUT `-m`, and git prints no file names for a merge commit, so a
+  version born in a merge's resolution was never read. The watcher every rolled tree held
+  (`ab74cdd`'s) was such a version: the dry run reported it "locally modified" and would have KEPT
+  the old watcher in 38 trees — and the old watcher, without the flag, defaults to the stamp, so
+  the filter would have stayed on while the report looked like a successful roll (fail direction:
+  calm). With `-m`: all 39 trees "would upgrade". Held by
+  `test_a_version_born_in_a_merge_is_known_as_shipped`, which fails without `-m`.
 - 2026-11-23 22:04: set-core ITSELF had been left out of the rollout (the rollout script skipped
   the framework's own tree, which is not a reason under the owner's "every project" decision).
   Noticed because a 410k-token session here was never asked for a handoff. Installed now with the

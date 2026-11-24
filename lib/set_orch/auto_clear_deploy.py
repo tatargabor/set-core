@@ -19,7 +19,6 @@ Never fails init: a missing package checkout, node, or `systemctl --user` is a l
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import json
 import logging
 import os
@@ -37,7 +36,6 @@ logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
 UNIT_TEMPLATE = ROOT / "templates" / "systemd" / "auto-clear.service"
-STAMP = Path(".set") / "handoff" / ".reload-wired-at"
 OVERRIDING = ("--threshold", "--compact-threshold", "--background-work-blocks", "--compact-on-background")
 
 
@@ -140,6 +138,11 @@ def shipped_blobs(pkg: Path, blob: str) -> set:
     has only the versions deployed INTO the package, not every version the package shipped.
     Measured 2026-11-24 on a fleet re-roll: after the package tree's own commit, two trees
     holding an older shipped version were reported "locally modified" and kept.
+
+    `-m` makes the walk see MERGE commits. Without it `git log` prints no diff, and so no file
+    name, for a merge, and a blob that a merge's resolution created is never read. Measured
+    the same day: the package's watcher version that 38 trees held was born in a merge, and
+    the next roll would have kept it as "locally modified" in every one of them.
     """
     known = {blob}
     srcs = []
@@ -151,7 +154,7 @@ def shipped_blobs(pkg: Path, blob: str) -> set:
         logger.debug("shipped_blobs: blob %s not found at HEAD of %s", blob, pkg)
         return known
     for src in srcs:
-        log = _git(pkg, "log", "--follow", "--format=C %H", "--name-only", "--", src)
+        log = _git(pkg, "log", "--follow", "-m", "--format=C %H", "--name-only", "--", src)
         commit = None
         for line in log.splitlines():
             if line.startswith("C "):
@@ -221,18 +224,6 @@ def overriding_flags(exec_start: str) -> list:
     return [f"{f} {v}" for f in OVERRIDING for v in re.findall(rf"{f}[ =](\S+)", exec_start)]
 
 
-def started_after(tree: Path) -> str:
-    """The reload-wiring moment from the stamp; without one, now — the safe side: a session
-    that predates the unit is never cleared, it only misses the automation."""
-    try:
-        line = (tree / STAMP).read_text().strip()
-        if re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", line):
-            return line
-    except OSError:
-        pass
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def install_unit(name: str, tree: Path, home: Path, env: dict, dry_run: bool) -> list:
     unit_dir = home / ".config" / "systemd" / "user"
     unit_name = f"{name}-auto-clear.service"
@@ -260,8 +251,7 @@ def install_unit(name: str, tree: Path, home: Path, env: dict, dry_run: bool) ->
     node = shutil.which("node", path=env.get("PATH"))
     text = (UNIT_TEMPLATE.read_text()
             .replace("@TREE@", str(tree)).replace("@NAME@", name)
-            .replace("@NODE_DIR@", os.path.dirname(node) if node else "/usr/bin")
-            .replace("@STARTED_AFTER@", started_after(tree)))
+            .replace("@NODE_DIR@", os.path.dirname(node) if node else "/usr/bin"))
     unit_dir.mkdir(parents=True, exist_ok=True)
     (unit_dir / unit_name).write_text(text)
     logger.info("auto-clear unit written: %s", unit_dir / unit_name)

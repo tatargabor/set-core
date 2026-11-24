@@ -103,8 +103,8 @@ def test_a_project_with_nothing_installed_gets_everything(box):
     assert doc["hooks"]["SessionStart"][0]["matcher"] == "clear|compact"
     text = unit_file(home).read_text()
     assert f"--dir {tree} " in text and f"{tree}/.claude/hooks/watch-auto-clear.sh" in text
-    stamp = (tree / acd.STAMP).read_text().strip()
-    assert f"--started-after {stamp} " in text, "until the package reads the stamp, the unit passes it"
+    exec_start = next(l for l in text.splitlines() if l.startswith("ExecStart="))
+    assert "--started-after" not in exec_start, "the package's start filter is opt-in; the unit does not opt in"
     for flag in acd.OVERRIDING:
         assert flag + " " not in text
     assert "daemon-reload" in " ".join(calls(log))
@@ -176,6 +176,32 @@ def test_the_packages_own_deployed_copy_does_not_hide_older_shipped_versions(box
     hook(tree, "clear-gate.mjs").write_text("// clear-gate.mjs v2\n")
     out = run()
     assert hook(tree, "clear-gate.mjs").read_text() == "// clear-gate.mjs v3\n", out
+    assert any("upgraded .claude/hooks/clear-gate.mjs" in l for l in out)
+
+
+def test_a_version_born_in_a_merge_is_known_as_shipped(box):
+    """A merge's conflict resolution creates a blob neither parent holds. `git log` without
+    `-m` prints no file names for a merge, so that version was never read and a tree holding
+    it was kept as "locally modified". Shape measured on the real package, 2026-11-24."""
+    run, pkg, tree, _, _, _ = box
+    tpl = pkg / "templates" / "clear-gate.mjs"
+    base = git(pkg, "rev-parse", "--abbrev-ref", "HEAD")
+    git(pkg, "checkout", "-qb", "side")
+    tpl.write_text("// clear-gate.mjs side\n")
+    commit(pkg, "side")
+    git(pkg, "checkout", "-q", base)
+    tpl.write_text("// clear-gate.mjs main\n")
+    commit(pkg, "main")
+    subprocess.run(["git", "-C", str(pkg), "merge", "-q", "side"], capture_output=True)
+    tpl.write_text("// clear-gate.mjs merged\n")
+    commit(pkg, "merge side")
+    assert len(git(pkg, "log", "-1", "--format=%P").split()) == 2, "the fixture must hold a real merge"
+    tpl.write_text("// clear-gate.mjs v9\n")
+    commit(pkg, "v9")
+    hook(tree, "clear-gate.mjs").parent.mkdir(parents=True)
+    hook(tree, "clear-gate.mjs").write_text("// clear-gate.mjs merged\n")
+    out = run()
+    assert hook(tree, "clear-gate.mjs").read_text() == "// clear-gate.mjs v9\n", out
     assert any("upgraded .claude/hooks/clear-gate.mjs" in l for l in out)
 
 
