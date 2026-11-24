@@ -63,6 +63,9 @@ GRACE_S = 120.0
 RETENTION_S = 7 * 24 * 3600
 MESSAGE_LIMIT = 2000
 REPLY_PAGES = 10
+#: Discord limits reactions per channel to roughly four a second; a burst of 4–6 on one post
+#: answers 429. Spacing them keeps the post's exit code clean.
+REACTION_GAP_S = 0.3
 
 KIND_LABELS = {"ask": "question", "permission": "permission prompt", "continuation": "what next?"}
 
@@ -440,7 +443,9 @@ def post(payload: str, kind: str, w: World) -> int:
                "answer_dir": _text(e.get("valasz_tar")) or str((w.base or qr.state_dir()) / "answers"),
                "posted": w.now(), "state": "open"}
         save_record(rec, w.base)
-        for emoji in [*NUMBERS[:len(options)], *((CLOSE,) if multi else ()), DEFER]:
+        for n, emoji in enumerate([*NUMBERS[:len(options)], *((CLOSE,) if multi else ()), DEFER]):
+            if n:
+                d.sleep(REACTION_GAP_S)
             try:
                 d.react(channel, rec["message_id"], emoji)
             except DiscordError as exc:  # a missing reaction still leaves the reply path
@@ -596,6 +601,13 @@ def bridge_command(sub: str) -> str:
     return f"{exe} {sub}"
 
 
+def auto_answer_command() -> Optional[str]:
+    """The auto-answer outbound, so the decider can sit in front of the bridge (the owner's shape)."""
+    found = shutil.which("set-auto-answer")
+    here = Path(__file__).resolve().parents[3] / "bin" / "set-auto-answer"
+    return found or (str(here) if here.exists() else None)
+
+
 def wiring_key(get: Getter = local_config.get) -> str:
     """D7: behind the auto-answer outbound when that is the relay's command, else the relay's own."""
     cmd = _text(get(qr.KEY_COMMAND))
@@ -687,6 +699,15 @@ def setup(args: argparse.Namespace, w: World, *, set_value: Callable[[str, Any],
     except DiscordError as exc:
         out(f"✗ Discord refused: {exc} — check the token, and that the bot is in the channel's server")
         return 1
+    if not _text(w.get(qr.KEY_COMMAND)):
+        # Nothing configured yet: the decider goes in front, the bridge behind it — the same
+        # shape as a machine that already runs both. With automatic answers off (the default)
+        # the decider forwards every envelope unchanged, so this costs nothing until wanted.
+        front = auto_answer_command()
+        if front:
+            set_value(qr.KEY_COMMAND, front)
+            set_value(qr.KEY_TARGET, "command")
+            out(f"✓ {qr.KEY_COMMAND} → {front} (the automatic-answer switch sits in front; off by default)")
     key = wiring_key(w.get)
     current = _text(w.get(key))
     want = bridge_command("post")
@@ -715,8 +736,14 @@ def setup(args: argparse.Namespace, w: World, *, set_value: Callable[[str, Any],
     if not _text(w.get(qr.KEY_AUDIENCE)):
         set_value(qr.KEY_AUDIENCE, "DEV")
         out(f"✓ {qr.KEY_AUDIENCE} = DEV (the relay needs one)")
-    folder = install_timer(systemctl, units)
-    out(f"✓ timer {UNIT_NAME}.timer installed in {folder}, every minute")
+    try:
+        folder = install_timer(systemctl, units)
+        out(f"✓ timer {UNIT_NAME}.timer installed in {folder}, every minute")
+    except (OSError, subprocess.CalledProcessError) as exc:
+        logger.warning("relay discord: the timer could not be installed (%s)", type(exc).__name__)
+        out(f"⚠ no user systemd here ({type(exc).__name__}): answers are read only when "
+            f"`{bridge_command('poll')}` runs. Add it to cron, every minute:\n"
+            f"    * * * * * {bridge_command('poll')}")
     state = qr.readiness(w.get)
     out(f"· question relay: {'ON' if state['enabled'] else 'off'}"
         + ("" if state["ready"] else f", missing {', '.join(state['missing'])}")
@@ -732,6 +759,9 @@ def status(w: World, out: Callable[[str], None] = print, systemctl: Callable[...
     out(f"channel: {_text(w.get(KEY_CHANNEL)) or '—'} · allowed users: {len(allowed_users(w.get))}")
     out(f"relay command ({wiring_key(w.get)}): {_text(w.get(wiring_key(w.get))) or '—'}")
     out(f"notify command: {_text(w.get(qr.KEY_NOTIFY_COMMAND)) or '—'}")
+    relay = qr.readiness(w.get)
+    out(f"question relay: {'ON' if relay['enabled'] else 'off'}, "
+        + ("ready" if relay["ready"] else f"missing {', '.join(relay['missing'])}"))
     try:
         res = systemctl(["systemctl", "--user", "is-active", f"{UNIT_NAME}.timer"],
                         capture_output=True, text=True, check=False)
@@ -814,8 +844,25 @@ def _log_to_file() -> None:
     root.setLevel(logging.INFO)
 
 
+SETUP_GUIDE = """\
+first setup, once per machine:
+  1. discord.com/developers/applications → New Application → Bot:
+     Reset Token (copy it), and turn ON "Message Content Intent".
+  2. OAuth2 → URL Generator: scope "bot"; permissions View Channel, Send Messages,
+     Read Message History, Add Reactions → open the URL, add the bot to your server.
+  3. In Discord: Settings → Advanced → Developer Mode ON; right-click the channel →
+     Copy Channel ID; right-click your own name → Copy User ID.
+  4. echo "<token>" | set-relay-discord setup --token-stdin --channel <channel id> --allow <user id>
+     (add --replace if another bridge is configured; setup --remove undoes it)
+  5. set-relay-discord test → reply to the probe → set-relay-discord test --check
+  6. Switch the question relay on: the fleet header, or
+     set-config set question_relay.enabled true
+"""
+
+
 def main(argv: Optional[List[str]] = None, w: Optional[World] = None) -> int:
-    parser = argparse.ArgumentParser(prog="set-relay-discord", description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="set-relay-discord", description=__doc__.split("\n\n")[0],
+                                     formatter_class=argparse.RawDescriptionHelpFormatter, epilog=SETUP_GUIDE)
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("post", help="the relay's forward command: the envelope on stdin")
     sub.add_parser("notify", help="the relay's notify command: the notification on stdin")

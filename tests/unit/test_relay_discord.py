@@ -40,7 +40,7 @@ def config(**over):
 
 class FakeDiscord(rd.Discord):
     def __init__(self, fail_after=None):
-        super().__init__("t")
+        super().__init__("t", sleep=lambda s: None)
         self.next_id, self.messages, self.reactions, self.sent = 5_000_000_000, {}, {}, []
         self.fail_after = fail_after
         self.gone = set()
@@ -185,6 +185,14 @@ def test_a_two_option_question_is_posted(tmp_path):
     assert set(d.reactions[rec["message_id"]]) == {"1️⃣", "2️⃣", "❌"}
     assert rec["state"] == "open" and rec["options"] == ["Yes", "No"]
     assert stat.S_IMODE(os.stat(rd.record_path(rec["id"], rec["key"], tmp_path)).st_mode) == 0o600
+
+
+def test_reactions_are_spaced_out(tmp_path):
+    d = FakeDiscord()
+    slept = []
+    d.sleep = slept.append
+    assert rd.post(envelope(tmp_path), "ask", world(tmp_path, d)) == 0
+    assert slept == [rd.REACTION_GAP_S] * 2, "three reactions, two gaps"
 
 
 def test_a_multi_select_post_gets_the_tick(tmp_path):
@@ -368,7 +376,34 @@ def test_first_setup_behind_the_auto_answer(tmp_path):
     assert "bot-token-value" not in out and "token works" in out and "can see the channel" in out
 
 
-def test_first_setup_as_the_relay_command(tmp_path):
+def test_first_setup_puts_the_decider_in_front_when_nothing_is_configured(tmp_path, monkeypatch):
+    monkeypatch.setattr(rd, "auto_answer_command", lambda: "/opt/set/bin/set-auto-answer")
+    get = Store()
+    code, out, _ = run_setup(tmp_path, get)
+    assert code == 0, out
+    assert get["question_relay.command"] == "/opt/set/bin/set-auto-answer"
+    assert get[rd.KEY_AA_FORWARD].endswith("set-relay-discord post")
+    assert get["question_relay.target"] == "command"
+
+
+def test_setup_without_systemd_says_how_to_poll(tmp_path):
+    get = Store({"question_relay.command": "set-auto-answer"})
+    args = argparse.Namespace(channel=CHANNEL, allow=[ME], token_stdin=False, replace=False, remove=False)
+    (tmp_path / "cfg").mkdir()
+    (tmp_path / "cfg" / rd.TOKEN_NAME).write_text("tok\n")
+
+    def no_systemctl(cmd, **k):
+        raise FileNotFoundError("systemctl")
+
+    out = []
+    code = rd.setup(args, rd.World(get=get, client=FakeDiscord(), base=tmp_path), set_value=get.set_value,
+                    systemctl=no_systemctl, out=out.append, token_file=tmp_path / "cfg" / rd.TOKEN_NAME,
+                    units=tmp_path / "units")
+    assert code == 0 and any("cron" in line and "poll" in line for line in out)
+
+
+def test_first_setup_as_the_relay_command(tmp_path, monkeypatch):
+    monkeypatch.setattr(rd, "auto_answer_command", lambda: None)
     get = Store()
     code, out, _ = run_setup(tmp_path, get)
     assert code == 0, out
