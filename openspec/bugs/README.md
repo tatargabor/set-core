@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-227 — the profile deploy's additive YAML merge re-serialises a consumer's `set/orchestration/config.yaml`, dropping every comment and activating a key the consumer had deliberately commented out
+- **state:** open
+- **reported:** 2026-11-24 by this session, diff-checking consumer trees after an `install.sh` redeploy of 36 projects.
+- **measured:** in one web-type consumer, `git diff set/orchestration/config.yaml` after the redeploy showed `17 insertions(+), 26 deletions(-)`; ignoring comments and blank lines, the only value change was an added `test_command: pnpm test` — which the original carried as the commented placeholder `# test_command: pnpm test` under "override profile auto-detection if needed". Source: `lib/set_orch/profile_deploy.py` `_merge_yaml_additive` — `yaml.safe_load` → add missing keys → `yaml.dump` over the file. The bash directive pass in `bin/set-project` (~line 80) already treats a commented placeholder as present; this Python pass does not. The consumer file was restored with `git checkout`, so the next init will rewrite it again.
+- **fail direction:** silent, in the overwrite direction — a hand-authored file changes on a deploy whose pass condition is an empty diff on hand-authored files, and a deliberate "leave this to auto-detection" choice is turned into a pinned command.
+- **fixed when:** a deploy over a config that has comments and a commented-out template key leaves the file byte-identical, or appends only the missing keys as text without re-serialising — asserted by a test that holds the comment-stripping version as the failing case.
+
 ### B-226 — `set-doctor` and the auto-clear deploy tell the reader to run `set-project add`, a command that does not exist
 - **state:** open
 - **reported:** 2026-11-24 by this session, following the doctor's fix line after a pull.
