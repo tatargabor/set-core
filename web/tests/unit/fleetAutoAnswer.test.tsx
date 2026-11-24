@@ -10,7 +10,7 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 import FleetAutoAnswer, { FleetAutoAnswerMark } from '../../src/components/FleetAutoAnswer'
 import {
   agentName, autoMode, autoTitle, countdown, kindLabel, matched, outcomeLabel, parseAutoAnswerState, parseDecisions,
-  pendingFor, publishAgentNames, publishPending, questionBody, shownChoice, tierLabel,
+  pendingFor, publishAgentNames, publishPending, questionBody, shownChoice, tierLabel, wiringCommands,
 } from '../../src/lib/fleetAutoAnswer'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); publishPending([]); publishAgentNames({}) })
@@ -27,6 +27,26 @@ const DECISIONS = { decisions: [
   { ts: Date.now() / 1000 - 90, id: 'b', key: 'Q1', agent: 'proj · b', kind: 'ask', question: 'Push?', choice: 'Yes',
     tier: 'decided', confidence: 0.9, outcome: 'excluded', reason: 'outward step: publish', human_answer: 'No', references: [] },
 ] }
+
+describe('the wiring hint names what is configured (B-236)', () => {
+  it('with no relay command, asks for one line and no placeholder', () => {
+    const h = wiringCommands('')
+    expect(h).toBe('set-config set question_relay.command set-auto-answer')
+    expect(h).not.toContain('forward_command')
+  })
+  it('with a relay command, moves the REAL value behind the decider, shell-quoted', () => {
+    const h = wiringCommands("my-bridge --to 'ops'")
+    expect(h.split('\n')).toEqual([
+      "set-config set auto_answer.forward_command 'my-bridge --to '\\''ops'\\'''",
+      'set-config set question_relay.command set-auto-answer',
+    ])
+    expect(h).not.toContain('<the current')
+  })
+  it('parses the field, and an old server without it reads as none set', () => {
+    expect(parseAutoAnswerState({ ...STATE, relay_command: 'x' })!.relay_command).toBe('x')
+    expect(parseAutoAnswerState(STATE)!.relay_command).toBe('')
+  })
+})
 
 describe('parsing — a widget must degrade, never take the page down', () => {
   it('refuses a payload without the fields it renders', () => {

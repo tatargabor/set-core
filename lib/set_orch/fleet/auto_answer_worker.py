@@ -291,8 +291,11 @@ def status(get: Getter = local_config.get, base: Optional[Path] = None,
            now: Optional[float] = None) -> Dict[str, Any]:
     now = time.time() if now is None else now
     pending = pending_view(now, base)
+    # The relay's current outbound, so the "not wired" hint can name it — or say there is
+    # none to keep (B-236). Local config shown on a local screen; never logged.
     return {"enabled": aa.enabled(get), "wired": wired(get), "forward": bool(aa.forward_command(get)),
             "off_agents": aa.off_agents(get),
+            "relay_command": aa._text(get(qr.KEY_COMMAND)),
             "window_s": aa.window_s(get), "likely_min": aa.likely_min(get),
             "pending": pending, "pending_count": len(pending)}
 

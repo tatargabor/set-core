@@ -44,6 +44,8 @@ export interface AutoAnswerState {
   enabled: boolean
   wired: boolean
   forward: boolean
+  /** The relay's current outbound command; '' when none is set (B-236). */
+  relay_command: string
   window_s: number
   likely_min: number
   pending: PendingProposal[]
@@ -96,6 +98,7 @@ export function parseAutoAnswerState(d: unknown): AutoAnswerState | null {
     enabled: o.enabled,
     wired: o.wired === true,
     forward: o.forward === true,
+    relay_command: str(o.relay_command) ?? '',
     window_s: num(o.window_s) ?? 60,
     likely_min: num(o.likely_min) ?? 0.8,
     pending,
@@ -349,4 +352,15 @@ export async function setAgentOff(entry: string, off: boolean): Promise<AutoAnsw
   if (!parsed) throw new Error('unexpected answer shape')
   publishOffAgents(parsed.off_agents, parsed.enabled)
   return parsed
+
+/**
+ * The commands that wire the decider in, built from what IS configured (B-236): with no
+ * relay command there is nothing to move behind the decider, so only one line is needed.
+ * A shell-quoted current value, never a placeholder the reader could paste literally.
+ */
+export function wiringCommands(relayCommand: string): string {
+  const wire = 'set-config set question_relay.command set-auto-answer'
+  const current = relayCommand.trim()
+  if (!current) return wire
+  return `set-config set auto_answer.forward_command '${current.replace(/'/g, `'\\''`)}'\n${wire}`
 }

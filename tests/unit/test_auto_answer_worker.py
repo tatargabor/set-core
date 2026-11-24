@@ -493,3 +493,13 @@ def test_decide_only_without_a_forward_command_still_does_not_release(tmp_path):
               events={30: lambda rl: qr.waiting_path(SID, rl.base).unlink()})
     assert _decide_only(r) == {"Q1": "no-decision"}
     assert not qr.release_path(SID, tmp_path).exists()
+
+
+def test_status_names_the_relay_command_so_the_hint_can_b236(tmp_path):
+    """B-236: the panel's wiring hint needs to know whether a relay command exists."""
+    from set_orch.fleet import question_relay as qr
+    none = aw.status(get=lambda k, default=None: default, base=tmp_path, now=0.0)
+    assert none["relay_command"] == ""
+    some = aw.status(get=lambda k, default=None: {qr.KEY_COMMAND: " my-bridge "}.get(k, default),
+                     base=tmp_path, now=0.0)
+    assert some["relay_command"] == "my-bridge"

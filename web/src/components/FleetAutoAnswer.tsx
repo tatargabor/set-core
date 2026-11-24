@@ -19,7 +19,7 @@ import { Bot, X } from 'lucide-react'
 import { age } from '../lib/fleetAge'
 import {
   agentName, autoMode, autoTitle, countdown, kindLabel, matched, offAgentRows, outcomeLabel, parseAutoAnswerState,
-  parseDecisions, publishOffAgents, publishPending, questionBody, shownChoice, tierLabel, useAgentNames, usePendingFor,
+  parseDecisions, publishOffAgents, publishPending, questionBody, shownChoice, tierLabel, useAgentNames, usePendingFor, wiringCommands,
   type AutoAnswerState, type DecisionRecord, type PendingProposal,
 } from '../lib/fleetAutoAnswer'
 
@@ -154,7 +154,7 @@ export function FleetAutoAnswerPanel({ state, decisions, readAt, busy, error, on
           <div className="text-amber-400" data-fleet-auto-not-wired>
             <p>The switch is on, but the question relay does not run the decider, so nothing is decided. Wire it:</p>
             <pre className="mt-1 whitespace-pre-wrap break-all text-fg-strong bg-surface-panel rounded px-2 py-1">
-              {'set-config set auto_answer.forward_command "<the current question_relay.command>"\nset-config set question_relay.command set-auto-answer'}
+              {wiringCommands(state?.relay_command ?? '')}
             </pre>
           </div>
         )}
