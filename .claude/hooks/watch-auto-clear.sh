@@ -255,6 +255,23 @@ log_rotate
 # PYTHONPATH could ever clear an agent. Absence is announced, never silent.
 FLEET_OK=1; FLEET_NOTE=""
 FLEET_ERR=$(python3 -c "import set_orch.fleet.owner_client" 2>&1 >/dev/null) || FLEET_OK=0
+# Not importable as is: find set-core the way its own tools do (set-fleet-ask, set-fleet-roster).
+# Its bin/ scripts sit on PATH as symlinks into the checkout, whose lib/ holds set_orch. Resolving
+# it here, not in the unit, keeps the watcher working on any machine and any install path. A
+# PYTHONPATH line written into a unit is one machine's layout.
+if [ "$FLEET_OK" != "1" ]; then
+  for fleet_bin in set-agent-owner set-fleet-ask set-fleet-roster; do
+    fleet_path=$(command -v "$fleet_bin" 2>/dev/null) || continue
+    fleet_root=$(node -e 'const fs=require("node:fs"),p=require("node:path");process.stdout.write(p.resolve(p.dirname(fs.realpathSync(process.argv[1])),".."))' "$fleet_path" 2>/dev/null) || continue
+    [ -d "$fleet_root/lib/set_orch" ] || continue
+    if PYTHONPATH="$fleet_root/lib:$fleet_root/modules/web${PYTHONPATH:+:$PYTHONPATH}" python3 -c "import set_orch.fleet.owner_client" >/dev/null 2>&1; then
+      export PYTHONPATH="$fleet_root/lib:$fleet_root/modules/web${PYTHONPATH:+:$PYTHONPATH}"
+      FLEET_OK=1
+      log "fleet: owner client found via $fleet_bin ($fleet_root/lib), added to PYTHONPATH for this watcher"
+      break
+    fi
+  done
+fi
 FLEET_ERR=$(printf '%s\n' "$FLEET_ERR" | tail -1)   # a pipe here would report tail's status, not python's
 if ! command -v tmux >/dev/null; then
   if [ "$FLEET_OK" = "1" ]; then
