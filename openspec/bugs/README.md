@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-217 — a `literal:` allow entry written for one private repository silences that deny term in EVERY repository's commit-message gate, while the push gate still blocks it
+- **state:** open
+- **reported:** 2026-11-24 by this session, after the push gate blocked two commits in this public repository (written by two other sessions) whose messages named a deny-listed private project, although both had passed the `commit-msg` gate.
+- **measured:** `set-leakscan --message <file>` on a one-line message naming that project answers `clean (… remote not consulted (commit gate))`, `--json` shows `findings: []`. Instrumented: the deny check is present and matches the line; the finding is then removed by the `allow_literals` filter (`bin/set-leakscan`, the `literal:` loop), because `~/.config/set-core/leakscan-allow.txt` carries a `literal:<that name>` entry whose comment says it was added for a different, private repository. The range mode blocked the same message only because its commit-message finding's `text` is not the line that carries the name, so the same literal did not reach it.
+- **fail direction:** the passing direction at commit time (a public repository's history gets the name, and the only repair is a rewrite); the push gate catches it today only by an accident of which text a finding carries.
+- **fixed when:** a `literal:` entry can be scoped to a repository (or the commit-message gate applies the same literal matching as the push gate, against the same text), and a test holds that a literal scoped to repository A does not silence the term in repository B's `--message` scan.
+
 ### B-216 — `set-leakscan` reports a deny-term FILE NAME on a path the range or the index deletes, so the commit that untracks it is the one that cannot be pushed
 - **state:** closed 2026-11-24 in the commit that adds this line. The name checks now run over the paths the tree will hold (`present`), the same list the private-file classes already used; three tests in `TestTheDenyList` (a ranged deletion and a staged deletion pass, a ranged addition still blocks). The two repair tests failed against the previous code and pass with the fix; the full `tests/unit/test_leakscan.py` passes (116).
 - **reported:** 2026-11-24 by this session, while untracking generated `__pycache__/*.pyc` files that `.gitignore` already excluded in a registered project.
