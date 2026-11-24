@@ -157,6 +157,28 @@ def test_a_renamed_template_keeps_its_history(box):
     assert hook(tree, "handoff-arm2.mjs").read_text() == "// handoff-arm.mjs v2\n"
 
 
+def test_the_packages_own_deployed_copy_does_not_hide_older_shipped_versions(box):
+    """The package checkout is a consumer too. Its own `.claude/hooks/` copy was deployed at v1
+    and next at v3, skipping v2; at HEAD it holds the same blob as `templates/` and sorts
+    first, so walking only that path's history misses v2 (`--follow` jumps to `templates/`
+    at the ADD, i.e. at v1). A tree still on v2 must be upgraded, not kept as locally
+    modified. Shape measured on the real package, 2026-11-24."""
+    run, pkg, tree, _, _, _ = box
+    own = pkg / ".claude" / "hooks" / "clear-gate.mjs"
+    own.parent.mkdir(parents=True)
+    own.write_text("// clear-gate.mjs v1\n")
+    commit(pkg, "the package deployed into itself at v1")  # the box already has templates at v2
+    (pkg / "templates" / "clear-gate.mjs").write_text("// clear-gate.mjs v3\n")
+    commit(pkg, "v3")
+    own.write_text("// clear-gate.mjs v3\n")
+    commit(pkg, "the package deploys into itself at v3")
+    hook(tree, "clear-gate.mjs").parent.mkdir(parents=True)
+    hook(tree, "clear-gate.mjs").write_text("// clear-gate.mjs v2\n")
+    out = run()
+    assert hook(tree, "clear-gate.mjs").read_text() == "// clear-gate.mjs v3\n", out
+    assert any("upgraded .claude/hooks/clear-gate.mjs" in l for l in out)
+
+
 def test_an_uncommitted_template_edit_is_not_what_ships(box):
     """The installer reads the checkout's committed HEAD, not its working tree."""
     run, pkg, tree, _, _, _ = box

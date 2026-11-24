@@ -133,25 +133,33 @@ def shipped_blobs(pkg: Path, blob: str) -> set:
     The produced file is located in the package by content (its blob equals a HEAD blob), so
     no source map is kept here; the history walk follows renames. A file whose source is not
     found has only its own blob as known — the conservative side: a stale copy is kept.
+
+    EVERY HEAD path holding the blob is walked, not the first one. The package checkout is
+    itself a consumer: once its own `.claude/hooks/<f>` copy is committed at the current
+    version, that path sorts before `templates/<f>` and holds the same blob — and its history
+    has only the versions deployed INTO the package, not every version the package shipped.
+    Measured 2026-11-24 on a fleet re-roll: after the package tree's own commit, two trees
+    holding an older shipped version were reported "locally modified" and kept.
     """
     known = {blob}
-    src = None
+    srcs = []
     for line in _git(pkg, "ls-tree", "-r", "HEAD").splitlines():
         meta, _, path = line.partition("\t")
         if meta.split()[-1] == blob:
-            src = path
-            break
-    if not src:
+            srcs.append(path)
+    if not srcs:
+        logger.debug("shipped_blobs: blob %s not found at HEAD of %s", blob, pkg)
         return known
-    log = _git(pkg, "log", "--follow", "--format=C %H", "--name-only", "--", src)
-    commit = None
-    for line in log.splitlines():
-        if line.startswith("C "):
-            commit = line[2:]
-        elif line.strip() and commit:
-            b = _git(pkg, "rev-parse", f"{commit}:{line.strip()}")
-            if b:
-                known.add(b)
+    for src in srcs:
+        log = _git(pkg, "log", "--follow", "--format=C %H", "--name-only", "--", src)
+        commit = None
+        for line in log.splitlines():
+            if line.startswith("C "):
+                commit = line[2:]
+            elif line.strip() and commit:
+                b = _git(pkg, "rev-parse", f"{commit}:{line.strip()}")
+                if b:
+                    known.add(b)
     return known
 
 

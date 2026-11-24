@@ -160,6 +160,30 @@
   fail against the pre-fix code; sandbox run against the real package: upgraded to its HEAD, no
   `.bak`, backup equals the pre-merge file). Open: re-roll the templates to the fleet once the
   package's started-after reader lands.
+- 2026-11-24 ~07:45, the re-roll (package `ab74cdd`: the watcher reads the wiring stamp itself,
+  log dedupe + rotation, keep-going). Templates only — no hook merge, no new unit — on the 40
+  registered trees that already carried them, each tree's watcher unit stopped before its
+  `watch-auto-clear.sh` was overwritten and started after; one pathspec-limited commit per tree
+  (two trees keep the files gitignored, so no commit there). Skipped: the flagship consumer,
+  whose own session maintains its package files by hand; and two trees that never had the
+  templates (a dry run would have installed everything there — that is a first install, not a
+  re-roll). Measured after: 39 of 40 trees equal the package's HEAD files (blob compare), the
+  skipped one is the only stale tree; all 40 watcher units `active running`, no error line in
+  the journal since the restart.
+- 2026-11-24, defect found BY the re-roll, fixed in the same round: `shipped_blobs()` walked
+  only the FIRST HEAD path holding the template's blob. The package checkout is itself a
+  consumer; once the re-roll committed its own `.claude/hooks/` copy at the current version,
+  that path sorted first, and its history skipped the package versions between two deploys.
+  Two trees processed after it, holding such a version, were reported "locally modified" and
+  kept (fail direction: conservative — a stale copy kept, nothing overwritten). Now every
+  matching path's history is unioned. Proven on the real package (old code: both trees'
+  blobs unknown; new: known) and in `test_the_packages_own_deployed_copy_does_not_hide_older_shipped_versions`,
+  which fails against the old code. The two trees were then re-rolled with the fix.
+- Open: the unit template still passes `--started-after <stamp>`. Since `ab74cdd` the watcher
+  reads the stamp itself and, without the flag, uses each WORKTREE's own stamp; an explicit
+  flag wins and disables that. The existing units pin the same value the stamp holds, so
+  nothing is wrong today — but the flag can go from the template, and from existing units by
+  hand (init never rewrites a unit).
 - 2026-11-23 22:04: set-core ITSELF had been left out of the rollout (the rollout script skipped
   the framework's own tree, which is not a reason under the owner's "every project" decision).
   Noticed because a 410k-token session here was never asked for a handoff. Installed now with the
