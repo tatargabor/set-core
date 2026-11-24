@@ -192,6 +192,19 @@
   the filter would have stayed on while the report looked like a successful roll (fail direction:
   calm). With `-m`: all 39 trees "would upgrade". Held by
   `test_a_version_born_in_a_merge_is_known_as_shipped`, which fails without `-m`.
+- 2026-11-24 ~09:05, the be300a2 roll (asked for by the package's session). Same procedure as the
+  ab74cdd re-roll: each tree's watcher unit was stopped, templates were written, the flag was
+  dropped from init-written units, the unit was started, and each tree got one pathspec-limited
+  commit. Skipped: the flagship consumer, as before. Result: 38 trees hold the be300a2 watcher
+  (blob compare), with clear-gate and the auto-clear skill upgraded too. 11 `handoff.profile.md`
+  and one `skills/handoff/SKILL.md` were kept as locally modified. 36 commits, each holding only
+  the three paths; two trees keep `.claude/` gitignored. 32 units lost `--started-after`; six hand
+  units keep theirs, all from October. Defect found by the restart: one hand unit had
+  run since 2026-10-08 and had no `Environment=PATH`. On restart the watcher found neither tmux
+  nor the fleet owner client and exited 2 in a restart loop. Fixed by adding the PATH line the
+  init template carries. The unit is active and its log has a fresh `watcher started` line. A hand
+  unit restarted for the first time in weeks is where this shape shows up. All 45 watcher units
+  were `active` a minute after the roll, with no warning in the journal.
 - 2026-11-23 22:04: set-core ITSELF had been left out of the rollout (the rollout script skipped
   the framework's own tree, which is not a reason under the owner's "every project" decision).
   Noticed because a 410k-token session here was never asked for a handoff. Installed now with the
