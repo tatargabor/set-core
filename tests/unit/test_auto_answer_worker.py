@@ -409,3 +409,52 @@ def test_a_finished_turn_with_nothing_worth_doing_is_closed_quietly(tmp_path):
     assert r.forwarded == [], "nothing goes to the channel"
     assert qr.release_path(SID, tmp_path).exists(), "the waiting call is released, so nobody waits on it"
     assert r.records()[0]["outcome"] == "closed" and r.answer_text() is None
+
+
+# --------------------------------------------------------------------------- fleet-relay-teach
+def _taught_repo(base: Path) -> Path:
+    subprocess.run(["git", "init", "-q", str(base)], check=True)
+    f = base / aa.TAUGHT_REL
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text("# Taught answers\n\n## Mehet élesbe a weboldal?\n\n"
+                 "- **Question:** Mehet élesbe a weboldal?\n- **Answer:** Igen, mehet\n"
+                 "- **When / why:** ha a tervezet módosítás le van ellenőrizve\n", encoding="utf-8")
+    return f
+
+
+def test_a_checked_taught_rule_lets_a_go_live_answer_through(tmp_path):
+    """AC-10: owner 2026-11-24, „Mindig mehet" — a taught rule is the operator's answer in advance."""
+    f = _taught_repo(tmp_path)
+    ref = aa.Reference("file", "- **Answer:** Igen, mehet", path=str(f), decision=True, checked=True)
+    d = aa.Decision({"Q1": answer(choice="Igen, mehet", refs=[ref], outward=True)}, {}, "fork")
+    r = Relay(tmp_path, d)
+    payload = json.dumps(envelope(tmp_path, text="Mehet élesbe a weboldal production-be?", options=("Igen, mehet", "Még ne")))
+    assert r.work(payload=payload) == {"Q1": "written"} and r.answer_text() == "Igen, mehet"
+    assert r.records()[0]["taught"] is True
+
+
+@pytest.mark.parametrize("ref_kw", [
+    {"checked": False},                       # a quote that did not check out
+    {"path": "elsewhere.md"},                 # a decision quote from another file
+    {"decision": False},                      # a plain file excerpt, not a decision
+])
+def test_only_a_checked_decision_quote_of_the_taught_file_lifts_the_exclusion(tmp_path, ref_kw):
+    f = _taught_repo(tmp_path)
+    (tmp_path / "elsewhere.md").write_text("- **Answer:** Igen, mehet\n")
+    kw = {"path": str(f), "decision": True, "checked": True, **ref_kw}
+    ref = aa.Reference("file", "- **Answer:** Igen, mehet", **kw)
+    d = aa.Decision({"Q1": answer(choice="Igen, mehet", refs=[ref])}, {}, "fork")
+    r = Relay(tmp_path, d, events={30: lambda rl: qr.waiting_path(SID, rl.base).unlink()})
+    payload = json.dumps(envelope(tmp_path, text="Mehet élesbe a weboldal?", options=("Igen, mehet", "Még ne")))
+    assert r.work(payload=payload) == {"Q1": "excluded"} and r.answer_text() is None
+    assert r.records()[0]["taught"] is False
+
+
+def test_a_taught_rule_never_opens_a_permission_prompt(tmp_path):
+    """AC-11."""
+    f = _taught_repo(tmp_path)
+    ref = aa.Reference("file", "- **Answer:** Igen, mehet", path=str(f), decision=True, checked=True)
+    d = aa.Decision({"Q1": answer(choice="Allow", refs=[ref])}, {}, "fork")
+    r = Relay(tmp_path, d, events={30: lambda rl: qr.waiting_path(SID, rl.base).unlink()})
+    payload = json.dumps(envelope(tmp_path, text="proj · s wants to run Bash: deploy", options=("Allow", "Deny")))
+    assert r.work(kind="permission", payload=payload) == {"Q1": "excluded"} and r.answer_text() is None

@@ -25,6 +25,7 @@ import {
   canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, sendable, showUnwired, verdictLine, type RelayState,
 } from '../lib/fleetRelay'
 import { agentName, kindLabel, useAgentNames } from '../lib/fleetAutoAnswer'
+import FleetRelayCall from './FleetRelayCall'
 
 /** Waiting questions come and go on the scale of seconds; the hook polls every 3 s. */
 const READ_INTERVAL_MS = 5_000
@@ -35,6 +36,9 @@ export default function FleetRelay() {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  /** fleet-relay-teach: the call opened over the panel, and how. */
+  const [call, setCall] = useState<{ id: string; mode: 'details' | 'teach' } | null>(null)
+  const closeCall = useCallback(() => setCall(null), [])
   const rootRef = useRef<HTMLSpanElement>(null)
 
   const read = useCallback(() => {
@@ -52,6 +56,9 @@ export default function FleetRelay() {
     const t = setInterval(read, READ_INTERVAL_MS)
     return () => clearInterval(t)
   }, [read])
+
+  // A call opened over the panel goes with the panel.
+  useEffect(() => { if (!open) setCall(null) }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -223,12 +230,30 @@ export default function FleetRelay() {
                         <span className={n.live ? 'text-fg-loud font-semibold' : 'text-fg-strong'}>{n.label ?? 'unknown agent'}</span>
                       </span>
                       <span className="text-fg-muted whitespace-nowrap">{kindLabel(w.kind === 'question' ? 'ask' : w.kind ?? 'ask')} · {age(w.seconds)}</span>
+                      {w.id && (
+                        <span className="ml-auto flex items-center gap-2 whitespace-nowrap">
+                          <button type="button" onClick={() => setCall({ id: w.id as string, mode: 'details' })}
+                                  className="underline decoration-dotted text-fg-muted hover:text-fg-strong"
+                                  title="What is asked, its options, what the decider did with it, and what the call waits for"
+                                  data-fleet-relay-details={w.id}>
+                            details
+                          </button>
+                          {w.kind !== 'permission' && (w.questions ?? 1) === 1 && (
+                            <button type="button" onClick={() => setCall({ id: w.id as string, mode: 'teach' })}
+                                    className="underline decoration-dotted text-sky-300/80 hover:text-sky-300"
+                                    title="Answer it now AND teach the project the answer for next time, with an optional condition — committed in the project"
+                                    data-fleet-relay-teach={w.id}>
+                              teach
+                            </button>
+                          )}
+                        </span>
+                      )}
                       {w.release_requested
-                        ? <span className="ml-auto text-fg-muted">releasing…</span>
+                        ? <span className={`${w.id ? '' : 'ml-auto '}text-fg-muted`}>releasing…</span>
                         : (
                           <button type="button" disabled={busy}
                                   onClick={() => post(`/api/fleet/question-relay/release/${encodeURIComponent(w.session_id)}`)}
-                                  className="ml-auto whitespace-nowrap underline decoration-dotted text-fg-muted hover:text-fg-strong"
+                                  className={`${w.id ? '' : 'ml-auto '}whitespace-nowrap underline decoration-dotted text-fg-muted hover:text-fg-strong`}
                                   title="Takes the question OFF the channel: it then waits at the agent's terminal for an answer typed there. It does not answer or approve anything — use it only when you are at the machine."
                                   data-fleet-relay-release={w.session_id}>
                             to terminal ↩
@@ -256,6 +281,10 @@ export default function FleetRelay() {
                 })}
               </ul>
             )}
+          {call && (
+            <FleetRelayCall id={call.id} mode={call.mode} onMode={m => setCall({ id: call.id, mode: m })}
+                            onClose={closeCall} onSaved={read} />
+          )}
         </div>
       )}
     </span>

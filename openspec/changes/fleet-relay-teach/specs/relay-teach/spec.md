@@ -29,6 +29,7 @@ When the decider never saw the call, the overlay SHALL say so instead of showing
 #### Scenario: A call the decider never saw
 - **WHEN** the operator opens Details on a waiting call with no decider record
 - **THEN** the overlay says the decider has no record of this call and shows what the relay itself knows (agent, kind, age, question count)
+- **AND** the row offers no Teach control, because the question's text is not recorded outside the decider
 
 ### Requirement: A waiting question can be answered once and taught for next time
 A single-question waiting row that is not a permission prompt SHALL carry a Teach control. It opens an overlay with:
@@ -41,7 +42,7 @@ Saving SHALL:
 - answer the waiting call at once with the answer, as the operator's own answer, through the relay's answer store;
 - append the rule to the asking project's taught-rules file and commit it (next requirement).
 
-Each step's result SHALL be reported in the overlay: answered or why not, and the commit's short sha or why there is none. A failure of one step SHALL NOT undo or block the other. For a multi-question call or a permission prompt the Teach control SHALL NOT be offered, and Details SHALL say why.
+Each step's result SHALL be reported in the overlay: answered or why not, and the commit's short sha or why there is none. A failure of one step SHALL NOT undo or block the other. For a multi-question call, a permission prompt, or a call the decider has no record of, the Teach control SHALL NOT be offered, and Details SHALL say why. The question's text is held only in the decider's private pending record: the relay's own waiting record deliberately carries no question text, and this change does not add any.
 
 #### Scenario: Teaching an answer with a condition
 - **WHEN** the operator teaches "Igen, mehet" with the explanation "ha a tervezet módosítás le van ellenőrizve" on a waiting question

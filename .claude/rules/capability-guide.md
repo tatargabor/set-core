@@ -22,6 +22,7 @@ This project is **set-core** — an orchestration framework for Claude Code that
 | Search a project's knowledge | `set-kb search` / MCP `kb_search` | Before answering from memory |
 | Check what a push would publish | `set-leakscan` (`--staged`, `--tree`) | Before every push; the hooks run it too |
 | Answer relayed questions on your behalf | `set-auto-answer` (fleet header 🤖 panel; `auto_answer.*` in `set-config`) | It forks the asking session, checks its sources, proposes, writes after a window; never an outward step or a permission |
+| Teach an answer for next time | fleet header ⌛ → a waiting row → `teach` (`details` to read it first) | Answers the question now and appends a rule to the project's committed `.claude/rules/auto-answer-taught.md`; agents and the decider follow it — never a permission prompt |
 | Talk to another session | `sac` (set-agent-comm) | Cross-project coordination — the git-based `/set:msg` path is retired |
 | Architecture before an offer | `/set:blueprint` | Research the open questions, then the plan |
 

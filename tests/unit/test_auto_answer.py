@@ -807,3 +807,44 @@ def test_an_act_reserved_for_the_operator_is_not_the_act(choice):
 ])
 def test_a_reservation_does_not_cover_an_act_outside_its_clause(choice):
     assert aa.exclusion(aa.KIND_CONTINUATION, q(text="Next?", options=[choice]), choice, False)
+
+
+# --------------------------------------------------------------------------- fleet-relay-teach
+def test_taught_rules_travel_verbatim_and_are_a_decision_location(tmp_path):
+    """AC-9: the taught file is read from the repository's main worktree and from the call's
+    own worktree, placed in the prompt verbatim, and a quote of it checks as `decided`."""
+    import subprocess
+    repo = tmp_path / "proj"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q",
+                    "--allow-empty", "-m", "init"], check=True)
+    wt = tmp_path / "wt"
+    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", str(wt)], check=True)
+    rule = "## Commit a feature ágra?\n\n- **Question:** Commitoljak a feature ágra?\n- **Answer:** Igen, mindig\n"
+    (repo / aa.TAUGHT_REL).parent.mkdir(parents=True)
+    (repo / aa.TAUGHT_REL).write_text("# Taught\n\n" + rule, encoding="utf-8")
+    taught = aa.taught_rules(str(wt))
+    assert [Path(p).resolve() for p, _ in taught] == [(repo / aa.TAUGHT_REL).resolve()]
+    assert rule in taught[0][1]
+    prompt = aa.build_prompt(aa.KIND_ASK, [q(text="Commitoljak a feature ágra?", options=["Igen, mindig", "Nem"])],
+                             [], [], taught=taught)
+    assert "TAUGHT RULES of the operator" in prompt and rule in prompt and "TAUGHT RULES." in prompt
+    assert "TAUGHT RULES" not in aa.build_prompt(aa.KIND_ASK, [q()], [], [])
+    a = aa.Answer(key="Q1", choice="Igen, mindig", claimed_tier="decided", confidence=0.9, outward=False,
+                  references=[aa.Reference("decision", "- **Answer:** Igen, mindig", path=taught[0][0], decision=True)])
+    assert aa.check_references(a, [], str(wt)).tier == aa.TIER_DECIDED
+    assert aa.is_taught_reference(a.references[0], str(wt), aa.taught_files(str(wt)))
+
+
+def test_taught_rules_over_the_cap_keep_the_newest_entries(tmp_path):
+    entries = "".join(f"\n## Rule {i}\n- **Answer:** {'x' * 200}\n" for i in range(200))
+    kept = aa._newest_entries("# Taught\n" + entries, 2000)
+    assert kept.startswith("## Rule ") and "## Rule 199" in kept and "## Rule 0\n" not in kept
+    assert len(kept.encode()) <= 2000
+
+
+def test_the_exclusion_gives_way_to_a_taught_rule_but_not_on_a_permission_prompt():
+    prod = q(text="Mehet élesbe a weboldal production-be?", options=["Igen", "Nem"])
+    assert aa.exclusion(aa.KIND_ASK, prod, "Igen", True) is not None
+    assert aa.exclusion(aa.KIND_ASK, prod, "Igen", True, taught=True) is None
+    assert aa.exclusion(aa.KIND_PERMISSION, prod, "Allow", False, taught=True) == "permission prompt"

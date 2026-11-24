@@ -237,6 +237,7 @@ class Answer:
     references: List[Reference] = field(default_factory=list)
     tier: str = ""                # derived by check_references
     note: str = ""                # the model's one-line reason, if it gave one
+    taught: bool = False          # backed by a checked quote from the project's taught rules
 
 
 @dataclass
@@ -566,11 +567,17 @@ def _reserved(text: str, m: re.Match) -> bool:
 
 
 def exclusion(kind: str, question: Question, choice: str, model_outward: bool,
-              never: Iterable[str] = (), allowed: Iterable[str] = ()) -> Optional[str]:
+              never: Iterable[str] = (), allowed: Iterable[str] = (), taught: bool = False) -> Optional[str]:
     """Why this answer may not be written automatically, or None. Any one reason excludes.
-    Families in `allowed` (the machine's `auto_answer.allow_families`) do not exclude."""
+    Families in `allowed` (the machine's `auto_answer.allow_families`) do not exclude.
+
+    `taught`: the answer is backed by a checked quote from the project's taught rules — the
+    operator's own answer given in advance (owner 2026-11-24, „Mindig mehet"), so neither the
+    words nor the model's flag exclude it. A permission prompt still does, always."""
     if kind == KIND_PERMISSION:
         return "permission prompt"
+    if taught:
+        return None
     never = list(never)
     read_only = bool(_READ_ONLY_LEAD.match(_bare(choice)))
     hits = _families(choice, never,
@@ -893,13 +900,99 @@ complete, or the suggestions only re-check finished work — answer {"key": ...,
 """
 
 
+#: The project's taught rules (fleet-relay-teach): appended from the relay panel's Teach,
+#: committed in the project so every checkout — a teammate's too — has them.
+TAUGHT_REL = Path(".claude") / "rules" / "auto-answer-taught.md"
+TAUGHT_MAX_BYTES = 20_000
+
+
+def taught_files(cwd: str) -> List[Path]:
+    """The taught-rules files that apply to a call from `cwd`: the repository's main worktree
+    (where Teach writes) and the call's own tree when that is a different worktree."""
+    from .relay_teach import main_checkout
+    out: List[Path] = []
+    roots: List[Path] = []
+    main = main_checkout(cwd) if cwd else None
+    if isinstance(main, Path):
+        roots.append(main)
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=cwd, capture_output=True,
+                             text=True, timeout=10) if cwd and Path(cwd).is_dir() else None
+        if top is not None and top.returncode == 0 and top.stdout.strip():
+            roots.append(Path(top.stdout.strip()))
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.debug("auto answer: toplevel of the call's tree not found (%s)", type(exc).__name__)
+    seen = set()
+    for root in roots:
+        f = root / TAUGHT_REL
+        if f.is_file() and f.resolve() not in seen:
+            seen.add(f.resolve())
+            out.append(f)
+    return out
+
+
+def _newest_entries(text: str, limit: int) -> str:
+    """Keep the newest entries that fit: the file is append-only, so the tail is the newest."""
+    data = text.encode("utf-8")
+    if len(data) <= limit:
+        return text
+    tail = data[-limit:].decode("utf-8", errors="ignore")
+    cut = tail.find("\n## ")
+    return tail[cut + 1:] if cut >= 0 else tail
+
+
+def taught_rules(cwd: str) -> List[Tuple[str, str]]:
+    """`(path, text)` per taught-rules file, verbatim, capped at TAUGHT_MAX_BYTES each."""
+    out = []
+    for f in taught_files(cwd):
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            logger.warning("auto answer: taught rules unreadable (%s)", type(exc).__name__)
+            continue
+        kept = _newest_entries(text, TAUGHT_MAX_BYTES)
+        if kept is not text:
+            logger.warning("auto answer: taught rules in %s exceed %d bytes; the newest entries are kept",
+                           f.parent.parent.parent.name, TAUGHT_MAX_BYTES)
+        out.append((str(f), kept))
+    return out
+
+
+def is_taught_reference(ref: "Reference", cwd: str, files: Sequence[Path]) -> bool:
+    """A CHECKED decision quote from one of the project's taught-rules files."""
+    if not (ref.checked and ref.decision and ref.kind != "operator" and ref.path):
+        return False
+    try:
+        target = _resolve(ref.path, cwd).resolve()
+    except OSError:
+        return False
+    return any(target == f.resolve() for f in files)
+
+
+TAUGHT_POLICY = """
+TAUGHT RULES. The block(s) above are answers the operator taught for this project, each with the
+question it answers and, when given, the condition or reason. When a question here is the one a
+rule answers and the rule's condition holds (confirm it from the conversation or the files —
+do not assume it), answer with the rule's answer, tier "decided", and a "decision" reference
+quoting the rule's Answer line verbatim with the file's path. A taught rule is the operator's own
+answer given in advance: it applies even to a publish, a deploy or a production step, so do not
+mark such an answer "outward". When the condition cannot be confirmed, abstain and name the
+open condition in your reason.
+"""
+
+
 ALLOWED_WORDS = {"push": "git push (a pre-push leak scan guards what a push publishes)"}
 
 
 def build_prompt(kind: str, questions: Sequence[Question], kb_hits: Sequence[Dict[str, str]],
                  locations: Sequence[str], conversation: bool = True,
-                 allowed: Sequence[str] = (), standing: Sequence[Tuple[str, str]] = ()) -> str:
+                 allowed: Sequence[str] = (), standing: Sequence[Tuple[str, str]] = (),
+                 taught: Sequence[Tuple[str, str]] = ()) -> str:
     parts = [PROMPT_HEAD]
+    for path, text in taught:
+        parts.append(f"\nTAUGHT RULES of the operator for this project, path {path}:\n<<<\n{text}\n>>>\n")
+    if taught:
+        parts.append(TAUGHT_POLICY)
     for path, text in standing:
         parts.append(f"\nSTANDING DECISION of the operator — it settles every question it covers; when it does, "
                      f"answer with tier \"decided\" and a \"decision\" reference quoting it verbatim, path {path}:\n"
@@ -1152,12 +1245,14 @@ def decide(envelope: Dict[str, Any], *, kind: str, session_id: str, cwd: str, as
     notes.append(kb_note)
     path = transcript(session_id) if session_id else None
     launch = launch_of(session_id, path) if path else None
-    locations = decision_locations(cwd, extra_paths(get))
+    taught = taught_rules(cwd)
+    locations = decision_locations(cwd, [*extra_paths(get), *[p for p, _ in taught]])
     bound = decide_timeout_s(get)
     if launch is not None:
         method = "fork"
         prompt = build_prompt(kind, questions, hits, locations, conversation=True,
-                              allowed=allow_families(get), standing=standing_decisions(get))
+                              allowed=allow_families(get), standing=standing_decisions(get),
+                              taught=taught)
         out, reason = runner(fork_argv(launch, session_id), prompt, cwd=cwd, env=launch.env,
                              unset=launch.unset, timeout=bound)
         notes.append(f"fork on {launch.describe()}: {reason}")
@@ -1166,7 +1261,8 @@ def decide(envelope: Dict[str, Any], *, kind: str, session_id: str, cwd: str, as
         notes.append("fallback: sources-only (" + ("no transcript" if path is None else
                                                     "the session's provider could not be placed") + ")")
         prompt = build_prompt(kind, questions, hits, locations, conversation=False,
-                              allowed=allow_families(get), standing=standing_decisions(get))
+                              allowed=allow_families(get), standing=standing_decisions(get),
+                              taught=taught)
         out, reason = runner(fallback_argv(fallback_model(get)), prompt, cwd=cwd, env={}, unset=(),
                              timeout=bound)
         notes.append(f"fallback: {reason}")

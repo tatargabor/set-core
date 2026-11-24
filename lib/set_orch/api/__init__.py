@@ -22,6 +22,7 @@ from fastapi import APIRouter
 
 from .fleet import router as fleet_router
 from .fleet_mandate import router as fleet_mandate_router
+from .fleet_relay_teach import router as fleet_relay_teach_router
 from .now import router as now_router
 from .fleet_watchdog import router as fleet_watchdog_router
 from .files import router as files_router
@@ -50,6 +51,8 @@ router.include_router(fleet_router)
 # `/api/fleet/mandates`, `/desks`, `/engagements`, `/map` — the same family, so the same
 # place in the order (CB-16).
 router.include_router(fleet_mandate_router)
+# `/api/fleet/question-relay/{id}/detail|teach` — the same family (CB-16).
+router.include_router(fleet_relay_teach_router)
 # `/api/fleet/now...` — the Now card; a `/api/fleet/...` family, so also before
 # the `/api/{project}/...` routers (CB-16).
 router.include_router(now_router)

@@ -86,7 +86,7 @@ over an outward word can be counted afterwards.
 ### D6 — Details reads the decider's record; the relay's own record is the fallback
 `GET /api/fleet/question-relay/{call_id}/detail` returns the pending record of that call: questions,
 options, choice, tier, outcome, reason and checked references. Beside it come the waiting record's
-kind, age, question count and release flag. With no pending record the response says so. It reads
+kind, age, question count and release flag. With no pending record the response says so, and Teach is not offered for that call. *Measured while building it:* adding the text to the relay's waiting record broke three existing tests that assert that record carries no question, command or suggestion text. That is a deliberate privacy property of the relay, so the text stays where it already is: the decider's private pending record (mode 600, private directory). It reads
 machine-local stores only. The route is served on localhost like the rest of the fleet API, and it
 logs shape only.
 

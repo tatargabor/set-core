@@ -444,6 +444,7 @@ def work(payload: str, relay_vars: Dict[str, str], world: Optional[World] = None
 
     never = aa.never_patterns(w.get)
     bar = aa.likely_min(w.get)
+    taught_files = aa.taught_files(cwd) if any(decision.answers.values()) else []
     outcome: Dict[str, str] = {}
     reasons: Dict[str, str] = {}
     for q in questions:
@@ -451,7 +452,8 @@ def work(payload: str, relay_vars: Dict[str, str], world: Optional[World] = None
         if a is None:
             outcome[q.key], reasons[q.key] = OUT_NO_DECISION, decision.refused.get(q.key, "no decision")
             continue
-        excl = aa.exclusion(kind, q, a.choice, a.outward, never, aa.allow_families(w.get))
+        a.taught = any(aa.is_taught_reference(r, cwd, taught_files) for r in a.references)
+        excl = aa.exclusion(kind, q, a.choice, a.outward, never, aa.allow_families(w.get), taught=a.taught)
         outcome[q.key] = aa.allow(a.tier, a.confidence, excl, bar)
         reasons[q.key] = excl or ("" if outcome[q.key] == aa.OUTCOME_ALLOWED else
                                   f"likely {a.confidence:.2f} below {bar:.2f}")
@@ -613,6 +615,7 @@ def _close(w: World, pending: Dict[str, Any], decision: aa.Decision, outcome: Di
             "choice": a.choice if a else None, "tier": a.tier if a else None,
             "claimed_tier": a.claimed_tier if a else None, "confidence": a.confidence if a else None,
             "references": [r.as_record() for r in a.references] if a else [],
+            "taught": bool(a and a.taught),
             "outcome": outcome.get(key), "reason": reasons.get(key, ""),
             "human_answer": human.get(key), "method": decision.method, "notes": decision.notes,
             "launch": decision.launch, "usage": decision.usage, "latency_s": latency,
