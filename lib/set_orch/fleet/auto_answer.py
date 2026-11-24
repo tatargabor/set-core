@@ -398,7 +398,10 @@ EXCLUSION_FAMILIES: Dict[str, Tuple[str, ...]] = {
     # "email" only as a verb: the noun ("before email is read", in a quoted error) is not
     # sending anything — measured live 2026-11-24 on a settings question.
     "send": (r"send\w*", r"sent", r"e-?mail(?:ed|ing)",
-             r"e-?mail (?:it|this|that|them|the|him|her|to|everyone|back|a|an)", r"kuld\w*", r"uzen\w*",
+             r"e-?mail (?:it|this|that|them|the|him|her|to|everyone|back|a|an)", r"kuld\w*",
+             # the verb only: "üzenetemre még nem válaszoltál" (my message) sends nothing — live
+             # 2026-11-24; the English noun "message" was never in the list either
+             r"uzen(?!et)\w*",
              r"post(?:s|ed|ing)? (?:to|in|on)", r"notify\w*", r"ertesit\w*"),
     "delete": (r"delete\w*", r"torol\w*", r"torl\w*", r"purge\w*", r"wipe\w*", r"destroy\w*",
                r"drop (?:the )?(?:table|database|schema|db)\w*", r"rm -rf", r"reset --hard",
@@ -536,6 +539,32 @@ def _completed(text: str, m: re.Match) -> bool:
     return False
 
 
+# An act the answer RESERVES for the operator is not the act (live 2026-11-24, after the
+# delegation policy: "re-arm the watch, re-run the check … Ask me only the publish yes for
+# the site"). The delegation tells the decider to continue and keep the outward step for the
+# operator, so this shape is what it produces. Narrow on purpose, because this is the PASS
+# direction: the act word must sit in the reservation's own clause, joined to "ask me" /
+# "kérdezz meg" by filler words only — "ask me nothing and publish" and "ask me later;
+# publish now" still exclude. A general negation check is NOT applied to the answer:
+# "No, publish it now" is a publish.
+_RESERVE_LEAD = re.compile(r"\b(?:(?:ask|check with|consult) (?:me|the operator|the owner)"
+                           r"|kerdezz meg|engem kerdezz|kerdezd meg tolem|kerj (?:tolem )?engedelyt)\b")
+_RESERVE_TAIL = re.compile(r"^(?:kerdezz meg|kerdezd meg|kerj (?:tolem )?engedelyt)\b")
+_FILLER = {"only", "first", "the", "a", "an", "about", "before", "for", "on", "you", "when", "if",
+           "whether", "to", "csak", "az", "elott", "elotte", "elobb"}
+_CLAUSE_END = re.compile(r"[.;:!?,]")
+
+
+def _reserved(text: str, m: re.Match) -> bool:
+    head = _CLAUSE_END.split(text[:m.start()])[-1]
+    leads = list(_RESERVE_LEAD.finditer(head))
+    if leads and all(w in _FILLER for w in re.findall(r"[\w']+", head[leads[-1].end():])):
+        return True
+    word = _word_at(text, m.start())
+    tail = _CLAUSE_END.split(text[m.start() + len(word):], maxsplit=1)[0].strip()
+    return bool(_RESERVE_TAIL.match(tail))
+
+
 def exclusion(kind: str, question: Question, choice: str, model_outward: bool,
               never: Iterable[str] = (), allowed: Iterable[str] = ()) -> Optional[str]:
     """Why this answer may not be written automatically, or None. Any one reason excludes.
@@ -545,7 +574,8 @@ def exclusion(kind: str, question: Question, choice: str, model_outward: bool,
     never = list(never)
     read_only = bool(_READ_ONLY_LEAD.match(_bare(choice)))
     hits = _families(choice, never,
-                     lambda t, m: not (read_only and _NOUN_OF_ACT.match(_word_at(t, m.start()))))
+                     lambda t, m: not ((read_only and _NOUN_OF_ACT.match(_word_at(t, m.start())))
+                                       or _reserved(t, m)))
     if _is_consent(choice):
         hits += [h for h in _families(question.text, never,
                                       lambda t, m: not (_negated(t, m) or _completed(t, m))) if h not in hits]

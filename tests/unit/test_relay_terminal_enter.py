@@ -9,7 +9,18 @@ from __future__ import annotations
 import json
 import os
 
+import pytest
+
 from set_orch.fleet import question_relay as qr
+
+
+@pytest.fixture(autouse=True)
+def _hook_is_alive(monkeypatch):
+    """The record's pid is this test process, and the liveness check reads its command line
+    for a carrier mark. That made these tests pass only when pytest's own command line
+    happened to name `test_question_relay.py` (measured 2026-11-24: 2 failed alone, green
+    beside it). Liveness is not what this file tests, so it is fixed here."""
+    monkeypatch.setattr(qr, "_hook_alive", lambda pid: True)
 
 SID = "a5bc0d35-104b-42a2-9f3f-0d97cf111903"
 PID = 2938953

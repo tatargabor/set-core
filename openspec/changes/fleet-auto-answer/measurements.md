@@ -288,3 +288,57 @@ From `decisions.jsonl` and `auto-answer.log`; aggregates and outcomes only.
   suggested work is already finished"). It would now close quietly.
 - A three-question design call (stuck-agent takeover) came back `likely` 0.55–0.65 on the
   design questions. So the call stays with the operator, as the delegation reserves strategy.
+
+## S9 — live accuracy, the first day with the switch on (task 5.0), 2026-11-24 07:43–11:02
+
+From `decisions.jsonl`; aggregates only. 79 questions in 67 calls, the two scratch-tree records
+of S5 left out. **Split by the relay's HANDOVER time** (`relay.log`, "handed over as <id>"),
+before / after `62e1d063` (09:41:09). The log's own `ts` is when a record CLOSED, not when it
+was asked: two three-question calls asked at 09:11 under the old decider closed at 09:53, and a
+split on `ts` counts them as post-fix.
+
+| | before `62e1d063` | after |
+|---|---|---|
+| questions / calls | 58 / 47 | 21 / 20 |
+| written | 8 (14 %) | 5 (24 %) |
+| closed quietly (finished turn, `done`) | — | 7 |
+| handled without the operator (written + closed) | 8 (14 %) | 12 (57 %) |
+| no decision (abstained, timed out) | 24 | 4 |
+| excluded | 14 (2 permission prompts) | 3 |
+| below the bar | 10 | 1 |
+| released / held | 1 / 1 | 1 / 0 |
+| continuations without a decision | 11 of 21 | 0 of 12 |
+
+**By tier, the whole day:** `decided` 21 → 11 written, 8 excluded, 2 released; `found` 5 → 1
+written, 4 excluded; `likely` 18 → 1 written, 11 below the bar, 5 excluded, 1 held; no tier 35
+→ 28 no decision, 7 closed. Written confidences 0.55–0.90.
+
+**Accuracy against the operator's own answer.** 11 questions carry a human answer.
+- **Proposal and human answer side by side: 8, matched 8.** By tier: `likely` 5/5,
+  `decided` 2/2, `found` 1/1. All 8 were answers the decider did NOT write: 5 excluded, 3 below
+  the bar (confidence 0.60, 0.75, 0.75). So every held-back proposal that the operator then
+  answered matched the proposal. With n = 3 this says nothing yet about `likely_min`,
+  which stays the operator's call.
+- **The decider abstained and the operator then picked an option:** 3, all before the fix.
+- **Free-text answers: none.** All 11 human answers were one of the offered options. So the
+  free-text split asked for in D14 is EMPTY, not 0 %. It is unmeasured.
+- **What this log cannot show:** whether the 13 WRITTEN answers were right. A write closes
+  the question, so no human answer exists to compare against. All that is measured is that
+  none of the 13 was cancelled from the panel or overridden within the window (live
+  cancellations: 0). Judging writes needs a later read of what the session did with the
+  answer. That is a known unknown, not a pass.
+
+**The 3 post-fix exclusions, each a mechanism defect:**
+- A bus request to another of the owner's agents, flagged by the model. Fixed by
+  `d444c978` (bus ≠ outward). The same kind of question at 10:57 was written.
+- A continuation that kept the publish step for the operator ("… ask me only the publish
+  yes"). Excluded on `publish`.
+- A continuation that began "my last message is still unanswered". Excluded as `send` on the
+  noun `üzenet`.
+
+The last two are fixed in the commit that carries this section. An act reserved for the
+operator in the answer's own clause (joined to "ask me" / "kérdezz meg" by filler words only)
+does not exclude, and `uzen\w*` no longer matches the noun `üzenet…`. **Replay:** all 49 live
+proposals were run through the exclusion check at HEAD and with the fix. Exactly these 2 flip,
+nothing else. The 5 new pass-direction tests fail without the fix. A mutation that drops the
+filler-word restriction is caught by a control ("Ask me nothing and publish it").

@@ -770,3 +770,40 @@ def test_there_is_no_deploy_in_it_is_not_a_deploy():
     assert aa.exclusion(aa.KIND_ASK, q(text="Kipróbálhatom a mechanizmust? Production deploy nincs benne.",
                                        options=["Igen"]), "Igen", False) is None
     assert aa.exclusion(aa.KIND_ASK, q(text="Nincs teszt. Deploy most?", options=["Igen"]), "Igen", False)
+
+
+def test_my_message_is_not_a_send():
+    """Live 2026-11-24: 'Az utolsó üzenetemre még nem válaszoltál' (you have not answered my
+    last message) excluded a continuation as 'send' on the noun."""
+    choice = "→ Az utolsó üzenetemre még nem válaszoltál: tedd hordozhatóvá a beállítást, és jelezd, ha hiányzik."
+    assert aa.exclusion(aa.KIND_CONTINUATION, q(text="Next?", options=[choice]), choice, False) is None
+
+
+@pytest.mark.parametrize("choice", ["→ Üzenj a partnernek most.", "→ Küldd el az üzenetet.", "→ Üzenjem meg nekik?"])
+def test_the_message_verb_still_excludes(choice):
+    assert aa.exclusion(aa.KIND_CONTINUATION, q(text="Next?", options=[choice]), choice, False)
+
+
+@pytest.mark.parametrize("choice", [
+    # live 2026-11-24, after the delegation policy (generalised)
+    "→ Continue without waiting on me: re-arm the watch and re-run the check. "
+    "Ask me only the publish yes for the site, with the concrete route.",
+    "→ Run the tests and fix what fails; ask me before you publish.",
+    "→ Folytasd a tesztekkel; csak a publikálásról kérdezz meg.",
+    "→ Javítsd ki, és kérdezz meg a publikálás előtt.",
+])
+def test_an_act_reserved_for_the_operator_is_not_the_act(choice):
+    assert aa.exclusion(aa.KIND_CONTINUATION, q(text="Next?", options=[choice]), choice, False) is None
+
+
+@pytest.mark.parametrize("choice", [
+    "→ Ask me nothing and publish it.",
+    "→ Ask me later; publish now.",
+    "→ Ask me before you publish it, then publish it anyway.",
+    "→ Don't ask me, just publish.",
+    "→ No, publish it now.",
+    "→ Publikáld és kérdezz meg utána.",
+    "→ Ne kérdezz meg, publikáld.",
+])
+def test_a_reservation_does_not_cover_an_act_outside_its_clause(choice):
+    assert aa.exclusion(aa.KIND_CONTINUATION, q(text="Next?", options=[choice]), choice, False)
