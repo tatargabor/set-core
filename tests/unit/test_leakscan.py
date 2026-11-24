@@ -1004,6 +1004,35 @@ class TestTheDenyList:
         assert "deny-term:filename" in r.stderr
         assert DENY_A not in r.stderr.replace(str(home), ""), r.stderr
 
+    def test_a_range_that_deletes_a_deny_named_file_is_the_repair(self, repo, tmp_path):
+        # Measured 2026-11-24: untracking a generated file whose path carried a
+        # deny term left the push blocked on the DELETION itself — the one
+        # change that takes the name out of the tree.
+        home = _gate_home(tmp_path, deny=f"{DENY_A}\n")
+        commit(repo, f"{DENY_A}-notes.md", "clean\n", msg="seed")
+        base = git("rev-parse", "HEAD", cwd=repo).stdout.strip()
+        git("rm", "-q", f"{DENY_A}-notes.md", cwd=repo)
+        git("commit", "-q", "-m", "untrack", cwd=repo)
+        r = _scan(repo, home, "--range", f"{base}..HEAD")
+        assert r.returncode == 0, r.stderr
+        assert "deny-term:filename" not in r.stderr, r.stderr
+
+    def test_a_range_that_adds_a_deny_named_file_still_blocks(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_A}\n")
+        commit(repo, "seed.md", "clean\n", msg="seed")
+        base = git("rev-parse", "HEAD", cwd=repo).stdout.strip()
+        commit(repo, f"{DENY_A}-notes.md", "clean\n", msg="add")
+        r = _scan(repo, home, "--range", f"{base}..HEAD")
+        assert r.returncode == 1, r.stderr
+        assert "deny-term:filename" in r.stderr
+
+    def test_a_staged_deletion_of_a_deny_named_file_is_the_repair(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_A}\n")
+        commit(repo, f"{DENY_A}-notes.md", "clean\n", msg="seed")
+        git("rm", "-q", "--cached", f"{DENY_A}-notes.md", cwd=repo)
+        r = _scan(repo, home, "--staged")
+        assert "deny-term:filename" not in r.stderr, r.stderr
+
 
 class TestPublicOnlyCategoriesRespectVisibility:
     def test_a_private_remote_reports_but_does_not_block(self, repo, tmp_path):

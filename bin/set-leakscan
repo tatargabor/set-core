@@ -1133,14 +1133,11 @@ def main():
                    for c, rx in name_rxs] + \
                   ([("env-marker:filename", env_check)] if env_check else [])
     if mode in ("staged", "range", "tree"):
-        for f in files:
-            for label, rx in name_checks:
-                m = rx.search(f)
-                if m:
-                    findings.append({"category": label, "file": f, "line": 0,
-                                     "value": m.group(0), "text": f})
-        # Private-file classes measure what the tree WILL hold: a path the
-        # range or the index deletes is the repair, not a finding.
+        # Name checks and private-file classes measure what the tree WILL hold:
+        # a path the range or the index deletes is the repair, not a finding.
+        # (2026-11-24: untracking a generated file whose path carried a deny
+        # term was itself reported as the leak, and blocked the push that
+        # removed it.)
         if mode == "tree":
             present = files
         elif mode == "staged":
@@ -1148,6 +1145,12 @@ def main():
         else:
             tracked = set(tracked_files(cwd))
             present = [f for f in files if f in tracked]
+        for f in present:
+            for label, rx in name_checks:
+                m = rx.search(f)
+                if m:
+                    findings.append({"category": label, "file": f, "line": 0,
+                                     "value": m.group(0), "text": f})
         for f in present:
             kind = private_path_kind(f)
             if kind:

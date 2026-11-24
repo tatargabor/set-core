@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-216 — `set-leakscan` reports a deny-term FILE NAME on a path the range or the index deletes, so the commit that untracks it is the one that cannot be pushed
+- **state:** closed 2026-11-24 in the commit that adds this line. The name checks now run over the paths the tree will hold (`present`), the same list the private-file classes already used; three tests in `TestTheDenyList` (a ranged deletion and a staged deletion pass, a ranged addition still blocks). The two repair tests failed against the previous code and pass with the fix; the full `tests/unit/test_leakscan.py` passes (116).
+- **reported:** 2026-11-24 by this session, while untracking generated `__pycache__/*.pyc` files that `.gitignore` already excluded in a registered project.
+- **measured:** after `git rm --cached` of a `.pyc` whose directory carried a deny term, `set-leakscan` on the unpushed range answered `deny-term:filename (1) [BLOCKS]` for the deleted path, while the `ignored-but-tracked` finding that prompted the untrack was gone. The private-file classes already skipped deletions (`present`); the name loop iterated `files`, which in range mode is `git diff --name-only` and includes deletions.
+- **fail direction:** the refusing direction — nothing leaked, but the repair was blocked and the only ways past it were an allow entry or a bypass.
+- **fixed when:** a range or a staged index that only deletes a deny-named path scans clean, and one that adds such a path still blocks.
+
 ### B-215 — a reply to an agent's own request does not wake it, and an idle turn end never continues on its own
 - **state:** open
 - **reported:** 2026-11-24 by an itline-ai-plus session on the bus, at the owner's request (*„amikor végzett, le kellett volna egy auto beírásnak futnia, pedig nem volt kérdés, és ha ismerjük a célokat, akkor automatikusan beírhatta volna a kérdésem nélkül"*). The owner added the constraints below the same morning.
