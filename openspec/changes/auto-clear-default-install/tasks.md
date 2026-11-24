@@ -217,6 +217,26 @@
   registry path, and one tree is registered through a symlink while its unit names the real
   directory. So that tree's watcher was not stopped before its script was overwritten. It was
   restarted by hand at once, and `watcher_units()` now compares resolved paths.
+- 2026-11-24 ~11:00, the PYTHONPATH fix and the 00a5fb5 roll (asked for by the package's session,
+  which measured the cause from `/proc/<pid>/environ` of every watcher). 36 of 41 watcher units
+  had no PYTHONPATH, so the watcher's `set_orch.fleet.owner_client` import failed into
+  `except: pass` and every fleet-hosted agent read "no writer path": none could be nudged or
+  cleared. The init template wrote exactly those units, and this check called each of them ok
+  (fail direction: calm). Fixed: the template carries `Environment=PYTHONPATH=<set-core>/lib`
+  (lib alone is enough for the import, measured with `env -i`), and the doctor warns about a
+  unit whose own PYTHONPATH holds no `set_orch/fleet/owner_client.py`. The new tests fail
+  without the fix (3 failed with the source reverted, 36 passed with it). Roll: dry run first,
+  then each of the 38 trees at the d47b1f1 watcher had its unit stopped and
+  `watch-auto-clear.sh` upgraded to 00a5fb5 (the only file that changed; profile/skill copies
+  kept as locally modified). The PYTHONPATH line was added to all 36 units (34 init-written, two
+  hand units, and the two units that run `set-claude-handoff watch`). Then daemon-reload and a
+  restart of the 40 affected watcher units, and nothing else: no agent and no ownerd. Skipped:
+  the flagship consumer, whose hand unit already carried the path. Measured after: 40 of 40
+  `active`, each tree's newest `watcher started` line is 10:00:44Z, no `warn  fleet` line follows
+  any of them, the set-core watcher's live environ holds the path, and the doctor predicate finds
+  0 of 39 matched units without the lib. 36 pathspec-limited commits; two trees gitignore
+  `.claude/`. Gap left as is: the doctor matches units by the watcher's script path, so the two
+  `set-claude-handoff watch` units are invisible to it.
 - 2026-11-23 22:04: set-core ITSELF had been left out of the rollout (the rollout script skipped
   the framework's own tree, which is not a reason under the owner's "every project" decision).
   Noticed because a 410k-token session here was never asked for a handoff. Installed now with the

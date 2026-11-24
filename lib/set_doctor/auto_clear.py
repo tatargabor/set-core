@@ -146,6 +146,27 @@ def watcher_units(home: str, tree: str) -> list:
     return out
 
 
+OWNER_CLIENT = os.path.join("set_orch", "fleet", "owner_client.py")
+
+
+def reaches_fleet(home: str, unit: str) -> bool:
+    """Whether the unit's own PYTHONPATH holds a directory with set-core's fleet owner client.
+
+    Without it the watcher's lookup of fleet-hosted sessions cannot import, so every agent the
+    fleet hosts reads "no writer path" and is never nudged or cleared (measured 2026-11-24 in
+    36 of 41 units). Only the unit file is read: no unit here relies on the user manager's
+    environment, and a check that guessed at it would report calm it has not seen.
+    """
+    try:
+        text = open(os.path.join(home, ".config", "systemd", "user", unit), encoding="utf-8").read()
+    except OSError:
+        return False
+    for m in re.finditer(r'^Environment="?PYTHONPATH=([^"\n]*)', text, re.M):
+        if any(d and os.path.isfile(os.path.join(d, OWNER_CLIENT)) for d in m.group(1).split(":")):
+            return True
+    return False
+
+
 def unit_active(unit: str, env: dict) -> Optional[bool]:
     try:
         r = subprocess.run(["systemctl", "--user", "is-active", unit], capture_output=True, text=True,
@@ -204,6 +225,11 @@ def check(name: str, entry: dict, tree: str, registry: Optional[dict], home: str
         if active is False:
             problems.append(f"{unit} is not active")
             fix = fix or sh(f"systemctl --user start {unit}")
+        if not reaches_fleet(home, unit):
+            problems.append(f"{unit} has no set-core lib on PYTHONPATH, so the watcher can never nudge "
+                            "or clear a fleet-hosted session")
+            fix = fix or (f"add `Environment=PYTHONPATH=<set-core>/lib` to ~/.config/systemd/user/{unit}, then "
+                          f"`systemctl --user daemon-reload && systemctl --user restart {unit}`")
         for flag in THRESHOLD_FLAGS:
             for v in re.findall(rf"{flag}\s+(\d+)", cmd):
                 why = over(int(v))

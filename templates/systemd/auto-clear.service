@@ -9,12 +9,17 @@
 # because a running session picks up a reload hook added mid-run (measured on Claude Code
 # 2.1.331), so the filter only excluded sessions that could reload.
 #
+# PYTHONPATH carries set-core's lib: the watcher looks fleet-hosted sessions up through
+# set_orch.fleet.owner_client, and without it every such session reads "no writer path" and is
+# never nudged or cleared (measured 2026-11-24: 36 of 41 units lacked it).
+#
 # init never rewrites this file once it exists; edit it by hand if you need to.
 Description=@NAME@ auto-clear watcher
 After=default.target
 
 [Service]
 Environment=PATH=%h/.local/bin:@NODE_DIR@:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONPATH=@SET_CORE_LIB@
 ExecStart=/bin/bash @TREE@/.claude/hooks/watch-auto-clear.sh --dir @TREE@ --interval 60 --auto-continue default
 Restart=on-failure
 
