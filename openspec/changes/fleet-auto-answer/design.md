@@ -80,6 +80,31 @@ under an agent read "mehet a push". A past approval is not an approval of this s
 project's own rules require the operator's OK for each push, and a consumer's production is never
 deployed at all.
 
+*Revised live, 2026-11-24 (the owner's decisions; the spec requirement "Outward and
+irreversible steps…" carries the current rule).* The pattern check reads the CHOSEN answer, and
+reads the question only when that answer is consent. Options not chosen are never read. A
+negated or already-completed mention in the question does not count, a noun of the act in a
+read-only answer does not count, and an act the answer reserves for the operator does not
+count. The motivation above was measured; what followed was measured too: 2 of the first 3 live
+proposals were excluded on a word, not on an act. Push needs no approval on this machine
+(`auto_answer.allow_families = ["push"]`; owner: *„git checkout és push pedig nem kell
+engedély … leakscan"*). A force-push stays under deleting.
+
+### D15 — A standing delegation is decided on; finished and headless turns are not continued (added live, 2026-11-24)
+The first live morning wrote 8 of 47 calls (`measurements.md` S8). Counted causes:
+- the owner's standing delegation sat in a file the fork was only pointed at, so it was never
+  used;
+- 8 of 15 continuations came from headless timer runs;
+- finished turns were posted as questions.
+
+Three changes followed:
+- the configured section (`auto_answer.standing`) travels in the prompt verbatim with a
+  DELEGATION policy, and every abstention logs its reason;
+- a continuation the model answers `done` is released without a post and logged `closed`;
+- a session whose `CLAUDE_CODE_ENTRYPOINT` is not `cli` gets no continuation.
+
+After the fix: 12 of 21 handled without the operator (S9).
+
 ### D7 — The answer is written with an exclusive create
 The worker writes the answer to a temporary file and links it to the answer path, which fails if a
 human answer already exists. It never overwrites. A cancel removes the pending record, and the

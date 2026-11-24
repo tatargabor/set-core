@@ -10,11 +10,11 @@
 - The fork ends after its answer and leaves no process or session behind
 
 ## OUT OF SCOPE
-- Changing the relay hooks, the chat bridge, or the envelope the bridge reads
+- Changing the relay hooks, the chat bridge, or the envelope the bridge reads — except the two relay-side changes the requirements below name: the call's kind, session and working directory handed to the outbound, and no continuation for a headless run
 - Answering a permission prompt automatically (forwarded with a recommendation only)
 - Learning from answers over time, or storing a profile of the operator
 - Answering inside a session that is not wired to the relay (the in-session keep-going hook is a separate mechanism)
-- Any action other than writing an answer to the relay's answer store
+- Any action other than writing an answer to the relay's answer store, or releasing a finished turn's call through the relay's own release request
 
 ## ADDED Requirements
 
@@ -165,7 +165,12 @@ The decider SHALL append one record per relayed question to a machine-local deci
 - **THEN** the decision log records the proposal, the outcome `overtaken` and the operator's answer
 
 ### Requirement: The fleet carries a switch and a panel of decisions
-The fleet header SHALL carry one control for automatic answering, next to the question-relay switch: it SHALL show whether automatic answering is on and the number of pending proposals, and it SHALL open a floating panel in the manner of the relation map — above the layout, moving nothing under it, with its own close control. The panel SHALL hold the on/off switch, the pending proposals (agent, question, proposed answer, tier, references, remaining time, a cancel control) and the recent decisions from the decision log (time, agent, question, answer, tier, outcome), newest first. The pending proposal SHALL also be marked on the asking agent. Cancelling SHALL leave the question waiting for a human answer.
+The fleet header SHALL carry one control for automatic answering, next to the question-relay switch: it SHALL show whether automatic answering is on and the number of pending proposals, and it SHALL open a floating panel in the manner of the relation map — above the layout, moving nothing under it, with its own close control. The panel SHALL hold the on/off switch, the pending proposals (agent, question, proposed answer, tier, references, remaining time, a cancel control) and the recent decisions from the decision log (time, agent, question, answer, tier, outcome), newest first. The pending proposal SHALL also be marked on the asking agent. Cancelling SHALL leave the question waiting for a human answer. Every proposal the panel shows — also an excluded or below-the-bar one — SHALL carry a send control that writes the proposed answer at once as the OPERATOR's own answer: it is the person's act, so no exclusion, bar or window applies, and the log records it with the operator's answer equal to the proposal. It SHALL refuse, with the reason, when there is no proposal or the question no longer waits.
+
+#### Scenario: The operator sends a held proposal
+- **WHEN** an excluded proposal is shown and the operator presses its send control
+- **THEN** the proposed answer is written as the operator's answer and the question ends
+- **AND** pressing send for a call that no longer waits is refused with the reason, and nothing is written
 
 #### Scenario: Cancel from the panel
 - **WHEN** the operator cancels a pending proposal in the panel
