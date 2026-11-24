@@ -266,6 +266,11 @@
   HEAD files in 38/38 trees, 38/38 units `active` with a fresh `watcher started` line in
   `.set/handoff/auto-clear.log` (12:59–13:00Z), no warn/error line after it. 36 pathspec-limited
   commits; two trees keep `.claude/` gitignored. The 0b9a084 roll (~12:31) was not recorded here.
+- 2026-11-24 ~14:15, the b5be195 roll (asked for by the package's session: a presence=typed
+  hold logs the shape of the input-row paint, lengths only). Same procedure, flagship consumer
+  skipped. Dry run: 38 trees getting exactly `presence.mjs` and `watch-auto-clear.sh`. Measured
+  after: both blobs equal the package's HEAD in 38/38, 38/38 units `active` with a fresh start
+  line, no warn/error after it; 36 pathspec-limited commits.
 - 2026-11-23 22:04: set-core ITSELF had been left out of the rollout (the rollout script skipped
   the framework's own tree, which is not a reason under the owner's "every project" decision).
   Noticed because a 410k-token session here was never asked for a handoff. Installed now with the
