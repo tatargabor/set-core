@@ -40,6 +40,10 @@ DEFAULT_MODEL = "haiku"
 CLASSIFY_TIMEOUT_S = 25          # inside the hook entry's 60 s
 MAX_CHARS = 4000                 # the end of the message is where a wait lives
 GUARD_ENV = "SET_WAIT_DETECT_CLASSIFIER"
+#: A set-copilot dictation scoped to the session (`/ds` sets SET_COPILOT_DIR to this folder
+#: under the session's cwd) keeps its capture PID here. While it lives, the user is at the
+#: microphone and ends it with `/dd` typed in this terminal — not on a phone.
+DICTATION_PID = Path(".set") / "copilot" / "{session}" / "capture.pid"
 
 PROMPT = """You classify the final message an AI coding agent sent before ending its turn.
 Answer with exactly one word.
@@ -156,6 +160,31 @@ def classify(message: str, get=local_config.get) -> Optional[str]:
     return word
 
 
+def dictation_live(hook_input: Dict[str, Any]) -> bool:
+    """True while a dictation capture scoped to this session runs (its PID file names a live pid).
+
+    Measured 2026-11-24: `/ds` ended its turn with "Dictation active … `/dd` to finish", the
+    classifier said WAITING, and the re-ask was relayed to the phone while the user stood at
+    the mic. The `/dd` they typed then only queued behind the held question (B-214).
+    """
+    cwd = hook_input.get("cwd")
+    session_id = str(hook_input.get("session_id") or "")
+    if not cwd or not session_id or "/" in session_id:
+        return False
+    pid_file = Path(cwd) / str(DICTATION_PID).format(session=session_id)
+    try:
+        pid = int(pid_file.read_text().strip())
+    except (OSError, ValueError):
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def decide(hook_input: Dict[str, Any], *, get=local_config.get,
            classifier: Optional[Classifier] = None,
            env: Optional[Dict[str, str]] = None,
@@ -184,6 +213,10 @@ def decide(hook_input: Dict[str, Any], *, get=local_config.get,
             return None
     message = hook_input.get("last_assistant_message")
     if not isinstance(message, str) or not message.strip():
+        _record(hook_input, "SKIPPED", base)
+        return None
+    if dictation_live(hook_input):
+        logger.info("wait detect [%s]: a dictation runs in this session; the user is at the terminal", sid)
         _record(hook_input, "SKIPPED", base)
         return None
     verdict = (classifier or (lambda m: classify(m, get)))(message)

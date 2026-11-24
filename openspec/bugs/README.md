@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-219 — the wait detector re-asked a `/ds` turn end on the phone while the user was at the microphone, and their `/dd` then queued behind the held question
+- **state:** closed 2026-11-24 in the commit that adds this line. `wait_detect.decide` now skips (verdict `SKIPPED`) while `<cwd>/.set/copilot/<session_id>/capture.pid` names a live pid: that is the folder `/ds` scopes its capture to, and `/dd` ends it from this terminal. `test_a_live_dictation_in_this_session_is_not_reasked` failed against the previous code (stash-and-rerun) and passes with the fix. `test_a_dead_capture_pid_does_not_silence_the_detector` holds the other direction. `tests/unit/test_wait_detect.py`: 24 passed.
+- **reported:** 2026-11-24 by the user, by dictation (*„nem értem, hogy miért jön föl … feldobta a kérdést a diktálás, hogy kész, leállítsam-e. Közben azért, mert benyomtam egyébként a per dd parancsot. És be is tette queue-ba"*).
+- **measured:** `relay.log` for session `808a2d65`: `11:00:17 wait detect … the turn ended waiting on the user; asking for a re-ask`, `11:00:24 … handed over as relay-808a2d65-955ee5f1; waiting`, `11:02:51 … released from the fleet`. The turn's last message was the `/ds` skill's "Dictation active … `/dd` to finish". The `/dd` typed in the terminal in between only queued: the open half of B-214 (a terminal that does not release a held question).
+- **fail direction:** refusing — nothing was lost, but the user's own command was held for ~2.5 min and a phone question asked for something they were doing at the desk.
+- **fixed when:** a `/ds` turn end with a live capture produces no re-ask. Done, see state. The queued `/dd` stays under B-214.
+
 ### B-218 — `watcher_units()` matched the watcher path by its spelling, so a tree registered through a symlink had "no watcher unit" while one ran
 - **state:** closed 2026-11-24 in the commit that adds this line. `lib/set_doctor/auto_clear.py` `watcher_units()` now compares the resolved path of each `…/watch-auto-clear.sh` word in `ExecStart` against the resolved tree path. `test_a_unit_written_with_the_real_path_counts_for_a_symlinked_registry_path` covers both directions (link in the registry, link in the unit). It failed against the previous code; with the fix it passes, and so do the doctor and deploy suites (33).
 - **reported:** 2026-11-24 by this session, during the auto-clear `d47b1f1` template roll.

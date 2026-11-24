@@ -211,3 +211,27 @@ def test_the_prompt_scopes_waiting_to_this_agent_and_frees_status_reports():
     from set_orch.fleet import wait_detect as wd
     assert "THIS agent's own next step is blocked" in wd.PROMPT
     assert "lists things that wait for the user ELSEWHERE" in wd.PROMPT
+
+
+def _dictation(tmp_path, pid):
+    folder = tmp_path / ".set" / "copilot" / "cbcc4e64-6d8c"
+    folder.mkdir(parents=True)
+    (folder / "capture.pid").write_text(f"{pid}\n")
+    data = stop_input("🔴 Dictation active (30 min limit). `/dd` to finish.")
+    data["cwd"] = str(tmp_path)
+    return data
+
+
+def test_a_live_dictation_in_this_session_is_not_reasked(tmp_path):
+    """B-219: while the session's capture runs, the user is at the mic and types /dd here."""
+    data = _dictation(tmp_path, os.getpid())
+    asked = []
+    out = wd.decide(data, get=config(), classifier=lambda m: asked.append(m) or "WAITING")
+    assert out is None and asked == []
+
+
+def test_a_dead_capture_pid_does_not_silence_the_detector(tmp_path):
+    proc = subprocess.Popen(["true"]); proc.wait()
+    data = _dictation(tmp_path, proc.pid)
+    out = wd.decide(data, get=config(), classifier=lambda m: "WAITING")
+    assert out == {"decision": "block", "reason": wd.REASON}
