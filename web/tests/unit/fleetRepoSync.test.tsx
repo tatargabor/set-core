@@ -21,10 +21,10 @@ function row(name: string, extra: Record<string, unknown> = {}) {
   }
 }
 
-function answer(projects: unknown[], problem_count: number) {
+function answer(projects: unknown[], problem_count: number, hidden: string[] = []) {
   return {
-    generated_at: 1, days: 30, duration_ms: 12, projects, problem_count,
-    excluded: { archived: 2, e2e_run: 1, inactive: 3, missing: [], not_git: [] },
+    generated_at: 1, days: 30, duration_ms: 12, projects, problem_count, hidden,
+    excluded: { archived: 2, hidden: hidden.length, e2e_run: 1, inactive: 3, missing: [], not_git: [] },
   }
 }
 
@@ -104,6 +104,37 @@ describe('the table', () => {
     await waitFor(() => expect(view.container.querySelector('[data-fleet-repo-sync-table]')).not.toBeNull())
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(view.container.querySelector('[data-fleet-repo-sync-table]')).toBeNull()
+  })
+})
+
+describe('hiding a project (AC-19, AC-20)', () => {
+  it("a row's hide control posts the name and measures again", async () => {
+    const f = vi.fn((url: string, init?: RequestInit) => Promise.resolve(new Response(JSON.stringify(
+      String(url).includes('/hidden') ? { hidden: ['a'] } : answer([row('a')], 0)))))
+    vi.stubGlobal('fetch', f)
+    const view = render(<FleetRepoSync />)
+    fireEvent.click(view.container.querySelector('[data-fleet-repo-sync-toggle]')!)
+    await waitFor(() => expect(view.container.querySelector('[data-repo-sync-hide="a"]')).not.toBeNull())
+    fireEvent.click(view.container.querySelector('[data-repo-sync-hide="a"]')!)
+    await waitFor(() => expect(f).toHaveBeenCalledTimes(3))
+    const post = f.mock.calls[1] as unknown as [string, RequestInit]
+    expect(post[0]).toContain('/api/fleet/repo-sync/hidden')
+    expect(JSON.parse(String(post[1].body))).toEqual({ project: 'a', hidden: true })
+  })
+
+  it('the hidden view lists hidden projects with a bring-back control', async () => {
+    const f = vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(
+      String(url).includes('/hidden') ? { hidden: [] } : answer([], 0, ['old-thing'])))))
+    vi.stubGlobal('fetch', f)
+    const view = render(<FleetRepoSync />)
+    fireEvent.click(view.container.querySelector('[data-fleet-repo-sync-toggle]')!)
+    await waitFor(() => expect(view.container.querySelector('[data-repo-sync-view="hidden"]')!.textContent).toContain('1'))
+    fireEvent.click(view.container.querySelector('[data-repo-sync-view="hidden"]')!)
+    expect(view.container.querySelector('[data-repo-sync-hidden="old-thing"]')).not.toBeNull()
+    fireEvent.click(view.container.querySelector('[data-repo-sync-restore="old-thing"]')!)
+    await waitFor(() => expect(f.mock.calls.some(c => String(c[0]).includes('/hidden'))).toBe(true))
+    const post = f.mock.calls.find(c => String(c[0]).includes('/hidden')) as unknown as [string, RequestInit]
+    expect(JSON.parse(String(post[1].body))).toEqual({ project: 'old-thing', hidden: false })
   })
 })
 

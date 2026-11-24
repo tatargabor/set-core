@@ -3253,6 +3253,22 @@ class RepoSyncFetchBody(BaseModel):
     days: Optional[float] = None
 
 
+class RepoSyncHiddenBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    project: str
+    hidden: bool
+
+
+@router.post("/api/fleet/repo-sync/hidden")
+def fleet_repo_sync_hidden(body: RepoSyncHiddenBody) -> Dict[str, Any]:
+    """Hide a project from the repo-sync table, or bring it back. Touches no repository."""
+    from ..fleet import repo_sync
+    from ..project_registry import load_projects
+    if body.project not in {p.get("name") for p in load_projects()}:
+        raise HTTPException(status_code=404, detail="not a registered project")
+    return {"hidden": repo_sync.set_hidden(body.project, body.hidden)}
+
+
 @router.post("/api/fleet/repo-sync/fetch")
 def fleet_repo_sync_fetch(body: RepoSyncFetchBody) -> Dict[str, Any]:
     """`git fetch --all --prune` across the listed (or named) projects — the only network act."""

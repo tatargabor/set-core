@@ -1,7 +1,7 @@
 """The fleet's repository-sync view: is every recently active project committed and pushed?
 
 Openspec change `fleet-repo-sync`. One request answers, for every registered project active
-within a window, its branch, uncommitted entries, ahead/behind against its upstream, local
+within a window (a commit by anybody on any branch), its branch, uncommitted entries, ahead/behind against its upstream, local
 branches with commits on no remote, stashes, worktrees, the age of the last fetch, and a
 three-valued hint on whether a push to the current branch may start a deployment.
 
@@ -35,6 +35,8 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 CONFIG_KEY = "fleet_repo_sync_days"
+#: Registered project names the owner hid from this table (machine-local, a JSON list).
+HIDDEN_KEY = "fleet_repo_sync_hidden"
 DEFAULT_DAYS = 30.0
 MIN_DAYS = 1.0
 MAX_DAYS = 365.0
@@ -116,29 +118,10 @@ def window_days(requested: Optional[float] = None) -> float:
     return max(MIN_DAYS, min(MAX_DAYS, days))
 
 
-def transcript_dir(project_path: str, home: Path) -> Path:
-    """Claude Code's per-project directory: the path with every non-alphanumeric made `-`."""
-    return home / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", project_path)
-
-
-def newest_transcript(project_path: str, home: Path) -> Optional[float]:
-    d = transcript_dir(project_path, home)
-    newest = None
-    try:
-        for f in d.glob("*.jsonl"):
-            try:
-                m = f.stat().st_mtime
-            except OSError:
-                continue
-            newest = m if newest is None or m > newest else newest
-    except OSError:
-        return None
-    return newest
-
-
 def newest_commit(root: Path) -> Optional[float]:
+    """The newest committer date on any local OR remote-tracking branch — anybody's commit."""
     ok, out, _ = _git(root, "for-each-ref", "--sort=-committerdate", "--count=1",
-                      "--format=%(committerdate:unix)", "refs/heads")
+                      "--format=%(committerdate:unix)", "refs/heads", "refs/remotes")
     if not ok:
         return None
     try:
@@ -151,11 +134,50 @@ def _is_git_tree(root: Path) -> bool:
     return (root / ".git").exists()
 
 
+def hidden_projects() -> List[str]:
+    """The owner's hidden list. An unreadable value is an empty list, said in the log."""
+    try:
+        from .. import local_config
+        raw = local_config.get(HIDDEN_KEY)
+    except Exception as exc:
+        logger.warning("repo-sync: %s unreadable (%s)", HIDDEN_KEY, type(exc).__name__)
+        return []
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        try:
+            import json
+            raw = json.loads(raw)
+        except ValueError:
+            raw = [raw]
+    if not isinstance(raw, list):
+        logger.warning("repo-sync: %s is not a list, ignored", HIDDEN_KEY)
+        return []
+    return sorted({str(x) for x in raw if str(x).strip()})
+
+
+def set_hidden(name: str, hidden: bool) -> List[str]:
+    """Add or remove one name. Changes only the machine-local list, never a repository."""
+    names = set(hidden_projects())
+    before = name in names
+    (names.add if hidden else names.discard)(name)
+    from .. import local_config
+    local_config.set_value(HIDDEN_KEY, sorted(names))
+    logger.info("repo-sync: %s hidden %s -> %s (%d hidden)", name, before, hidden, len(names))
+    return sorted(names)
+
+
 def select_projects(projects: List[Dict[str, Any]], *, days: float, now: float, home: Path,
-                    e2e_root: Optional[Path]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """Split the registry into the listed projects and the counted exclusions."""
+                    e2e_root: Optional[Path], hidden: Optional[List[str]] = None
+                    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Split the registry into the listed projects and the counted exclusions.
+
+    Activity is a commit by anybody on any local or remote-tracking branch within the window
+    (owner, 2026-11-24: "commit decides"); sessions and fetches are not activity.
+    """
     cutoff = now - days * 86400
-    excluded: Dict[str, Any] = {"archived": 0, "e2e_run": 0, "inactive": 0,
+    hidden_set = set(hidden or [])
+    excluded: Dict[str, Any] = {"archived": 0, "hidden": 0, "e2e_run": 0, "inactive": 0,
                                 "missing": [], "not_git": []}
     selected: List[Dict[str, Any]] = []
     e2e_prefix = str(e2e_root.resolve()) + os.sep if e2e_root else None
@@ -163,6 +185,9 @@ def select_projects(projects: List[Dict[str, Any]], *, days: float, now: float, 
         name, path = p.get("name") or "", p.get("path") or ""
         if p.get("archived"):
             excluded["archived"] += 1
+            continue
+        if name in hidden_set:
+            excluded["hidden"] += 1
             continue
         if e2e_prefix and path and (str(Path(path).resolve()) + os.sep).startswith(e2e_prefix):
             excluded["e2e_run"] += 1
@@ -175,17 +200,11 @@ def select_projects(projects: List[Dict[str, Any]], *, days: float, now: float, 
             excluded["not_git"].append(name)
             continue
         commit_t = newest_commit(root)
-        transcript_t = newest_transcript(path, home)
-        active_by = []
-        if commit_t is not None and commit_t >= cutoff:
-            active_by.append("commit")
-        if transcript_t is not None and transcript_t >= cutoff:
-            active_by.append("transcript")
-        if not active_by:
+        if commit_t is None or commit_t < cutoff:
             excluded["inactive"] += 1
             continue
-        selected.append({"name": name, "path": path, "active_by": active_by,
-                         "last_commit_at": commit_t, "last_session_at": transcript_t})
+        selected.append({"name": name, "path": path, "active_by": ["commit"],
+                         "last_commit_at": commit_t, "last_session_at": None})
     return selected, excluded
 
 
@@ -643,7 +662,7 @@ def _e2e_root() -> Optional[Path]:
 
 def collect(days: Optional[float] = None, *, projects: Optional[List[Dict[str, Any]]] = None,
             home: Optional[Path] = None, now: Optional[float] = None,
-            e2e_root: Optional[Path] = None) -> Dict[str, Any]:
+            e2e_root: Optional[Path] = None, hidden: Optional[List[str]] = None) -> Dict[str, Any]:
     """The whole answer for `GET /api/fleet/repo-sync`."""
     t0 = time.monotonic()
     now = time.time() if now is None else now
@@ -652,8 +671,10 @@ def collect(days: Optional[float] = None, *, projects: Optional[List[Dict[str, A
     if projects is None:
         from ..project_registry import load_projects
         projects = load_projects()
+    hidden = hidden_projects() if hidden is None else hidden
     listed, excluded = select_projects(projects, days=d, now=now, home=home,
-                                       e2e_root=_e2e_root() if e2e_root is None else e2e_root)
+                                       e2e_root=_e2e_root() if e2e_root is None else e2e_root,
+                                       hidden=hidden)
 
     def one(p: Dict[str, Any]) -> Dict[str, Any]:
         t = time.monotonic()
@@ -673,12 +694,14 @@ def collect(days: Optional[float] = None, *, projects: Optional[List[Dict[str, A
     rows.sort(key=lambda r: (not r["problems"], r["name"]))
     problem_count = sum(1 for r in rows if r["problems"])
     duration_ms = int((time.monotonic() - t0) * 1000)
-    logger.info("repo-sync: %d project(s), %d with problems, excluded archived=%d e2e=%d inactive=%d "
-                "missing=%d not-git=%d, %d ms", len(rows), problem_count, excluded["archived"],
+    logger.info("repo-sync: %d project(s), %d with problems, excluded archived=%d hidden=%d e2e=%d "
+                "inactive=%d missing=%d not-git=%d, %d ms", len(rows), problem_count, excluded["archived"],
+                excluded["hidden"],
                 excluded["e2e_run"], excluded["inactive"], len(excluded["missing"]),
                 len(excluded["not_git"]), duration_ms)
     return {"generated_at": now, "days": d, "duration_ms": duration_ms, "projects": rows,
-            "problem_count": problem_count, "excluded": excluded}
+            "problem_count": problem_count, "excluded": excluded,
+            "hidden": sorted(n for n in hidden if n in {p.get("name") for p in projects})}
 
 
 def _fetch_one(name: str, path: str, timeout: float) -> Dict[str, Any]:
@@ -712,7 +735,8 @@ def fetch(names: Optional[List[str]] = None, days: Optional[float] = None, *,
         unknown = sorted(wanted - {n for n, _ in targets})
     else:
         listed, _ = select_projects(projects, days=window_days(days), now=time.time(),
-                                    home=Path.home() if home is None else home, e2e_root=_e2e_root())
+                                    home=Path.home() if home is None else home, e2e_root=_e2e_root(),
+                                    hidden=hidden_projects())
         targets = [(p["name"], p["path"]) for p in listed]
         unknown = []
     with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:

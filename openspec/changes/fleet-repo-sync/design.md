@@ -38,12 +38,16 @@ synchronously in a thread pool and answers. The browser keeps the last answer in
 chip. *Alternative:* a background refresher with a cached answer — rejected: it is exactly the
 continuous cost the owner ruled out, and a cache file would persist derived consumer data.
 
-**D2 — Activity window over two sources.** A project is active if any local branch has a commit
-newer than the cutoff (`git for-each-ref --sort=-committerdate refs/heads --count=1`), or a
-transcript in its Claude Code project directory (`~/.claude/projects/<slug>/*.jsonl`, slug = the
-path with `/` and `.` replaced by `-`) has a newer mtime. The answer names which source made it
-active. *Alternative:* commits only — rejected: a project worked on in sessions but not yet
-committed is exactly the one most likely to have uncommitted work.
+**D2 — Activity is commits, by anybody, on any branch.** A project is active if any local or
+remote-tracking branch has a commit with a committer date newer than the cutoff
+(`git for-each-ref --sort=-committerdate --count=1 refs/heads refs/remotes`). The owner's own rule
+(2026-11-24): "commit decides — if anybody committed there, me or someone else"; a fetch or a
+session is not activity. (The first draft also counted session transcripts; replaced during apply.)
+
+**D2b — Hiding is a machine-local list, not a registry change.** `fleet_repo_sync_hidden` in
+`~/.config/set-core/config.json` holds registered project names the owner does not want in this
+table. Archiving a project is a different, wider act (it leaves the whole fleet); hiding only
+leaves this table, and the hidden view puts it back.
 
 **D3 — Git plumbing only, with timeouts, bounded parallelism.** Per project: `status --porcelain`,
 `rev-parse --abbrev-ref @{u}`, `rev-list --left-right --count @{u}...HEAD`, `for-each-ref` +

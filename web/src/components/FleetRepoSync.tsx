@@ -16,7 +16,7 @@
  */
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, CloudDownload, FolderGit2, RefreshCw, TriangleAlert, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, CloudDownload, Eye, EyeOff, FolderGit2, RefreshCw, TriangleAlert, X } from 'lucide-react'
 
 import {
   chipText, longAge, parseRepoSync, problemLabel, syncCell, type RepoRow, type RepoSync,
@@ -90,13 +90,15 @@ function Detail({ row }: { row: RepoRow }) {
       )}
       <div>
         Remote {row.remote_host ?? '—'} · last fetch {row.fetch_age_s === null ? 'never' : `${longAge(row.fetch_age_s)} ago`}
-        {' · '}stash {row.stash ?? '—'} · active by {row.active_by.join(' + ') || '—'}
+        {' · '}stash {row.stash ?? '—'} · last commit {longAge(row.last_commit_age_s)} ago
       </div>
     </div>
   )
 }
 
-function Row({ row, open, onToggle }: { row: RepoRow; open: boolean; onToggle: () => void }) {
+function Row({ row, open, onToggle, onHide }: {
+  row: RepoRow; open: boolean; onToggle: () => void; onHide: () => void
+}) {
   const hasProblem = row.problems.length > 0
   const unpushed = row.unpushed_branches?.filter(b => !b.current || row.no_upstream).length
   return (
@@ -124,17 +126,24 @@ function Row({ row, open, onToggle }: { row: RepoRow; open: boolean; onToggle: (
         <td className="py-1 pr-2 tabular-nums">{row.worktrees === null ? '—' : row.worktrees.length}</td>
         <td className="py-1 pr-2 max-w-[12rem]"><DeployCell row={row} /></td>
         <td className="py-1 tabular-nums whitespace-nowrap">{row.fetch_age_s === null ? 'never' : longAge(row.fetch_age_s)}</td>
+        <td className="py-1 text-right">
+          <button type="button" onClick={e => { e.stopPropagation(); onHide() }}
+                  className="text-fg-muted hover:text-fg-strong" title={`Hide ${row.name} from this table (brought back from the hidden view)`}
+                  aria-label={`Hide ${row.name}`} data-repo-sync-hide={row.name}>
+            <EyeOff size={12} strokeWidth={1.75} aria-hidden />
+          </button>
+        </td>
       </tr>
       {hasProblem && !open && (
         <tr className="text-xs">
           <td />
-          <td colSpan={7} className="pb-1 text-amber-400/90">
+          <td colSpan={8} className="pb-1 text-amber-400/90">
             {row.problems.map(problemLabel).join(' · ')}
           </td>
         </tr>
       )}
       {open && (
-        <tr><td colSpan={8}><Detail row={row} /></td></tr>
+        <tr><td colSpan={9}><Detail row={row} /></td></tr>
       )}
     </Fragment>
   )
@@ -150,6 +159,7 @@ export default function FleetRepoSync() {
   const [days, setDays] = useState<number | null>(null)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [now, setNow] = useState(() => Date.now())
+  const [view, setView] = useState<'table' | 'hidden'>('table')
   const rootRef = useRef<HTMLSpanElement>(null)
 
   const measure = useCallback((d: number | null) => {
@@ -184,6 +194,19 @@ export default function FleetRepoSync() {
         measure(days)
       })
       .catch(e => { setFetchNote(`fetch failed: ${String(e?.message ?? e)}`); setBusy(null) })
+  }, [days, measure])
+
+  // Hiding changes only the machine-local list; the table is then measured again so the
+  // reader sees the result, not an assumption about it.
+  const setHidden = useCallback((project: string, hidden: boolean) => {
+    setBusy('measure')
+    fetch('/api/fleet/repo-sync/hidden', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project, hidden }),
+    })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(() => measure(days))
+      .catch(e => { setError(`could not ${hidden ? 'hide' : 'restore'} ${project}: ${String(e?.message ?? e)}`); setBusy(null) })
   }, [days, measure])
 
   // Opening measures; nothing else does.
@@ -240,8 +263,18 @@ export default function FleetRepoSync() {
           <div className="flex flex-wrap items-center gap-2 pb-1 border-b border-surface-line">
             <span className="text-xs font-semibold text-fg-loud">Repository sync</span>
             <span className="hidden sm:inline text-xs text-fg-muted">— committed and pushed? measured now, not cached</span>
+            <span className="inline-flex rounded border border-surface-line text-xs overflow-hidden" role="tablist">
+              <button type="button" role="tab" aria-selected={view === 'table'} onClick={() => setView('table')}
+                      className={`px-1.5 ${view === 'table' ? 'bg-sky-400/10 text-sky-300' : 'text-fg-muted hover:text-fg-strong'}`}
+                      data-repo-sync-view="table">active</button>
+              <button type="button" role="tab" aria-selected={view === 'hidden'} onClick={() => setView('hidden')}
+                      className={`px-1.5 inline-flex items-center gap-1 ${view === 'hidden' ? 'bg-sky-400/10 text-sky-300' : 'text-fg-muted hover:text-fg-strong'}`}
+                      data-repo-sync-view="hidden">
+                <EyeOff size={11} strokeWidth={1.75} aria-hidden /> hidden <span className="tabular-nums">{data?.hidden.length ?? '—'}</span>
+              </button>
+            </span>
             <label className="ml-auto text-xs text-fg-muted inline-flex items-center gap-1">
-              active in last
+              commit in last
               <select className="bg-surface-raised border border-surface-line rounded text-xs px-1"
                       value={days ?? 30} disabled={busy !== null}
                       onChange={e => { const d = Number(e.target.value); setDays(d); measure(d) }}
@@ -278,13 +311,35 @@ export default function FleetRepoSync() {
 
           {!data && !error && <div className="text-xs text-fg-muted py-2">measuring…</div>}
 
-          {data && (
+          {data && view === 'hidden' && (
+            <div className="py-1" data-repo-sync-hidden-view={data.hidden.length}>
+              {data.hidden.length === 0
+                ? <div className="text-xs text-fg-muted py-2">Nothing hidden. The eye icon on a row hides a project from the table.</div>
+                : (
+                  <ul className="divide-y divide-surface-line/60">
+                    {data.hidden.map(name => (
+                      <li key={name} className="flex items-center gap-2 py-1 text-xs" data-repo-sync-hidden={name}>
+                        <span className="text-fg-strong">{name}</span>
+                        <span className="text-fg-muted">not measured while hidden</span>
+                        <button type="button" onClick={() => setHidden(name, false)} disabled={busy !== null}
+                                className="ml-auto inline-flex items-center gap-1 text-fg-muted hover:text-fg-strong disabled:opacity-50"
+                                data-repo-sync-restore={name}>
+                          <Eye size={12} strokeWidth={1.75} aria-hidden /> bring back
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+            </div>
+          )}
+
+          {data && view === 'table' && (
             <>
               <div className="text-xs text-fg-muted py-1 tabular-nums" data-repo-sync-summary>
-                {data.projects.length} project{data.projects.length === 1 ? '' : 's'} active in the last {data.days} days
+                {data.projects.length} project{data.projects.length === 1 ? '' : 's'} with a commit in the last {data.days} days
                 {' · '}<span className={data.problem_count ? 'text-amber-400' : 'text-emerald-400'}>
                   {data.problem_count} with something to do</span>
-                {' · '}left out: {ex!.archived} archived, {ex!.e2e_run} e2e runs, {ex!.inactive} inactive
+                {' · '}left out: {ex!.hidden} hidden, {ex!.archived} archived, {ex!.e2e_run} e2e runs, {ex!.inactive} with no commit in the window
                 {ex!.missing.length > 0 && <span className="text-amber-400">, {ex!.missing.length} missing ({ex!.missing.join(', ')})</span>}
                 {ex!.not_git.length > 0 && <span>, {ex!.not_git.length} not git ({ex!.not_git.join(', ')})</span>}
                 {' · '}{data.duration_ms} ms
@@ -292,7 +347,7 @@ export default function FleetRepoSync() {
               <table className="w-full table-fixed">
                 <colgroup>
                   <col className="w-[22%]" /><col className="w-[11%]" /><col className="w-[7%]" /><col className="w-[10%]" />
-                  <col className="w-[8%]" /><col className="w-[6%]" /><col className="w-[28%]" /><col className="w-[8%]" />
+                  <col className="w-[8%]" /><col className="w-[6%]" /><col className="w-[25%]" /><col className="w-[8%]" /><col className="w-[3%]" />
                 </colgroup>
                 <thead>
                   <tr className="text-xs text-fg-muted text-left">
@@ -304,12 +359,14 @@ export default function FleetRepoSync() {
                     <th className="font-normal pb-1">wt</th>
                     <th className="font-normal pb-1" title="read from the tree's CI and hosting files">push may deploy</th>
                     <th className="font-normal pb-1" title="age of the last git fetch">fetched</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
                   {data.projects.map(r => (
                     <Row key={r.name} row={r} open={!!expanded[r.name]}
-                         onToggle={() => setExpanded(x => ({ ...x, [r.name]: !x[r.name] }))} />
+                         onToggle={() => setExpanded(x => ({ ...x, [r.name]: !x[r.name] }))}
+                         onHide={() => setHidden(r.name, true)} />
                   ))}
                 </tbody>
               </table>

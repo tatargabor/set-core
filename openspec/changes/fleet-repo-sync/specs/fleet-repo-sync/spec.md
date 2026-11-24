@@ -1,7 +1,8 @@
 ## IN SCOPE
 - A fleet header chip that opens a floating, read-only table of recently active projects' git state
 - Per project: branch, uncommitted files, ahead/behind upstream, unpushed local branches, worktrees, stash count, remote host, last fetch time
-- An activity window (default 30 days) over commits and session transcripts, adjustable
+- An activity window (default 30 days) over commits by anybody on any branch, adjustable
+- Hiding a project from the table, and a separate view to bring hidden projects back
 - A computation that runs only when the table is opened or refreshed
 - An explicit fetch control
 - A push-may-deploy hint read from the tree's own CI and hosting files
@@ -29,23 +30,43 @@ SHALL NOT compute it on a timer, on page load, or as part of the fleet listing.
 - **THEN** exactly one request to `GET /api/fleet/repo-sync` is sent, and a second one only when the refresh control is used
 
 ### Requirement: The listed projects are the recently active registered ones
-The system SHALL list every registered project whose tree exists and that is active within the
-window: a commit on any local branch, or a session transcript of that project written, within the
-last `days` days. `days` SHALL come from the request, else machine-local `fleet_repo_sync_days`,
-else 30. Archived projects and projects under the e2e-run directory SHALL be left out, and the
-answer SHALL carry how many were left out for each reason.
+The system SHALL list every registered project whose tree exists, that the owner has not hidden,
+and that is active within the window: a commit by anybody on any local branch or remote-tracking
+branch, with a committer date within the last `days` days. Fetch times and session activity SHALL
+NOT count as activity. `days` SHALL come from the request, else machine-local
+`fleet_repo_sync_days`, else 30. Archived projects, hidden projects and projects under the e2e-run
+directory SHALL be left out, and the answer SHALL carry how many were left out for each reason.
 
 #### Scenario: An old project is left out and counted
-- **WHEN** a registered project's newest commit and newest transcript are both older than the window
+- **WHEN** a registered project's newest commit on any branch is older than the window
 - **THEN** it is not in `projects`, and `excluded.inactive` counts it
 
-#### Scenario: A project with only recent sessions is listed
-- **WHEN** a project has no commit in the window but a session transcript written yesterday
-- **THEN** it is listed, with `active_by` naming the transcript as the reason
+#### Scenario: A commit somebody else pushed makes a project active
+- **WHEN** the only commit within the window is on a remote-tracking branch, made by another author
+- **THEN** the project is listed
+
+#### Scenario: Session activity alone does not list a project
+- **WHEN** a project has a session transcript written yesterday and no commit within the window
+- **THEN** it is not listed
 
 #### Scenario: A missing tree is reported, not dropped
 - **WHEN** a registered, non-archived project's path does not exist
 - **THEN** it is counted in `excluded.missing` with its name
+
+### Requirement: The owner can hide a project and bring it back
+The system SHALL keep a machine-local list of hidden projects (`fleet_repo_sync_hidden`). A hidden
+project SHALL NOT be listed or measured, SHALL be counted in `excluded.hidden`, and its name SHALL
+be in the answer's `hidden` list. The screen SHALL offer a hide control on every row and a separate
+view of the hidden projects, each with a control that puts it back. Hiding and restoring SHALL
+change only this list — never a repository.
+
+#### Scenario: A hidden project leaves the table and appears in the hidden view
+- **WHEN** the owner hides a project
+- **THEN** the next measurement does not list it, `excluded.hidden` counts it, and the hidden view shows it
+
+#### Scenario: A restored project returns
+- **WHEN** the owner restores a hidden project that is active within the window
+- **THEN** the next measurement lists it again
 
 ### Requirement: Each project row carries its commit and push state
 For each listed project the answer SHALL carry: the current branch (or a detached marker); the
@@ -124,7 +145,7 @@ entries, ahead, behind, no upstream, an unpushed branch, an unreadable field, or
 ### Requirement: The table floats and is read-only
 The table SHALL be absolutely positioned under the header, push nothing in the layout, close on
 its own control, on Escape and on an outside click, and SHALL offer no control that changes a
-repository other than the fetch.
+repository other than the fetch (hiding changes only the machine-local hidden list).
 
 #### Scenario: Opening the table moves nothing
 - **WHEN** the owner opens the Repos table

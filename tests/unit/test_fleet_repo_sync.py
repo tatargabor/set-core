@@ -178,20 +178,51 @@ class TestActivityWindow:
                                               now=time.time(), home=tmp_path, e2e_root=None)
         assert listed == [] and excluded["inactive"] == 1
 
-    def test_a_project_with_only_a_recent_session_is_listed(self, tmp_path):
+    def test_session_activity_alone_does_not_list_it(self, tmp_path):
         r = self._repo(tmp_path, "sess", 90)
-        tdir = rs.transcript_dir(str(r), tmp_path)
+        tdir = tmp_path / ".claude" / "projects" / str(r).replace("/", "-")
         tdir.mkdir(parents=True)
         (tdir / "s.jsonl").write_text("{}\n")
-        listed, _ = rs.select_projects([{"name": "sess", "path": str(r)}], days=30,
+        listed, ex = rs.select_projects([{"name": "sess", "path": str(r)}], days=30,
+                                        now=time.time(), home=tmp_path, e2e_root=None)
+        assert listed == [] and ex["inactive"] == 1
+
+    def test_somebody_elses_commit_on_a_remote_branch_lists_it(self, tmp_path):
+        r = self._repo(tmp_path, "mine", 90)
+        remote = tmp_path / "r.git"
+        git(tmp_path, "init", "-q", "--bare", "-b", "main", str(remote))
+        git(r, "remote", "add", "origin", str(remote))
+        git(r, "push", "-q", "origin", "main")
+        other = tmp_path / "colleague"
+        git(tmp_path, "clone", "-q", "-b", "main", str(remote), str(other))
+        commit(other, "theirs.txt")
+        git(other, "push", "-q", "origin", "main")
+        git(r, "fetch", "-q")
+        listed, _ = rs.select_projects([{"name": "mine", "path": str(r)}], days=30,
                                        now=time.time(), home=tmp_path, e2e_root=None)
-        assert [p["active_by"] for p in listed] == [["transcript"]]
+        assert [p["name"] for p in listed] == ["mine"]
 
     def test_a_recent_commit_lists_it(self, tmp_path):
         r = self._repo(tmp_path, "fresh", 2)
         listed, _ = rs.select_projects([{"name": "fresh", "path": str(r)}], days=30,
                                        now=time.time(), home=tmp_path, e2e_root=None)
         assert [p["active_by"] for p in listed] == [["commit"]]
+
+    def test_a_hidden_project_is_left_out_and_counted(self, tmp_path):
+        r = self._repo(tmp_path, "h", 2)
+        listed, ex = rs.select_projects([{"name": "h", "path": str(r)}], days=30, now=time.time(),
+                                        home=tmp_path, e2e_root=None, hidden=["h"])
+        assert listed == [] and ex["hidden"] == 1
+
+    def test_hiding_and_restoring_round_trips_through_local_config(self, tmp_path, monkeypatch):
+        from set_orch import local_config
+        store = {}
+        monkeypatch.setattr(local_config, "get", lambda key, *a, **k: store.get(key))
+        monkeypatch.setattr(local_config, "set_value", lambda key, value, *a, **k: store.__setitem__(key, value))
+        assert rs.set_hidden("a", True) == ["a"]
+        assert rs.set_hidden("b", True) == ["a", "b"]
+        assert rs.set_hidden("a", False) == ["b"]
+        assert rs.hidden_projects() == ["b"]
 
     def test_exclusions_are_counted_by_reason(self, tmp_path):
         e2e = tmp_path / "e2e"
@@ -293,7 +324,7 @@ class TestCollectAndFetch:
         clean = tmp_path / "clean"
         git(tmp_path, "clone", "-q", str(tmp_path / "remote.git"), str(clean))
         (work / "dirty.txt").write_text("d\n")
-        a = rs.collect(30, projects=[{"name": "zz-clean", "path": str(clean)},
+        a = rs.collect(30, hidden=[], projects=[{"name": "zz-clean", "path": str(clean)},
                                      {"name": "aa-dirty", "path": str(work)},
                                      {"name": "mm-dirty", "path": str(work)}],
                        home=tmp_path, e2e_root=None)

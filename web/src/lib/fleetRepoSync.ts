@@ -59,6 +59,7 @@ export interface RepoRow {
 
 export interface Excluded {
   archived: number
+  hidden: number
   e2e_run: number
   inactive: number
   missing: string[]
@@ -72,6 +73,8 @@ export interface RepoSync {
   projects: RepoRow[]
   problem_count: number
   excluded: Excluded
+  /** Registered projects the owner hid from this table; the hidden view lists them. */
+  hidden: string[]
 }
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
@@ -131,9 +134,10 @@ export function parseRepoSync(d: any): RepoSync | null {
     projects: d.projects.map(parseRow).filter((r: RepoRow | null): r is RepoRow => r !== null),
     problem_count: num(d.problem_count) ?? 0,
     excluded: {
-      archived: num(ex.archived) ?? 0, e2e_run: num(ex.e2e_run) ?? 0, inactive: num(ex.inactive) ?? 0,
+      archived: num(ex.archived) ?? 0, hidden: num(ex.hidden) ?? 0, e2e_run: num(ex.e2e_run) ?? 0, inactive: num(ex.inactive) ?? 0,
       missing: Array.isArray(ex.missing) ? ex.missing : [], not_git: Array.isArray(ex.not_git) ? ex.not_git : [],
     },
+    hidden: Array.isArray(d.hidden) ? d.hidden.filter((x: unknown) => typeof x === 'string') : [],
   }
 }
 

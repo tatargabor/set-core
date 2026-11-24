@@ -22,6 +22,13 @@
 - [x] 3.4 Mount the chip in `web/src/pages/Fleet.tsx` beside the other header chips [REQ: the-table-floats-and-is-read-only]
 - [x] 3.5 Rebuild `web/dist` [REQ: the-table-floats-and-is-read-only]
 
+## 5. Owner's follow-up (2026-11-24): commit-only activity, hiding
+
+- [x] 5.1 Activity from commits only, local and remote-tracking branches; the transcript source removed [REQ: the-listed-projects-are-the-recently-active-registered-ones]
+- [x] 5.2 `fleet_repo_sync_hidden` list, `excluded.hidden`, `hidden` in the answer, `POST /api/fleet/repo-sync/hidden` [REQ: the-owner-can-hide-a-project-and-bring-it-back]
+- [x] 5.3 Hide control per row and a separate hidden view with restore [REQ: the-owner-can-hide-a-project-and-bring-it-back]
+- [x] 5.4 Tests for both, and a browser look at the hidden view [REQ: the-owner-can-hide-a-project-and-bring-it-back]
+
 ## 4. Tests and verification
 
 - [x] 4.1 Unit tests over throwaway git repos: ahead/behind/diverged, no upstream, unpushed branch, merged and missing worktree, a failing git call is a `null` gap, activity window by commit and by transcript, exclusions counted [REQ: each-project-row-carries-its-commit-and-push-state]
@@ -36,7 +43,10 @@
 - [x] AC-1: WHEN the fleet loads and the Repos table is not opened THEN no repo-sync request is sent and no git command runs for it [REQ: the-state-is-computed-only-when-somebody-asks-for-it, scenario: opening-the-fleet-does-not-scan]
 - [x] AC-2: WHEN the owner opens the Repos table THEN exactly one request is sent, a second only on refresh [REQ: the-state-is-computed-only-when-somebody-asks-for-it, scenario: opening-the-table-scans-once]
 - [x] AC-3: WHEN a project's newest commit and transcript are older than the window THEN it is not listed and `excluded.inactive` counts it [REQ: the-listed-projects-are-the-recently-active-registered-ones, scenario: an-old-project-is-left-out-and-counted]
-- [x] AC-4: WHEN a project has only a recent transcript THEN it is listed with `active_by` naming the transcript [REQ: the-listed-projects-are-the-recently-active-registered-ones, scenario: a-project-with-only-recent-sessions-is-listed]
+- [x] AC-4: WHEN the only recent commit is another author's on a remote-tracking branch THEN the project is listed [REQ: the-listed-projects-are-the-recently-active-registered-ones, scenario: a-commit-somebody-else-pushed-makes-a-project-active]
+- [x] AC-4b: WHEN only a session transcript is recent THEN the project is not listed [REQ: the-listed-projects-are-the-recently-active-registered-ones, scenario: session-activity-alone-does-not-list-a-project]
+- [x] AC-19: WHEN a project is hidden THEN it is not listed, counted in `excluded.hidden`, shown in the hidden view [REQ: the-owner-can-hide-a-project-and-bring-it-back, scenario: a-hidden-project-leaves-the-table-and-appears-in-the-hidden-view]
+- [x] AC-20: WHEN a hidden project is restored THEN it is listed again [REQ: the-owner-can-hide-a-project-and-bring-it-back, scenario: a-restored-project-returns]
 - [x] AC-5: WHEN a registered project's path does not exist THEN it is counted in `excluded.missing` with its name [REQ: the-listed-projects-are-the-recently-active-registered-ones, scenario: a-missing-tree-is-reported-not-dropped]
 - [x] AC-6: WHEN the branch is 2 ahead and 3 behind THEN the row says so and is flagged diverged [REQ: each-project-row-carries-its-commit-and-push-state, scenario: ahead-and-behind-are-counted-against-the-upstream]
 - [x] AC-7: WHEN another local branch has 4 commits on no remote THEN it is listed with count 4 [REQ: each-project-row-carries-its-commit-and-push-state, scenario: a-branch-with-no-remote-copy-is-listed]
