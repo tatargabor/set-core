@@ -20,7 +20,7 @@
 ## 4. Live
 
 - [x] 4.1 Measure Esc on an open question dialog in a scratch fleet agent: after Esc + line + Enter, the transcript shows the call closed and the next user turn carrying the line. Record it in `measurements.md`. [REQ: a-pulled-in-answer-reaches-the-agent-through-its-terminal]
-- [ ] 4.2 The real case: with the relay off, a scratch fleet agent asks; turn the relay on from the fleet; the question appears in the waiting list; answer it on the panel; the agent continues with the answer. Record it. [REQ: turning-a-switch-on-pulls-in-the-questions-already-open]
+- [x] 4.2 The real case: with the relay off, a scratch fleet agent asks; turn the relay on from the fleet; the question appears in the waiting list; answer it on the panel; the agent continues with the answer. Record it. [REQ: turning-a-switch-on-pulls-in-the-questions-already-open]
 - [x] 4.3 Capability guide line: switching the relay on pulls in open questions; `set-relay-backfill` by hand. [REQ: the-pull-in-can-be-run-by-hand]
 
 ## Acceptance Criteria (from spec scenarios)
@@ -31,7 +31,7 @@
 - [x] AC-13: WHEN an agent asks while the relay is off THEN the hook parks it and a later switch-on pulls it in although the transcript does not hold the call [REQ: a-question-left-to-the-terminal-is-parked-for-the-next-switch-on, scenario: asked-while-the-relay-is-off]
 - [x] AC-14: WHEN a parked question's session has ended THEN it is not pulled in and its record is removed [REQ: a-question-left-to-the-terminal-is-parked-for-the-next-switch-on, scenario: the-session-has-ended]
 - [x] AC-4: WHEN the operator answers on the channel THEN the terminal receives Esc, one line, Enter, and the record is gone [REQ: a-pulled-in-answer-reaches-the-agent-through-its-terminal, scenario: the-operator-answers-on-the-channel]
-- [ ] AC-5: WHEN the decider writes an allowed answer THEN the agent receives it the same way and the log says written [REQ: a-pulled-in-answer-reaches-the-agent-through-its-terminal, scenario: the-decider-answers]
+- [x] AC-5: WHEN the decider writes an allowed answer THEN the agent receives it the same way and the log says written [REQ: a-pulled-in-answer-reaches-the-agent-through-its-terminal, scenario: the-decider-answers]
 - [x] AC-6: WHEN the question is answered in the terminal first THEN nothing is typed and the record is removed [REQ: a-pulled-in-answer-reaches-the-agent-through-its-terminal, scenario: answered-in-the-terminal-first]
 - [x] AC-7: WHEN "to terminal" is pressed on a pulled-in question THEN the carrier ends and nothing is typed [REQ: a-pulled-in-question-ends-like-a-relayed-one, scenario: handed-back-to-the-terminal]
 - [x] AC-8: WHEN the relay switch goes off again THEN the carrier ends and nothing is typed [REQ: a-pulled-in-question-ends-like-a-relayed-one, scenario: the-switch-goes-off-again]

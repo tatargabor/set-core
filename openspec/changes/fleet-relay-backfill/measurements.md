@@ -52,3 +52,24 @@ transcript afterwards, in order:
 
 Esc closes the dialog as a rejected call, the line becomes the next turn, and the agent acts on
 the answer. Task 4.1 done.
+
+## M5 — the whole path on a scratch fleet agent, real carrier launch (task 4.2)
+
+An isolated world so nothing reached the operator's channel or a real session: the agent ran
+with `SET_CONFIG_DIR` pointing at a config with the relay OFF and its own
+`SET_QUESTION_RELAY_DIR`, and only the `AskUserQuestion` hook wired (`--setting-sources user
+--settings …`). The pull-in ran with a config where the relay is ON and the outbound is `true`.
+
+- 14:19 the agent asked; the hook parked it (`parked/<session>.json`, `-rw-------`). On this
+  runtime the transcript did hold the open `tool_use` this time (2 `assistant` entries) — the
+  hook HAD run, which matches M3's difference.
+- 14:19:21 the pull-in (filtered to the scratch label) reported `1 pulled in`; the carrier ran as
+  `set-relay-backfill-337a857c-….service` under `systemd-run`, its waiting record landed in the
+  SCRATCH state dir (so `--setenv` carried it), and the park record was gone.
+- 14:19:35 an answer delivered as the panel does (`deliver_answer(..., "ORANGE")`): relay log
+  "answered on the channel; typed into scratch-backfill2"; the unit ended; the waiting dir empty.
+- Transcript: `tool_use AskUserQuestion` → `tool_result is_error` → `[Request interrupted…]` →
+  the typed `[fleet] … Q1 “Banner”: ORANGE …` → `assistant: GOT: ORANGE`.
+
+Task 4.2 done. The decider-written answer (AC-5) goes through the same answer store; a unit test
+drives the carrier with the worker's own `_write_answer`.

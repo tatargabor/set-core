@@ -327,3 +327,10 @@ def test_the_carrier_keeps_a_call_open_that_the_transcript_does_not_show_yet(tmp
     c = Carry(tmp_path, entries=[{"type": "user", "message": {"content": "start"}}],
               events={5: lambda c: c.answer("ORANGE")})
     assert c.run() == "typed" and len(c.typed) == 1
+
+
+def test_an_answer_the_decider_writes_is_typed_the_same_way(tmp_path):
+    """AC-5: the decider writes through its exclusive create into the same answer store."""
+    from set_orch.fleet import auto_answer_worker as aw
+    c = Carry(tmp_path, events={5: lambda c: aw._write_answer(c.base / "answers", c.record["id"], "Q1", "TEAL")})
+    assert c.run() == "typed" and "“Banner”: TEAL" in c.typed[0][1]
