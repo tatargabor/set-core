@@ -88,6 +88,10 @@ class Bounds:
     ceiling_seconds: float
     cpu_percent: float
     max_handovers: int
+    #: An idle desk (no turn running) that has not moved since the request arrived is
+    #: interrupted after this long rather than after the full stall bound: nothing is running
+    #: that an Esc could kill, and the bus did not wake it (measurements M4).
+    idle_wake_seconds: float = 90.0
 
 
 def _positive(key: str, default: float) -> float:
@@ -156,6 +160,9 @@ def decide(engagement: Dict[str, Any], desk_row: Optional[Dict[str, Any]], *,
     nudged = _number(engagement.get("nudged_at"))
 
     if nudged is None:
+        if (desk_row.get("state") == "quiet" and moved is not None and moved > age
+                and age >= b.idle_wake_seconds):
+            return act(INTERRUPT, "idle-not-woken")
         if stalled:
             return act(INTERRUPT, f"stalled ({basis})")
         if age > b.ceiling_seconds:

@@ -115,6 +115,7 @@ consumer's name, path, or content.
 - **fixed when:**
   - (1) After a `/clear`, a REQUEST and its linked ANSWER wake the requesting session within one bus round. Measured on a real pair of sessions.
   - (2) A session that ended its turn with no open question receives an auto-continue naming the arrived reply, at most once per reply. An unrelated room entry does not produce one (test).
+- **related (2026-11-24, set-core):** the DESK side of the same wake gap was measured too — a desk idle at its prompt since 09:48 never saw a request addressed to its seat at 11:04 (`fleet-engagement-takeover` measurements M4). The takeover watch now interrupts such a desk 90 s after the request (task 5.2). That is a backstop for the desk, not a fix of (1) or (2): the asker side is still open here.
 
 ### B-214 — a relayed AskUserQuestion is not released by a message typed in the terminal, so the session sits queued for up to 55 min
 - **state:** fixed for fleet terminals, proven live 2026-11-24 09:21:58: the owner pressed Enter in set-claude-handoff's fleet terminal while its question was held on the relay. `journalctl --user -u set-web` shows `question relay [a5bc0d35]: Enter typed in its terminal; question handed back there`, and relay.log shows `released from the fleet` two seconds later. Covered: Enter typed in the FLEET's terminal of the asking agent releases an `ask` or `permission` call (`question_relay.release_on_terminal_enter`, `tests/unit/test_relay_terminal_enter.py`). Still open: a terminal OUTSIDE the fleet (a plain tmux or a desktop terminal).

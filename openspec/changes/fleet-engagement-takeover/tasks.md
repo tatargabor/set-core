@@ -31,6 +31,8 @@
 
 - [x] 5.1 FIX — `set-fleet-ask` to one's OWN project's desk failed `send-failed`: asker and desk share every project room, so the bus refused a send without a room. It now falls back to a room of two (`sac dm <desk seat>`). Measured 2026-11-24 11:18; test fails without the fix. [REQ: a-gone-or-still-stalled-desk-is-replaced-by-a-desk-that-takes-the-request-over]
 
+- [x] 5.2 CORE — An idle desk the bus did not wake (state `quiet`, no movement since the request, ≥ 90 s) is interrupted at once instead of after the stall bound (measurements M4); the desk-side half of B-215 (2), as a backstop until the bus wakes it. [REQ: an-idle-desk-the-bus-did-not-wake-is-interrupted-early]
+
 ## Acceptance Criteria (from spec scenarios)
 
 - [x] AC-1: WHEN a desk with an open engagement has not moved past the stall bound and its background CPU is below the bound THEN it is judged stalled [REQ: a-desk-is-stalled-only-when-nothing-shows-it-working, scenario: a-hung-tool-call]
@@ -48,3 +50,5 @@
 - [x] AC-13: WHEN the project's running desk carries a mandate ended as missing THEN it is re-opened and the request resolves to it [REQ: a-running-desk-whose-mandate-was-ended-is-re-adopted-not-blocked, scenario: held-label-ended-mandate]
 - [x] AC-13b: WHEN a live agent carries a desk mandate ended `replaced` THEN it is not re-opened nor resolved as the desk [REQ: a-running-desk-whose-mandate-was-ended-is-re-adopted-not-blocked, scenario: a-deliberately-stopped-desk-is-not-revived]
 - [x] AC-14: WHEN a quiet desk has an open engagement it asked THEN the sweep keeps it with `asking-open` [REQ: a-desk-waiting-on-its-own-request-is-not-swept, scenario: desk-asked-another-project]
+- [x] AC-15: WHEN a desk idle since before the request has not moved 120 s after it was sent THEN it is interrupted [REQ: an-idle-desk-the-bus-did-not-wake-is-interrupted-early, scenario: idle-at-the-prompt]
+- [x] AC-16: WHEN the desk moved after the request, a turn runs, or the request is under 90 s THEN no early interrupt [REQ: an-idle-desk-the-bus-did-not-wake-is-interrupted-early, scenario: the-desk-saw-it]

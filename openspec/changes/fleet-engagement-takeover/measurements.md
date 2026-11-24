@@ -49,3 +49,11 @@ began working on the request within 30 s. The decision was right; its basis was 
 first round after a restart NO desk has a CPU sample, so a long test run that writes nothing to
 the transcript would have been interrupted too. Fixed: a unit's first sample answers `pending`
 and the stall decision waits one round (a gone desk still needs none).
+
+## M5 — Both measured stopped requests closed after the interrupt (11:20)
+
+- The request that sat three hours behind the hung desk (M1): `answered` after the hand-made
+  interrupt of 11:07 — total age 11 677 s.
+- The request the first automatic round interrupted (M4): `answered` at 864 s of age, i.e.
+  within about four minutes of the interrupt. Its `nudged` flag is set and `handovers` is 0 —
+  the cheapest step was enough, no desk was started.

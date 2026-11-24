@@ -38,6 +38,17 @@ The first escalation of an engagement SHALL interrupt the desk's current turn an
 - **WHEN** an open engagement is older than the hard ceiling and has never been escalated, and its desk is moving
 - **THEN** the desk is interrupted with the line once, and no replacement is started
 
+### Requirement: An idle desk the bus did not wake is interrupted early
+When an open engagement's desk has no turn running (state `quiet`), has not moved since the request was sent, and the request is at least 90 seconds old, the first escalation SHALL be the interrupt, without waiting for the stall bound.
+
+#### Scenario: Idle at the prompt
+- **WHEN** a desk idle since before the request has not moved 120 seconds after it was sent
+- **THEN** it is interrupted with the line naming the request
+
+#### Scenario: The desk saw it
+- **WHEN** the desk moved after the request was sent, or a turn is running, or the request is younger than 90 seconds
+- **THEN** no early interrupt is made
+
 ### Requirement: A gone or still-stalled desk is replaced by a desk that takes the request over
 An open engagement SHALL be taken over when its desk is not live, or when one stall bound after the interrupt the engagement is still unanswered and the desk is still judged stalled. Taking over SHALL stop the old desk, end its mandate with reason `replaced`, start a fresh desk with a mandate that carries the takeover, and re-point the engagement at the new desk. The engagement SHALL stay `open` throughout and count one more handover.
 

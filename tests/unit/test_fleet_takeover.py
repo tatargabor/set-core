@@ -48,6 +48,21 @@ def test_a_hung_tool_call_is_stalled_and_interrupted():
     assert decide(eng(), row()) == (tk.INTERRUPT, "stalled (movement+cpu)")
 
 
+def test_an_idle_desk_the_bus_did_not_wake_is_nudged_early():
+    """Measured: a desk idle at its prompt since long before the request never saw it."""
+    e = eng(sent_at=NOW - 120)
+    assert decide(e, row(state="quiet", last_movement_seconds=5000)) == (tk.INTERRUPT, "idle-not-woken")
+
+
+@pytest.mark.parametrize("over, r", [
+    ({"sent_at": NOW - 60}, {"state": "quiet", "last_movement_seconds": 5000}),   # give the bus a moment
+    ({"sent_at": NOW - 120}, {"state": "quiet", "last_movement_seconds": 30}),    # it moved since: it saw it
+    ({"sent_at": NOW - 120}, {"state": "working", "last_movement_seconds": 5000}),  # a turn is running
+])
+def test_an_idle_desk_is_not_nudged_early_otherwise(over, r):
+    assert decide(eng(**over), row(**r))[1] != "idle-not-woken"
+
+
 def test_a_long_test_run_with_background_cpu_is_left_alone():
     assert decide(eng(), row(), cpu=180.0) == (tk.NONE, "working")
 
