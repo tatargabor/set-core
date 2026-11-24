@@ -79,3 +79,18 @@ The framework SHALL stop a desk when it has no engagement that is resolving or o
 #### Scenario: A desk whose movement is unmeasured
 - **WHEN** a desk's last movement cannot be measured
 - **THEN** it is kept
+
+### Requirement: A desk that is about to stop is marked where the reader stands
+The fleet listing SHALL carry, for each framework-held desk for which every stop condition other than the elapsed quiet time already holds, the seconds remaining until the quiet bound is passed and the bound itself. It SHALL carry no such forecast when an open or resolving engagement, a non-quiet state, or any unmeasured input keeps the desk. The tile SHALL show the forecast on the desk's own badge.
+
+#### Scenario: A quiet desk with nothing open
+- **WHEN** a desk has no open engagement, is measured quiet, and its last movement is shorter ago than the bound
+- **THEN** the listing carries the remaining seconds and the bound for it, and its tile shows that it will close soon unless a request arrives
+
+#### Scenario: A desk with an open engagement carries no countdown
+- **WHEN** a desk has an open engagement
+- **THEN** the listing carries no close forecast for it
+
+#### Scenario: A desk past the bound
+- **WHEN** a desk satisfies every stop condition and its last movement is older than the bound
+- **THEN** the forecast's remaining seconds is zero, never negative

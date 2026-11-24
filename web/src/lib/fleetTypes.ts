@@ -68,12 +68,22 @@ export interface FleetMandateAbsent {
   reason: 'not-started-here' | 'not-declared' | 'unmeasured' | string
 }
 
+/** The quiet sweep's forecast for one desk (fleet-mandate-and-desk 10.3). */
+export interface FleetDeskClose {
+  /** Seconds until the quiet bound is passed; 0 = the sweep stops it on its next round. */
+  closes_in_seconds: number
+  bound_seconds: number
+}
+
 export interface FleetAgent {
   pid: number
   /** The agent's mandate, or null with `mandate_absent` saying why. Both absent
       on a payload from a build that predates mandates — which says nothing. */
   mandate?: FleetMandate | null
   mandate_absent?: FleetMandateAbsent | null
+  /** On a framework-held desk: when the quiet sweep will stop it. Present only when
+      nothing but the quiet time still keeps the desk; null or absent otherwise. */
+  desk_close?: FleetDeskClose | null
   name: string | null
   project: string | null
   branch: string | null

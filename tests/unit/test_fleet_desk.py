@@ -314,3 +314,56 @@ def test_anything_unmeasured_keeps_the_desk(row, engagements, why):
 ])
 def test_a_busy_or_recently_moved_desk_is_kept(row):
     assert desk_mod.sweep_decision(row, live_engagements=0, quiet_after=1800)[0] == "keep"
+
+
+# -- the close forecast (task 10.2, 10.5) ----------------------------------------------
+
+
+def test_a_quiet_desk_with_nothing_open_carries_the_remaining_seconds():
+    row = {"state": "quiet", "last_movement_seconds": 120}
+    assert desk_mod.close_forecast(row, live_engagements=0, quiet_after=300) == {
+        "closes_in_seconds": 180.0, "bound_seconds": 300.0}
+
+
+def test_a_desk_with_an_open_engagement_carries_no_countdown():
+    row = {"state": "quiet", "last_movement_seconds": 120}
+    assert desk_mod.close_forecast(row, live_engagements=1, quiet_after=300) is None
+
+
+def test_a_desk_past_the_bound_forecasts_zero_never_negative():
+    row = {"state": "quiet", "last_movement_seconds": 4000}
+    assert desk_mod.close_forecast(row, live_engagements=0, quiet_after=300)["closes_in_seconds"] == 0.0
+
+
+ROWS = [
+    {"state": "quiet", "last_movement_seconds": 4000},
+    {"state": "quiet", "last_movement_seconds": 10},
+    {"state": "quiet", "last_movement_seconds": 1800},
+    {"state": "working", "last_movement_seconds": 4000},
+    {"state": "asking", "last_movement_seconds": 4000},
+    {"state": None, "last_movement_seconds": 4000},
+    {"state": "unknown", "last_movement_seconds": 4000},
+    {"state": "quiet", "last_movement_seconds": None},
+    {"state": "quiet"},
+    {"state": "quiet", "last_movement_seconds": True},
+]
+
+
+@pytest.mark.parametrize("row", ROWS)
+@pytest.mark.parametrize("engagements", [None, 0, 1])
+def test_the_forecast_agrees_with_the_sweep(row, engagements):
+    """A forecast exists exactly when the sweep is kept by nothing but time — and reaches
+    zero exactly when the sweep stops."""
+    decision, why = desk_mod.sweep_decision(row, live_engagements=engagements, quiet_after=1800)
+    forecast = desk_mod.close_forecast(row, live_engagements=engagements, quiet_after=1800)
+    if decision == "stop":
+        assert forecast is not None and forecast["closes_in_seconds"] == 0.0
+    elif why == "recent-movement":
+        assert forecast is not None
+    else:
+        assert forecast is None, why
+
+
+def test_the_default_bound_is_five_minutes(monkeypatch):
+    monkeypatch.setattr(desk_mod.local_config, "get", lambda key: None)
+    assert desk_mod.quiet_seconds() == 300.0

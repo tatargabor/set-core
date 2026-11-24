@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import {
   EMPTY_DRAFT, GOAL_NOTE, NO_GOAL_NOTE,
-  declareOutcome, mandateFields, mandateStanding,
+  declareOutcome, deskCloseLabel, mandateFields, mandateStanding,
   type MandateDraft,
 } from '../lib/fleetMandate'
 import type { FleetAgent } from '../lib/fleetTypes'
@@ -223,6 +223,7 @@ function DeclareDialog({ agent, onClose }: { agent: FleetAgent; onClose: () => v
 export default function FleetMandateLine({ agent }: { agent: FleetAgent }) {
   const [declaring, setDeclaring] = useState(false)
   const s = mandateStanding(agent)
+  const close = deskCloseLabel(agent)
   if (s.kind === 'unreported') return null
   if (s.kind === 'unmeasured') {
     return (
@@ -241,6 +242,11 @@ export default function FleetMandateLine({ agent }: { agent: FleetAgent }) {
         <span className="text-fg-normal truncate min-w-0" data-fleet-mandate-goal>{s.goal}</span>
         {!s.told && (
           <span className="text-fg-ghost shrink-0 italic" data-fleet-mandate-told="no">not told yet</span>
+        )}
+        {close && (
+          <span className="shrink-0 text-violet-300/80 italic" data-fleet-desk-close title={close.title}>
+            · {close.text}
+          </span>
         )}
       </div>
     )

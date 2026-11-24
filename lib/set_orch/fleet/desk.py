@@ -53,7 +53,10 @@ READY_TIMEOUT_SECONDS = 60.0
 POLL_SECONDS = 1.0
 
 CONFIG_QUIET_MINUTES = "fleet_desk_quiet_minutes"
-DEFAULT_QUIET_MINUTES = 30.0
+#: Lowered from 30 on 2026-11-24 at the owner's request: a desk that has answered everything
+#: should not hold a seat for half an hour. The window still lets a follow-up request reach
+#: the same session, and the listing's close forecast shows the countdown meanwhile.
+DEFAULT_QUIET_MINUTES = 5.0
 
 REFUSALS = (
     "unknown-project", "archived", "start-location", "not-on-bus", "not-trusted",
@@ -317,6 +320,27 @@ KEEP = "keep"
 STOP = "stop"
 
 
+def _keep_reason(row: Dict[str, Any], live_engagements: Optional[int]) -> Optional[str]:
+    """Why the desk is kept on every condition EXCEPT the elapsed quiet time; None when none.
+
+    Shared by the sweep and the close forecast, so the countdown a reader sees can never
+    disagree with what the sweep will do.
+    """
+    if live_engagements is None:
+        return "engagements-unmeasured"
+    if live_engagements > 0:
+        return "engagement-open"
+    state = row.get("state")
+    if state is None or state == "unknown":
+        return "state-unmeasured"
+    if state != "quiet":
+        return f"state-{state}"
+    moved = row.get("last_movement_seconds")
+    if not isinstance(moved, (int, float)) or isinstance(moved, bool):
+        return "movement-unmeasured"
+    return None
+
+
 def sweep_decision(row: Dict[str, Any], *, live_engagements: Optional[int],
                    quiet_after: float) -> tuple:
     """(decision, why) for one live desk row.
@@ -326,18 +350,23 @@ def sweep_decision(row: Dict[str, Any], *, live_engagements: Optional[int],
     bound. Anything unmeasured keeps the desk — a desk left running costs a seat, a desk
     stopped mid-answer costs the answer.
     """
-    if live_engagements is None:
-        return KEEP, "engagements-unmeasured"
-    if live_engagements > 0:
-        return KEEP, "engagement-open"
-    state = row.get("state")
-    if state is None or state == "unknown":
-        return KEEP, "state-unmeasured"
-    if state != "quiet":
-        return KEEP, f"state-{state}"
-    moved = row.get("last_movement_seconds")
-    if not isinstance(moved, (int, float)) or isinstance(moved, bool):
-        return KEEP, "movement-unmeasured"
-    if moved <= quiet_after:
+    why = _keep_reason(row, live_engagements)
+    if why:
+        return KEEP, why
+    if row["last_movement_seconds"] <= quiet_after:
         return KEEP, "recent-movement"
     return STOP, "desk-quiet"
+
+
+def close_forecast(row: Dict[str, Any], *, live_engagements: Optional[int],
+                   quiet_after: float) -> Optional[Dict[str, float]]:
+    """`{closes_in_seconds, bound_seconds}` when only the quiet time still keeps the desk.
+
+    None when anything else keeps it — an open engagement, a working state, an unmeasured
+    input — because a countdown that is not going to run out is a false value. The seconds
+    are never negative: past the bound the sweep acts on its next round.
+    """
+    if _keep_reason(row, live_engagements):
+        return None
+    remaining = max(0.0, float(quiet_after) - float(row["last_movement_seconds"]))
+    return {"closes_in_seconds": round(remaining, 1), "bound_seconds": float(quiet_after)}

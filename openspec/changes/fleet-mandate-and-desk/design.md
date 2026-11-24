@@ -183,12 +183,24 @@ read as a guarantee.
 
 A sweep in the dashboard service's existing lifespan stops a desk when all hold: its mandate is
 open and of kind `desk`; it has no `open` or `resolving` engagement; its state is measured and
-quiet; and its last movement is measured and older than the bound (default thirty minutes,
-configurable). Any unmeasured input keeps the desk — a desk left running costs a seat, a desk
+quiet; and its last movement is measured and older than the bound (default five minutes,
+configurable — lowered from thirty on 2026-11-24 at the owner's request: a desk that has
+answered everything should not hold a seat for half an hour). Any unmeasured input keeps the desk — a desk left running costs a seat, a desk
 stopped mid-answer costs the answer. The stop closes the mandate with the reason.
 
 The idle-close rule does not cover this: it keys on time since human input, which a desk never
 has, and it deliberately keeps an agent whose idle time is unmeasured.
+
+**A desk due to stop says so (added 2026-11-24, the owner's words: *„maradjon mert lehet jön
+másik kérés de jelölni kell hogy hamarosan zarjuk ha nem”*).** The bound stays as the window in
+which another request can still reach the same session, but the reader must not have to know
+the rule to see that the desk is about to go. The listing carries, for each framework-held
+desk, a forecast computed by the SAME decision the sweep uses with the time condition left
+out: when everything else already says stop, the row carries `desk_close: {closes_in_seconds,
+bound_seconds}` (the seconds until the bound is passed, never negative; the sweep acts on its
+next round after that). When anything else keeps the desk — an open engagement, a working
+state, an unmeasured input — there is no forecast, because a countdown that is not going to
+run out is a false value. The tile shows it on the desk badge itself.
 
 ### D12 — The map is one payload and one dockable view, on the library already bundled
 

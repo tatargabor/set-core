@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DESK_RULE_NOTE, EMPTY_DRAFT, NOT_DECLARED_TITLE, NOT_STARTED_HERE_TITLE, NO_GOAL_NOTE,
   UNMEASURED_TITLE, WORK_RULE_NOTE,
-  declareOutcome, mandateFields, mandateStanding, parsePaths,
+  declareOutcome, deskCloseLabel, mandateFields, mandateStanding, parsePaths,
 } from '../../src/lib/fleetMandate'
 import type { FleetMandate } from '../../src/lib/fleetTypes'
 
@@ -118,5 +118,28 @@ describe('what a declaration came to', () => {
       expect(out.told).toBe(false)
       expect(out.text).toContain('Nothing tells this agent')
     }
+  })
+})
+
+describe('the desk close countdown (fleet-mandate-and-desk 10.4)', () => {
+  const desk: FleetMandate = { ...work, id: 'm-d', kind: 'desk', goal: 'Answer requests' }
+
+  it('shows the minutes left, rounded up, on a desk with a forecast', () => {
+    const l = deskCloseLabel({ mandate: desk, desk_close: { closes_in_seconds: 61, bound_seconds: 300 } })
+    expect(l?.text).toBe('closes in ~2 min')
+    expect(l?.title).toContain('unless another request arrives')
+    expect(l?.title).toContain('5 min')
+  })
+
+  it('says closing at zero, never a negative or zero-minute countdown', () => {
+    expect(deskCloseLabel({ mandate: desk, desk_close: { closes_in_seconds: 0, bound_seconds: 300 } })?.text)
+      .toBe('closing')
+  })
+
+  it('shows nothing without a forecast, or on a work agent', () => {
+    expect(deskCloseLabel({ mandate: desk, desk_close: null })).toBeNull()
+    expect(deskCloseLabel({ mandate: desk })).toBeNull()
+    expect(deskCloseLabel({ mandate: work, desk_close: { closes_in_seconds: 60, bound_seconds: 300 } })).toBeNull()
+    expect(deskCloseLabel({ mandate: null, desk_close: { closes_in_seconds: 60, bound_seconds: 300 } })).toBeNull()
   })
 })

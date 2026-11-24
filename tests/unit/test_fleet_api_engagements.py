@@ -501,3 +501,47 @@ def test_a_decision_never_reads_the_map_s_cached_inventory(env, monkeypatch):
     monkeypatch.setattr(fleet_api, "fleet_agents",
                         lambda include_oneshot=False: _listing(_row(8, project="alpha", label="new")))
     assert [r["terminal_label"] for r in fm._live_rows()] == ["new"]
+
+
+# -- the close forecast on the listing (task 10.3) ------------------------------------
+
+
+def test_the_listing_carries_a_countdown_on_a_quiet_desk_with_nothing_open(env, monkeypatch):
+    row, _rec = _desk_row(MandateStore(), moved=60)
+    work = _row(901, project="beta", label="beta-1200", mandate_rec=MandateStore().create(
+        kind="work", goal="w", project="beta", cwd="/x/beta", label="beta-1200"))
+    monkeypatch.setattr(desk_mod, "quiet_seconds", lambda: 300.0)
+    grouped = _listing(row, work)["projects"]
+    fleet_api._attach_desk_forecasts(grouped)
+    assert row["desk_close"] == {"closes_in_seconds": 240.0, "bound_seconds": 300.0}
+    assert "desk_close" not in work, "only a desk carries a forecast"
+
+
+def test_the_listing_carries_no_countdown_while_an_engagement_is_open(env, monkeypatch):
+    row, _rec = _desk_row(MandateStore(), moved=60)
+    _open_engagement(monkeypatch)
+    monkeypatch.setattr(desk_mod, "quiet_seconds", lambda: 300.0)
+    fleet_api._attach_desk_forecasts(_listing(row)["projects"])
+    assert row["desk_close"] is None
+
+
+def test_an_answered_engagement_is_settled_before_the_forecast(env, monkeypatch):
+    """The reply is on the bus but the store still says open: the listing settles it, as the
+    sweep would, so a desk that has answered shows its countdown now, not a round later."""
+    row, _rec = _desk_row(MandateStore(), moved=60)
+    _open_engagement(monkeypatch)
+    _bus_reply(env, "dm-alpha--beta", "beta#0000dddd",
+               f"## {ANS_TS} — ANSWER → alpha#aaaaaaaa (re: {REQ_TS})")
+    monkeypatch.setattr(desk_mod, "quiet_seconds", lambda: 300.0)
+    fleet_api._attach_desk_forecasts(_listing(row)["projects"])
+    assert row["desk_close"] == {"closes_in_seconds": 240.0, "bound_seconds": 300.0}
+
+
+def test_an_unreadable_engagement_store_yields_no_forecast(env, monkeypatch):
+    row, _rec = _desk_row(MandateStore(), moved=60)
+    monkeypatch.setattr(desk_mod, "quiet_seconds", lambda: 300.0)
+    def boom(self, **kw):
+        raise engagement.EngagementStoreUnreadable("x")
+    monkeypatch.setattr(EngagementStore, "list", boom)
+    fleet_api._attach_desk_forecasts(_listing(row)["projects"])
+    assert "desk_close" not in row

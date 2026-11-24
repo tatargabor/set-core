@@ -166,3 +166,24 @@ export function declareOutcome(answer: { carrier?: boolean } | null): { told: bo
     text: 'Recorded for this screen only. Nothing tells this agent: the framework did not start it, so it carries no hook of ours.',
   }
 }
+
+/**
+ * The desk's close countdown, for its badge (fleet-mandate-and-desk 10.4).
+ *
+ * Null whenever the listing carries no forecast: an open request, a working desk or an
+ * unmeasured input keeps it, and a countdown that will not run out would be a false value.
+ * The minutes are rounded UP, so "~1 min" never shows a desk that is already due.
+ */
+export function deskCloseLabel(
+  agent: Pick<FleetAgent, 'mandate' | 'desk_close'>,
+): { text: string; title: string } | null {
+  const c = agent.desk_close
+  if (!agent.mandate || agent.mandate.kind !== 'desk' || !c) return null
+  const bound = Math.max(1, Math.round(c.bound_seconds / 60))
+  const left = c.closes_in_seconds
+  const text = left > 0 ? `closes in ~${Math.ceil(left / 60)} min` : 'closing'
+  const title = 'Every request addressed to this desk is answered. '
+    + `It is stopped after ${bound} min without movement, unless another request arrives — `
+    + 'a new request keeps it open and resets the count. The sweep checks every 5 minutes.'
+  return { text, title }
+}

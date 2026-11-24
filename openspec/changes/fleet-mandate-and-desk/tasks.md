@@ -105,6 +105,16 @@ Every test written for a fix or a guard is proven with the fix stashed (see the
 - [ ] 9.5 CORE — Restart the agent owner when no agent it holds is working, and the dashboard; confirm each service's start time is later than the commit it must be running. [REQ: the-agent-is-told-its-mandate-at-every-session-start]
 - [ ] 9.6 CORE — Add `set-fleet-ask` and `set-fleet-mandate` to the capability guide. [REQ: asking-a-project-is-one-command-that-sends-as-the-asker]
 
+## 10. A desk that is about to stop says so (CORE, API, WEB) — added 2026-11-24
+
+- [x] 10.1 CORE — The quiet bound's default goes from thirty to five minutes (`DEFAULT_QUIET_MINUTES`, config `fleet_desk_quiet_minutes` unchanged). [REQ: a-quiet-desk-stops-and-an-unmeasured-one-is-kept]
+- [x] 10.2 CORE — A pure `close_forecast(row, live_engagements, quiet_after)` beside `sweep_decision`, sharing its conditions: the forecast exists only when `sweep_decision` with the time condition removed would stop. [REQ: a-desk-that-is-about-to-stop-is-marked-where-the-reader-stands]
+- [x] 10.3 API — The listing attaches `desk_close` to each framework-held desk row, reading the engagement store at most once per listing and only when a desk row exists; an unreadable store yields no forecast. [REQ: a-desk-that-is-about-to-stop-is-marked-where-the-reader-stands]
+- [x] 10.4 WEB — The desk badge on the tile shows "closes in ~N min" (or "closing" at zero) with a tooltip naming the reason: no open request, and another request keeps it. [REQ: a-desk-that-is-about-to-stop-is-marked-where-the-reader-stands]
+- [x] 10.5 Tests: the three forecast scenarios, and the forecast agreeing with `sweep_decision` on every case the sweep tests cover; a web test for the badge text. Each new test fails against the code without it. [REQ: a-desk-that-is-about-to-stop-is-marked-where-the-reader-stands]
+- [x] 10.6 WEB — Visual check in the browser against the running dashboard: a quiet desk tile shows the countdown on its badge. If the browser cannot be reached this task stays OPEN. [REQ: a-desk-that-is-about-to-stop-is-marked-where-the-reader-stands]
+  - **Done 2026-11-24 ~08:15, Claude in Chrome against the running dashboard (port 7400, set-web started 08:09:35, after the code):** a quiet desk's tile reads `desk  Answer requests … · closes in ~4 min` on its mandate line, in muted violet italics after the goal, on one line with no reflow; its tooltip states the rule. The listing at the same time: three quiet desks with `desk_close` (0.0, 137.6, 267.4 s left of 300), two working desks with `desk_close: null`. Tests: desk 10 new + API 4 new (`refresh` removed as a mutant → the settle test fails), web 3 new; `tsc -b` clean.
+
 ## Acceptance Criteria (from spec scenarios)
 
 ### agent-mandate-record
@@ -179,3 +189,6 @@ Every test written for a fix or a guard is proven with the fix stashed (see the
 - [ ] AC-55: WHEN the rule is generated for a project that declares flows THEN it contains each flow's subject and target, and the command for asking a project [REQ: the-generated-rule-tells-the-agent-how-to-reach-a-neighbour, scenario: a-rule-with-flows]
 - [ ] AC-56: WHEN the rule is generated for a public repository whose flow goes to a private project THEN the private project is counted and its name does not appear [REQ: the-generated-rule-tells-the-agent-how-to-reach-a-neighbour, scenario: a-public-repository-with-a-private-neighbour]
 - [ ] AC-57: WHEN the rule is generated for a project that declares no flows and is reached by none THEN the rule still contains the command for asking a project [REQ: the-generated-rule-tells-the-agent-how-to-reach-a-neighbour, scenario: a-project-with-no-flows]
+- [ ] AC-58: WHEN a desk has no open engagement, is measured quiet, and its last movement is shorter ago than the bound THEN the listing carries the remaining seconds and the bound for it, and its tile shows that it will close soon unless a request arrives [REQ: a-desk-that-is-about-to-stop-is-marked-where-the-reader-stands, scenario: a-quiet-desk-with-nothing-open]
+- [ ] AC-59: WHEN a desk has an open engagement THEN the listing carries no close forecast for it [REQ: a-desk-that-is-about-to-stop-is-marked-where-the-reader-stands, scenario: a-desk-with-an-open-engagement-carries-no-countdown]
+- [ ] AC-60: WHEN a desk satisfies every stop condition and its last movement is older than the bound THEN the forecast's remaining seconds is zero, never negative [REQ: a-desk-that-is-about-to-stop-is-marked-where-the-reader-stands, scenario: a-desk-past-the-bound]
