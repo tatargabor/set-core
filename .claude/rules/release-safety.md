@@ -69,6 +69,14 @@ These categories **block only when the remote is not private** — in `--staged`
 `--message` too, where visibility is consulted lazily, only when one of them fired. A private
 repo that coordinates its clients must be able to name them.
 
+**A reference to one of the owner's OWN private repositories may leave — a client's name may not**
+(owner, 2026-11-24: *„leakscan kivihet hivatkozást privat repora ha az a fejleztséshez kell és nem
+ügyfél név hanem ami saját reponk. ezzel nem megy ki privatból adat csak hogy kapcsolat”*). A repo
+name in a public file tells the reader that a relationship exists; it carries none of the private
+repo's content. So the deny-list's private-repositories section holds only names that may carry a
+client's name, and an own-product repo is not listed there. The code's private `set-*` class does
+not draw this line yet — see B-225 in the bug register.
+
 **Precedence:** a deny-list term is **not** silenced by a plain allow entry. Plain entries are
 registry slugs (the owner's own company names were allowlisted there on 2026-08-24); listing
 such a name in the deny-list makes it fire in a public repo again. Only a `literal:` allow

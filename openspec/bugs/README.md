@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-225 — `set-leakscan`'s private `set-*` class blocks every own private repo name in a public repo, which the owner's 2026-11-24 rule allows
+- **state:** open
+- **reported:** 2026-11-24 by the user, while a public repo's push was blocked over the name of an own private repo (*„leakscan kivihet hivatkozást privat repora ha az a fejleztséshez kell és nem ügyfél név hanem ami saját reponk”*)
+- **measured:** `bin/set-leakscan` `private_set_names()` marks every private `set-*` registry name as blocking in a non-private remote, with no own-vs-client distinction. The deny-list half was fixed by hand the same day, machine-local: own-product names were removed from its private-repositories section, and the blocked push then passed (`set-leakscan`: clean, 62 files, remote public).
+- **fail direction:** loud. A legitimate push is refused, which tempts a bypass.
+- **fixed when:** an own private `set-*` repo's name in a public tree passes `--tree` and `--staged`, a name that carries a client's name still blocks (e.g. through the deny-list), and a test holds both.
+
 ### B-224 — `end_missing` ends a desk mandate that has no recorded unit without measuring anything
 - **state:** closed 2026-11-24 in the commit that adds this line. `end_missing` measures a unitless record through the scope its label names (`mandate.measured_unit` → `scopes.unit_name(label)`; on the live store the derived name equals the recorded unit in 22/22 started records), keeps one with neither unit nor label as unmeasured, and measures before taking the lock, so a kept mandate costs the polled listing no store write (the old code rewrote the file on every round it ran). Tests `test_a_mandate_without_a_unit_is_measured_through_its_label`, `…_with_neither_unit_nor_label_is_unmeasurable_and_kept` and `test_a_kept_mandate_costs_the_store_no_write` fail against the previous code and pass with the fix.
 - **reported:** 2026-11-24 by this session (set-core#8d47865a), during `/opsx:verify fleet-engagement-takeover`.
