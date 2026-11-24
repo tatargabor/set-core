@@ -4,24 +4,34 @@ Navigation map for finding the right doc based on your role and goal.
 
 ## Where to Start
 
+set-core v2.0.0 is a harness and fleet layer; the orchestration engine is dormant
+([why](learn/from-orchestration-to-harness.md)). Read the current docs first; the
+orchestration-era docs are kept as a record and marked so below.
+
 | Role | Reading Path |
 |------|-------------|
-| **Solo Developer** | [quick-start](guide/quick-start.md) → [worktrees](guide/worktrees.md) → [openspec](guide/openspec.md) → [memory](guide/memory.md) |
-| **Team Lead / Orchestration** | [quick-start](guide/quick-start.md) → [orchestration](guide/orchestration.md) → [sentinel](guide/sentinel.md) → [dashboard](guide/dashboard.md) → [team-sync](guide/team-sync.md) |
-| **Contributor** | [architecture](reference/architecture.md) → [plugins](reference/plugins.md) → [how-it-works](learn/how-it-works.md) → [CONTRIBUTING](../CONTRIBUTING.md) |
+| **Running the fleet** | [fleet-machine-setup](guide/fleet-machine-setup.md) → [dashboard](guide/dashboard.md) → [openspec](guide/openspec.md) |
+| **Contributor** | [from-orchestration-to-harness](learn/from-orchestration-to-harness.md) → [architecture](reference/architecture.md) → [plugins](reference/plugins.md) → [CONTRIBUTING](../CONTRIBUTING.md) |
+| **Understanding the family** | [ecosystem](ecosystem.md) → [roadmap](roadmap.md) → [release notes](release/v2.0.0.md) |
 
 ## Guide (How-To)
 
 | Doc | Description |
 |-----|-------------|
-| [quick-start.md](guide/quick-start.md) | Install and run your first orchestration |
-| [orchestration.md](guide/orchestration.md) | Full autonomous pipeline walkthrough |
-| [sentinel.md](guide/sentinel.md) | Supervisor setup and monitoring |
-| [worktrees.md](guide/worktrees.md) | Parallel development with git worktrees |
-| [openspec.md](guide/openspec.md) | Spec-driven development workflow |
-| [memory.md](guide/memory.md) | Persistent cross-session memory |
+| [fleet-machine-setup.md](guide/fleet-machine-setup.md) | Bring a machine up to the fleet: dashboard, bus, relay, auto-answer, handoff — with a check per step |
 | [dashboard.md](guide/dashboard.md) | Web dashboard setup and usage |
-| [team-sync.md](guide/team-sync.md) | Multi-agent coordination |
+| [openspec.md](guide/openspec.md) | Spec-driven development workflow |
+| [worktrees.md](guide/worktrees.md) | Parallel development with git worktrees |
+
+**Orchestration era — dormant, kept as a record:**
+
+| Doc | Description |
+|-----|-------------|
+| [quick-start.md](guide/quick-start.md) | Install and run a first orchestration |
+| [orchestration.md](guide/orchestration.md) | The autonomous pipeline walkthrough |
+| [sentinel.md](guide/sentinel.md) | Supervisor setup and monitoring |
+| [team-sync.md](guide/team-sync.md) | The git-based multi-agent coordination (retired; the bus is [set-agent-comm](https://github.com/tatargabor/set-agent-comm)) |
+| [memory.md](guide/memory.md) | The memory subsystem — **removed** in v2.0.0 |
 
 ## Reference (Lookup)
 
@@ -37,7 +47,9 @@ Navigation map for finding the right doc based on your role and goal.
 
 | Doc | Description |
 |-----|-------------|
-| [how-it-works.md](learn/how-it-works.md) | Pipeline internals overview |
+| [from-orchestration-to-harness.md](learn/from-orchestration-to-harness.md) | Why set-core changed direction in v2.0.0, what it is now, what was removed |
+| [orchestration-pipeline.md](learn/orchestration-pipeline.md) | The orchestration pipeline as the README described it until v2.0.0 — dormant |
+| [how-it-works.md](learn/how-it-works.md) | Orchestration pipeline internals (dormant) |
 | [journey.md](learn/journey.md) | Development statistics and evolution |
 | [benchmarks.md](learn/benchmarks.md) | E2E run results and metrics |
 | [lessons-learned.md](learn/lessons-learned.md) | Production insights |
@@ -70,4 +82,4 @@ Dated technical deep-dives and empirical studies. See [research/README.md](resea
 
 ## Deep Technical Reference
 
-The [howitworks/en/](howitworks/en/) directory contains an 18-chapter technical reference covering every pipeline stage — from input parsing through planning, execution, quality gates, merge, and replan.
+The [howitworks/en/](howitworks/en/) directory contains an 18-chapter technical reference of the (now dormant) orchestration pipeline, covering every stage — from input parsing through planning, execution, quality gates, merge, and replan.
