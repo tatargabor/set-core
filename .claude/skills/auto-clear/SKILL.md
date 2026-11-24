@@ -166,6 +166,15 @@ this:
   scope (user < project < project-local < managed; the narrowest scope that sets it wins), nothing
   compacts at ~54 min, so there is no upper bound: any idle time of `--idle-minutes` or more is due.
 
+- **After a warm-idle clear the session was waiting for you, not working:** the auto-continue then
+  opens with `WAITING FOR THE USER` and asks the fresh session only to say, on a `NEED INPUT:` line,
+  what it was waiting for. No work is started. `--idle-continue '<text>'` overrides that prompt.
+- **Cost and payback are logged:** every clear writes a `cost` line with the handoff turn's cache
+  writes, cache reads and output, in input-token equivalents (1-hour cache write 2×, 5-minute 1.25×,
+  read 0.1×, output 5×). Once the fresh session has made 20 requests, a `payback` line follows:
+  context before → after, saved versus cost, and the net. A clear that ran after the 1-hour cache
+  had gone cold shows up there as a large cache write.
+
 Off: `--idle-minutes 0` (or `--idle-floor 0`). A tree that sets `CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS`
 passes the same number as `--idle-floor`.
 

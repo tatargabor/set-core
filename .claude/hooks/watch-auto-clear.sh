@@ -118,6 +118,11 @@ DIR=""; INTERVAL=60; THRESHOLD=""; FRESHNESS=""; BG="false"; AFTER=""; AFTER_GIV
 CONTINUE_PROMPT=""; CONTINUE_DELAY=20; AUTOPILOT=0; COMPACT_BG="false"; COMPACT_THRESHOLD=""
 COMPACT_CONTINUE="Continue after an automatic /compact (compact-on-background): your background agents are still running and will notify you. Re-read your own handoff file in full, then continue its CURRENT next step - a later UPDATE section supersedes earlier next steps, and a step marked done is never redone. Write a fresh handoff before the context fills again."
 DEFAULT_CONTINUE="Autopilot continue after an automatic /clear (auto-continue): read the reloaded handoff file in full - it is THIS session's own thread. Continue with its CURRENT next step - a later UPDATE section supersedes the original next-steps list, and a step marked done is never redone. A project-level goal or plan file is context, not a work queue: never take over a step or lane another session owns. Stop and wait only at a decision that the thread's recorded human direction does not already answer - ask it on its own line starting with NEED INPUT: so the keep-going hook lets the stop through."
+# After a WARM-IDLE clear the session was not working: its turn had ended and it was waiting for
+# the user. Continuing "the next step" there would start work nobody asked for, so the prompt opens
+# with a marker the user sees in the pane, and the session only says what it was waiting for.
+# (Owner request 2026-11-24.) --idle-continue overrides it; `default` selects this text.
+DEFAULT_IDLE_CONTINUE="WAITING FOR THE USER - this session was cleared after an idle wait (warm-idle): its last turn had ended and it was waiting for the user, not working. Read the reloaded handoff file in full - it is THIS session's own thread. Do NOT start or continue any work. Reply with one short message: on its own first line starting with NEED INPUT:, say what you were waiting for (the open question or decision from the handoff), then stop."
 while [ $# -gt 0 ]; do
   case "$1" in
     --dir) DIR="$2"; shift 2;;
@@ -128,6 +133,7 @@ while [ $# -gt 0 ]; do
     --started-after) if [ "$2" = "wired" ]; then STAMP_MODE=1; else AFTER="$2"; AFTER_GIVEN=1; fi; shift 2;;
     --gate) GATE="$2"; shift 2;;
     --auto-continue) CONTINUE_PROMPT="$2"; shift 2;;
+    --idle-continue) IDLE_CONTINUE_PROMPT="$2"; shift 2;;
     --continue-delay) CONTINUE_DELAY="$2"; shift 2;;
     --autopilot) AUTOPILOT=1; shift;;
     --compact-on-background) COMPACT_BG="$2"; shift 2;;
@@ -148,6 +154,7 @@ GATE="${GATE:-$DIR/.claude/hooks/clear-gate.mjs}"
 PRESENCE="$(dirname "$GATE")/presence.mjs"
 [ -f "$PRESENCE" ] || { echo "presence check not found: $PRESENCE — re-run init --auto-clear (typing without it is how the 10:03:50Z collision happened)" >&2; exit 2; }
 TURN="$(dirname "$GATE")/turn-state.mjs"
+COST="$(dirname "$GATE")/handoff-cost.mjs"
 [ -f "$TURN" ] || { echo "turn-state check not found: $TURN — re-run init --auto-clear (typing without it is how the 21:24:39Z queue happened)" >&2; exit 2; }
 # Beside the gate: unchanged for the per-repo copy, and the package's own modules when the package runs
 # the watcher (`set-claude-handoff watch`, no per-repo copy).
@@ -156,6 +163,7 @@ LEDGER="$AP_DIR/ledger.mjs"
 DRIFT="$AP_DIR/drift-guard.mjs"
 # `--auto-continue default` selects the package's continue prompt without hand-writing one.
 [ "$CONTINUE_PROMPT" = "default" ] && CONTINUE_PROMPT="$DEFAULT_CONTINUE"
+{ [ -z "${IDLE_CONTINUE_PROMPT:-}" ] || [ "$IDLE_CONTINUE_PROMPT" = "default" ]; } && IDLE_CONTINUE_PROMPT="$DEFAULT_IDLE_CONTINUE"
 if [ "$AUTOPILOT" = "1" ]; then
   [ -f "$DRIFT" ] || { echo "--autopilot: drift guard not found: $DRIFT — run init --autopilot" >&2; exit 2; }
   [ -n "$CONTINUE_PROMPT" ] || CONTINUE_PROMPT="$DEFAULT_CONTINUE"
@@ -286,6 +294,7 @@ if [ "$FLEET_OK" != "1" ]; then
   log "warn  fleet: the owner client is not importable by $(command -v python3) (${FLEET_ERR:-unknown error}) — sessions hosted by the fleet can never be nudged or cleared, only tmux panes can; put set-core's lib on PYTHONPATH in this watcher's environment"
 fi
 [ -f "$LEDGER" ] || log "note  autopilot ledger not installed — typed text is not provenance-logged"
+[ -f "$COST" ] || log "note  handoff-cost.mjs not installed next to the gate — no cost/payback lines; re-run init --auto-clear"
 
 # Every worktree of DIR is a legitimate session cwd — and each tree gates from ITS OWN
 # .set/handoff (9.1). The main tree is first; worktree enumeration failing (plain dir, no
@@ -530,16 +539,62 @@ disk_ok() { # $1 = tree; prints the short reason on failure
 
 # The continue prompt NAMES the thread's handoff: if the SessionStart injection is lost, the
 # successor still knows which file is its own (2026-09-25: it had to grep the log to find it).
-continue_text() { # $1 = tree, $2 = cleared sid
-  local s8 m nev
+continue_text() { # $1 = tree, $2 = cleared sid; reads $trigger of the FIRE that cleared it
+  local s8 m nev prompt="$CONTINUE_PROMPT"
+  [ "${trigger:-}" = "$WARM_IDLE_TRIGGER" ] && prompt="$IDLE_CONTINUE_PROMPT"
   s8=$(printf '%s' "$2" | tr -cd 'a-zA-Z0-9' | cut -c1-8)
   m="$1/.set/handoff/.written-$s8"
   nev=$(awk '{print $2; exit}' "$m" 2>/dev/null)
   if [ -n "$nev" ] && [ -f "$1/.set/handoff/$nev" ]; then
-    printf '%s (Handoff file of the cleared session %s: %s)' "$CONTINUE_PROMPT" "$s8" "$1/.set/handoff/$nev"
+    printf '%s (Handoff file of the cleared session %s: %s)' "$prompt" "$s8" "$1/.set/handoff/$nev"
   else
-    printf '%s (No .written-%s marker names a handoff for the cleared session — find its thread in .set/handoff/auto-clear.log before acting.)' "$CONTINUE_PROMPT" "$s8"
+    printf '%s (No .written-%s marker names a handoff for the cleared session — find its thread in .set/handoff/auto-clear.log before acting.)' "$prompt" "$s8"
   fi
+}
+
+# What the handoff cost, and later what the clear saved (handoff-cost.mjs; owner request 2026-11-24:
+# "can we measure what a handoff costs — is it worth it?"). Logged once per clear, never typed.
+WARM_IDLE_TRIGGER="warm-idle"
+PAYBACK_REQUESTS=20
+PAYBACK_MAX_S=86400
+cost_log() { # $1 = tree, $2 = cleared sid, $3 = its transcript, $4 = pid
+  [ -f "$COST" ] || return 0
+  local s8 m mtime j eq
+  s8=$(printf '%s' "$2" | tr -cd 'a-zA-Z0-9' | cut -c1-8)
+  m="$1/.set/handoff/.written-$s8"
+  [ -f "$m" ] && [ -f "$3" ] || { log "cost  $2  not measured: no marker or transcript to read"; return 0; }
+  mtime=$(node -e 'process.stdout.write(String(Math.round(require("node:fs").statSync(process.argv[1]).mtimeMs)))' "$m" 2>/dev/null)
+  j=$(node "$COST" cost "$3" "$mtime" 2>/dev/null)
+  eq=$(printf '%s' "$j" | jq -r '.equiv // empty' 2>/dev/null)
+  [ -n "$eq" ] || { log "cost  $2  not measured: $(printf '%s' "$j" | jq -r '.error // "no usage records"' 2>/dev/null)"; return 0; }
+  log "cost  $2  handoff turn: $(printf '%s' "$j" | jq -r '"\(.requests) requests, cache write \(.cacheWrite), cache read \(.cacheRead), output \(.output)"') ≈ $eq input-token equivalents; context before $(printf '%s' "$j" | jq -r '.contextBefore // "unknown"') (trigger=${trigger:-?})"
+  printf '%s %s %s %s\n' "$4" "$(printf '%s' "$j" | jq -r '.contextBefore // 0')" "$eq" "$(date +%s)" > "$1/.set/handoff/.cost-$s8" 2>/dev/null
+}
+payback_check() { # every pass: a recorded clear whose fresh session has made PAYBACK_REQUESTS requests
+  local t f s8 pid ctx eq at now fresh slug tr j
+  [ -f "$COST" ] || return 0
+  now=$(date +%s)
+  while IFS= read -r t; do
+    for f in "$t"/.set/handoff/.cost-*; do
+      [ -f "$f" ] || continue
+      s8=${f##*/.cost-}
+      read -r pid ctx eq at < "$f" 2>/dev/null
+      case "$at" in ''|*[!0-9]*) rm -f "$f"; continue;; esac
+      fresh=$(jq -r '.sessionId // empty' "$HOME/.claude/sessions/$pid.json" 2>/dev/null)
+      if [ -z "$fresh" ] || [ $((now - at)) -gt "$PAYBACK_MAX_S" ]; then
+        log "payback  $s8  not measured: the fresh session ended or did not reach $PAYBACK_REQUESTS requests within 24 h (handoff cost ≈ $eq)"
+        rm -f "$f"; continue
+      fi
+      slug=$(jq -r '.cwd // empty' "$HOME/.claude/sessions/$pid.json" 2>/dev/null | sed 's/\//-/g')
+      tr="$HOME/.claude/projects/$slug/$fresh.jsonl"
+      [ -f "$tr" ] || continue
+      j=$(node "$COST" payback "$tr" "$ctx" "$PAYBACK_REQUESTS" 2>/dev/null)
+      [ "$(printf '%s' "$j" | jq -r '.savedEquiv // empty' 2>/dev/null)" ] || continue
+      log "payback  $s8  after $PAYBACK_REQUESTS requests of $fresh: context $ctx → avg $(printf '%s' "$j" | jq -r '.avgContext'), saved ≈ $(printf '%s' "$j" | jq -r '.savedEquiv') vs handoff cost ≈ $eq → net $(( $(printf '%s' "$j" | jq -r '.savedEquiv') - eq )) input-token equivalents"
+      rm -f "$f"
+    done
+  done <<< "$WORKTREES"
+  return 0
 }
 
 # The fleet-owner writer (9.2): roster lookup by pid.
@@ -798,6 +853,7 @@ heartbeat() {
 while :; do
   log_rotate
   heartbeat
+  payback_check
   for rec in "$HOME"/.claude/sessions/*.json; do
     [ -f "$rec" ] || continue
     sid=$(jq -r '.sessionId // empty' "$rec" 2>/dev/null) || continue
@@ -905,6 +961,7 @@ while :; do
           if [ "$CMD" = "/compact" ]; then
             compact_continue owner "$label" "$(compact_disarm "$tree" "$sid")"
           else
+            cost_log "$tree" "$sid" "$transcript" "$pane_pid"
             continue_owner "$label" "$pane_pid" "$sid" "$tree"
           fi
         else
@@ -958,6 +1015,7 @@ while :; do
     if [ "$CMD" = "/compact" ]; then
       compact_continue tmux "$pane" "$(compact_disarm "$tree" "$sid")"
     else
+      cost_log "$tree" "$sid" "$transcript" "$pane_pid"
       continue_tmux "$pane" "$pane_pid" "$sid" "$tree"
     fi
   done
