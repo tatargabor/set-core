@@ -30,12 +30,19 @@ import { fileURLToPath } from "node:url"
 const PROMPT = "❯\xa0"
 const LEAD = /^(?:\x1b\[(?:0|39|49|22)?m|\x1b\[K)*/
 const ANY_CSI = /\x1b\[[0-9;?]*[A-Za-z]/g
+// Everything else that paints nothing: OSC titles (ESC ] … BEL/ST), charset selects (ESC ( B),
+// other two-byte escapes, and C0 controls such as SI (\x0f). Measured 2026-11-24 on a fleet seat:
+// a freshly cleared session's empty input row was painted as cursor moves + `ESC ( B` + `\x0f`,
+// and with only CSI stripped that read as "typed", so the auto-continue was held as "a human is at
+// the keyboard" and the cleared session sat idle.
+const NON_PRINTING = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()*+][0-9A-Za-z]|\x1b[=>78DEHMNOZc]|[\x00-\x08\x0b-\x1f\x7f]/g
+const visible = (t) => t.replace(ANY_CSI, "").replace(NON_PRINTING, "")
 
 /** Classify what follows the input prompt glyph. */
 export function classifyAfterPrompt(after) {
   const s = String(after ?? "")
   const rest = s.slice(LEAD.exec(s)[0].length)
-  if (rest.replace(ANY_CSI, "").trim() === "") return "empty"
+  if (visible(rest).trim() === "") return "empty"
   if (rest.startsWith("\x1b[2m")) return "ghost"
   return "typed"
 }
