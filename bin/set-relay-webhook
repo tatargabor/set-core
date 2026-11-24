@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""set-relay-webhook — a command-shaped relay outbound that posts to the relay's webhook.
+
+The question relay's targets are exclusive (`command` or `webhook`), and the auto-answer
+decider must be the `command`. This carrier puts a webhook channel (Discord, for one)
+behind it:
+
+    set-config set question_relay.webhook_url <the channel's webhook URL>
+    set-config set auto_answer.forward_command set-relay-webhook
+
+It reads the envelope on stdin — a question list, or {"kind":"notification",...} — and
+posts one message. One way: the answer is given at the terminal or in the fleet. Exit 0
+means posted; anything else means the operator did not see it, and the decider hands the
+question back rather than writing an answer.
+
+`question_relay.webhook_detail` = full posts the question text and the proposal; any other
+value posts headers only and says that a proposal exists.
+
+The decision lives in `set_orch.fleet.question_relay.webhook_forward`; this file is the
+carrier. Logs: ~/.local/share/set-core/question-relay/relay.log. Prints nothing.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import sys
+
+_SET_TOOLS_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+_LIB = os.path.join(_SET_TOOLS_ROOT, "lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+
+
+def main() -> int:
+    payload = sys.stdin.read()
+    try:
+        from set_orch.fleet import question_relay as qr
+
+        folder = qr.state_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(filename=str(folder / "relay.log"), level=logging.INFO,
+                            format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        return qr.webhook_forward(payload)
+    except Exception as exc:
+        logging.getLogger("set-relay-webhook").warning("forward failed (%s)", type(exc).__name__)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

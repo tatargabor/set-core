@@ -611,6 +611,64 @@ def post_webhook(url: str, content: str, timeout: float = 10.0) -> None:
         resp.read()
 
 
+def webhook_forward(payload: str, *, get: Getter = local_config.get,
+                    post: Callable[[str, str], None] = post_webhook,
+                    environ: Optional[Dict[str, str]] = None) -> int:
+    """A command-shaped outbound that posts the relay's envelope to the webhook.
+
+    The relay's two targets are exclusive: `command` (which the auto-answer decider must
+    be) or `webhook`. This is what lets a webhook channel — a Discord one, say — sit
+    BEHIND the decider as its `auto_answer.forward_command`, or serve as
+    `question_relay.command` / `notify_command` directly. One way only: the answer is
+    still given at the terminal or in the fleet.
+
+    Exit codes are the contract the caller acts on: 0 posted; non-zero means the operator
+    did not see it, so the decider hands the question back instead of writing an answer.
+    """
+    env = os.environ if environ is None else environ
+    url = _text(get(KEY_WEBHOOK))
+    if not url:
+        logger.warning("webhook forward: %s is not set; nothing posted", KEY_WEBHOOK)
+        return 2
+    try:
+        envelope = json.loads(payload)
+    except ValueError:
+        logger.warning("webhook forward: the envelope is not JSON (%d chars)", len(payload))
+        return 2
+    if not isinstance(envelope, dict):
+        logger.warning("webhook forward: the envelope is a %s, not an object", type(envelope).__name__)
+        return 2
+    if envelope.get("kind") == "notification":
+        content = f"⚠ {envelope.get('agent') or envelope.get('project') or 'agent'}\n{envelope.get('message', '')}"[:1900]
+    else:
+        entries = [e for e in envelope.get("questions") or [] if isinstance(e, dict)]
+        if not entries:
+            logger.warning("webhook forward: the envelope carries no question; nothing posted")
+            return 2
+        project = _project_name(env.get(ENV_CWD, "")) if env.get(ENV_CWD) else (
+            str(entries[0].get("source") or "").split(" · ")[0] or "agent")
+        session = env.get(ENV_SESSION, "") or str(entries[0].get("source") or "").split(" · ")[-1]
+        # The envelope's option lists are labels only; rebuild the hook's tool_input shape
+        # so the message is the same one the webhook target posts.
+        tool_input = {"questions": [{"header": e.get("key") or "question",
+                                     "question": e.get("question", ""),
+                                     "options": [{"label": o} for o in e.get("optionsList") or []]}
+                                    for e in entries]}
+        detail = _text(get(KEY_DETAIL)) or "summary"
+        content = webhook_message(project, session, tool_input, detail)
+        if detail != "full" and any("🤖" in str(e.get("question", "")) for e in entries):
+            # A summary hides the question text, and the proposal rides inside it — say
+            # that one exists, without its content, so a timed write is never a surprise.
+            content = (content + "\n🤖 An automatic answer is proposed — see the fleet's Automatic answers panel.")[:1900]
+    try:
+        post(url, content)
+    except Exception as exc:
+        logger.warning("webhook forward: post failed (%s)", type(exc).__name__)
+        return 1
+    logger.info("webhook forward: posted (%d chars)", len(content))
+    return 0
+
+
 # --------------------------------------------------------------------------- #
 # the decision loop
 # --------------------------------------------------------------------------- #
