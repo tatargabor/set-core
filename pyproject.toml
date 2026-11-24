@@ -1,7 +1,7 @@
 [project]
 name = "set-core"
-version = "0.3.0"
-description = "SET (ShipExactlyThis) — Autonomous Multi-Agent Orchestration Platform"
+version = "2.0.0"
+description = "SET — a harness and fleet layer for running many Claude Code sessions across many projects"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
