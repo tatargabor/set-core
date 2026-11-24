@@ -245,3 +245,24 @@ class TestResolveProjectName:
         with tempfile.TemporaryDirectory() as tmpdir:
             name = resolve_project_name(tmpdir)
             assert name == "_global"
+
+
+def test_project_name_from_a_subdirectory_and_from_a_worktree(tmp_path):
+    """Measured 2026-11-24: from `<repo>/web` the name came out as the repo's PARENT
+    directory, because a relative --git-common-dir was joined onto the toplevel instead of
+    the current directory. A worktree, and a subdirectory of one, still name the main repo."""
+    import subprocess
+    from set_orch.paths import resolve_project_name
+    repo = tmp_path / "outer" / "myrepo"
+    (repo / "web" / "src").mkdir(parents=True)
+    run = lambda *a, cwd=repo: subprocess.run(["git", *a], cwd=cwd, check=True, capture_output=True)
+    run("init", "-q")
+    run("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x")
+    assert resolve_project_name(str(repo)) == "myrepo"
+    assert resolve_project_name(str(repo / "web")) == "myrepo"
+    assert resolve_project_name(str(repo / "web" / "src")) == "myrepo"
+    wt = tmp_path / "wt-elsewhere"
+    run("worktree", "add", "-q", str(wt))
+    (wt / "sub").mkdir()
+    assert resolve_project_name(str(wt)) == "myrepo"
+    assert resolve_project_name(str(wt / "sub")) == "myrepo"

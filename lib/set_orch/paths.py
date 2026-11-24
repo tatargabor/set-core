@@ -75,10 +75,15 @@ def resolve_project_name(project_path: str | None = None) -> str:
     except (subprocess.TimeoutExpired, OSError):
         common_dir = ""
 
-    if common_dir and common_dir != ".git":
-        # Worktree: resolve to main repo name
-        abs_common = os.path.normpath(os.path.join(toplevel, common_dir))
-        return os.path.basename(os.path.dirname(abs_common))
+    if common_dir:
+        # A relative --git-common-dir is relative to the CURRENT directory, not to the
+        # toplevel. Measured 2026-11-24: joined onto the toplevel, a call from `<repo>/web`
+        # named the project after the repo's parent directory, and one from `<repo>/web/src`
+        # after the directory above that — the relay labelled a session with the wrong name.
+        abs_common = os.path.normpath(os.path.join(cwd, common_dir))
+        if abs_common != os.path.normpath(os.path.join(toplevel, ".git")):
+            # Worktree: resolve to main repo name
+            return os.path.basename(os.path.dirname(abs_common))
 
     return os.path.basename(toplevel)
 
