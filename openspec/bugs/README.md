@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-237 — `set-doctor` reports an auto-clear watcher "ok" while the running process predates its script, so a template update never takes effect
+- **state:** open
+- **reported:** 2026-11-24 by the user, after a session in this tree was idle-compacted by the runtime although warm-idle rotation had shipped that morning.
+- **measured:** `systemctl --user show auto-clear-set-core.service -p ExecMainStartTimestamp` → `09:07:57`; the template commit that added the warm-idle nudge landed at `09:08:13`, and `.claude/hooks/watch-auto-clear.sh` was redeployed at `13:07:25`. bash parses the watch loop once, so the process kept the old loop: its `watcher started` line carries no `arm-nudge=`/`warm-idle=` fields. `clear-gate.mjs` IS re-read every pass, so `.set/handoff/auto-clear.log` shows the gate's verdict while the old loop ignores `.nudge.due`: from `13:52` to `13:57` (idle 48–54 min, 229 666 tokens, unarmed) nothing was typed and nothing about a nudge was logged; at `13:58` the gate wrote "warm window missed … idle compaction is under way". Same state on two consumer projects' watcher units. The doctor's auto-clear check (`lib/set_doctor/auto_clear.py`, `stale_templates` + `unit_active`) compares file CONTENT with the package and whether the unit is active — never the process start against the script's mtime — and said `ok`.
+- **fail direction:** silent, reassuring — "templates current" is true of the disk and false of the process; the cost is a full idle compaction per idle session.
+- **fixed when:** the doctor warns, with `systemctl --user restart <unit>` as the fix, for a watcher unit whose `ExecMainStartTimestamp` is older than its `watch-auto-clear.sh` mtime; and `install.sh` / `set-project init` restart the unit when they rewrite that script. A test covers both the stale and the fresh case.
+
 ### B-236 — the auto-answer panel's "not wired" hint always tells the reader to copy a `question_relay.command` that may not exist
 - **state:** open
 - **reported:** 2026-11-24 by the user, from a screenshot of the fleet header's Automatic answers panel right after switching it on.
