@@ -204,7 +204,8 @@ verdict_shape() { printf '%s' "$1" | sed -e 's/[0-9][0-9]*/N/g' -e 's/\(N\)\(\.N
 # The per-pass "no" line is written only when THIS session's shape changed, or NO_HEARTBEAT_S
 # passed since its last written line (a heartbeat, so a tail still shows the session is watched).
 # The memory is per watcher: two watchers on one tree each keep their own and each log their own
-# line. Every other line (FIRE, NUDGE, request, warm-idle, skip) is never deduped. rc 0 = write it.
+# line. The "no writer path" nudge/skip lines use the same rule under their own key. Every other
+# line (FIRE, NUDGE, request, warm-idle, other skips) is never deduped. rc 0 = write it.
 NO_HEARTBEAT_S=1800
 no_log_due() { # $1 = sid, $2 = shape
   local f now last seen
@@ -716,7 +717,13 @@ nudge_session() { # $1 = tree, $2 = sid, $3 = pid, $4 = verdict
     pres=$(presence_tmux "$pane"); turn=$(turn_tmux "$pane")
   else
     label="$(fleet_label_for_pid "$3")"
-    [ -n "$label" ] || { log "nudge $2  due at $tokens but no tmux pane hosts pid ${3:-?} and no fleet agent holds it — no writer path"; return 0; }
+    if [ -z "$label" ]; then
+      # Deduped like the "no" line (own key, same shape + heartbeat rule): measured 2026-11-24, an
+      # unreachable 400k+ seat logged this every pass, 14 lines in 15 minutes, with nothing new.
+      no_log_due "${2}nowriter" "$(verdict_shape "nudge $3")" \
+        && log "nudge $2  due at $tokens but no tmux pane hosts pid ${3:-?} and no fleet agent holds it — no writer path (logged on change or every 30 min)"
+      return 0
+    fi
     pres=$(presence_owner "$label"); turn=$(turn_owner "$label")
   fi
   safe_to_type "$pres" || { log "nudge $2  due at $tokens but presence=$pres — a human may be typing; not this pass"; return 0; }
@@ -878,7 +885,8 @@ while :; do
         fi
         continue
       fi
-      log "skip  $sid  ELIGIBLE but no tmux pane hosts pid ${pane_pid:-?} and no fleet agent holds it — no writer path"
+      no_log_due "${sid}nowriter" "$(verdict_shape "skip $pane_pid")" \
+        && log "skip  $sid  ELIGIBLE but no tmux pane hosts pid ${pane_pid:-?} and no fleet agent holds it — no writer path (logged on change or every 30 min)"
       continue
     fi
     state=$(presence_tmux "$pane")

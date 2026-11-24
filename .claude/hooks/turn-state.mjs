@@ -31,7 +31,8 @@
  *     contains it. The 21:25:16Z confirm was a false positive: the old check grepped the whole
  *     transcript for "auto-continue", and every transcript contains that string from birth
  *     (skill_listing attachment, reinjected handoff preview). A queued message leaves NO user entry
- *     (probe M2), so a user-string hit is the only submitted evidence.
+ *     (probe M2), so a user-string hit is submitted evidence. So is a `queued_command` attachment:
+ *     a prompt queued into an already running turn and drained into it (measured 2026-11-24).
  *   fireLockState — the 21:26:17Z second fire happened because nothing recorded that a /clear was
  *     already in flight. The lock holds re-fires until the clear takes effect (the pid's sessionId
  *     changes) or the max wait passes.
@@ -85,6 +86,13 @@ export function transcriptSaysSubmitted(jsonlText, fragment) {
     try {
       const rec = JSON.parse(line)
       if (rec?.type === "user" && typeof rec?.message?.content === "string" && rec.message.content.includes(fragment)) return true
+      // A prompt typed while the fresh session was already busy (a background task's notification
+      // started a turn) is drained INTO that turn as a `queued_command` attachment, not a user
+      // string. That attachment is delivery: the model reads it. A bare queue-operation `enqueue`
+      // is not, because the message may still be waiting (probe M2). Measured 2026-11-24 on a
+      // consumer seat: the continue prompt was delivered at 08:21:14 and 193 assistant records
+      // followed, yet the watcher logged CONTINUE UNCONFIRMED.
+      if (rec?.attachment?.type === "queued_command" && typeof rec.attachment.prompt === "string" && rec.attachment.prompt.includes(fragment)) return true
     } catch { /* not JSON — never evidence */ }
   }
   return false

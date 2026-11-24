@@ -32,18 +32,30 @@ that is the one rule the machinery will not bend.
 
 Run and report; each answer changes what you do next:
 
+Hooks and the watcher come by one of two routes, and either one is enough:
+- **copy route:** `init` copied the files into `.claude/hooks/`, and the project's settings call them;
+- **package route:** no copy at all. A plugin's `hooks/hooks.json` calls
+  `set-claude-handoff hook … --from-plugin` (written by `set-claude-handoff plugin-files`), or the
+  project's settings call `set-claude-handoff hook …` without `--from-plugin`. The watcher runs as
+  `set-claude-handoff watch --dir <tree>`, which runs the package's own `templates/watch-auto-clear.sh`.
+
 ```bash
-test -f .claude/hooks/clear-gate.mjs && echo gate-installed || echo gate-missing
-grep -c "clear-gate\|handoff-reinject" .claude/settings.json   # hook wiring (0 = not wired)
-command -v set-claude-handoff                                  # the package binary (plugin wiring)
+command -v set-claude-handoff                                  # the package binary (package route)
+test -f .claude/hooks/clear-gate.mjs && echo gate-copy || echo no-gate-copy   # copy route only
+grep -cE 'handoff-reinject-clear|hook reinject' \
+  .claude/settings.json .claude/settings.local.json 2>/dev/null  # project wiring, either route
+grep -E '"enabledPlugins"' -A8 .claude/settings.json ~/.claude/settings.json 2>/dev/null | grep -i true
+grep -l 'hook reinject --from-plugin' \
+  ~/.claude/plugins/cache/*/*/*/hooks/hooks.json 2>/dev/null    # plugins that wire it (enabled ones count)
 ls -l .set/handoff/.watcher-alive 2>/dev/null                  # a watcher's heartbeat (≤ 10 min = live)
 ls .set/handoff/.no-autoclear 2>/dev/null                      # PROJECT switch: present = OFF
-pgrep -af "watch-auto-clear.sh" | grep "$(pwd -P)" || true     # is a watcher armed for THIS tree
+pgrep -af "watch-auto-clear.sh" | grep -- "--dir $(pwd -P)" || true   # a watcher for THIS tree, either route
 ```
 
-A plugin may wire the hooks instead of `.claude/settings.json`: its `hooks.json` lines call
-`set-claude-handoff hook …` (written by `set-claude-handoff plugin-files`). Then `gate-missing` and a 0
-count are expected, and the binary plus the heartbeat are the evidence; say which wiring you found.
+Read the answers by route. `no-gate-copy` with a 0 settings count is **not** "not wired" when an
+enabled plugin carries the `--from-plugin` line, or the settings call the package: then the binary,
+that line and a fresh heartbeat are the evidence. Say which route you found. "Not wired" is the
+verdict only when neither route shows the reload hook.
 
 Also read `.claude/handoff.profile.md` — an `## Auto-clear` section there (threshold,
 background-work policy, auto-continue prompt, persistence) is the project's tuning; without
@@ -69,7 +81,9 @@ it you use the defaults and SAY so.
      session then stops only on a line starting `NEED INPUT:` or `ALL DONE:`, and writes its own
      handoff at the limit. Off: `touch .set/handoff/.no-keepgoing` (or `.no-keepgoing-<session8>`).
      Its decisions are in `.set/handoff/keep-going.log`.
-3. **Watcher**: if none is running for this tree, start one under tmux (or the fleet owner):
+3. **Watcher**: if none is running for this tree, start one under tmux (or the fleet owner).
+   On the package route replace `bash $PWD/.claude/hooks/watch-auto-clear.sh` with
+   `set-claude-handoff watch`; the flags are the same:
    ```bash
    tmux new-session -d -s auto-clear-watcher \
      "bash $PWD/.claude/hooks/watch-auto-clear.sh --dir $PWD \
@@ -92,7 +106,9 @@ it you use the defaults and SAY so.
 4. **VERIFY** — an armed state without evidence is not armed:
    `tail -1 .set/handoff/auto-clear.log` must show `watcher started … auto-continue=…`;
    run the gate once by hand (`node .claude/hooks/clear-gate.mjs --session <any live id> …
-   --json`) and show the 5-gate verdict. Report: threshold, which writer paths exist
+   --json`; on the package route the gate is
+   `"$(dirname "$(readlink -f "$(command -v set-claude-handoff)")")/../templates/clear-gate.mjs"`)
+   and show the 5-gate verdict. Report: threshold, which writer paths exist
    (tmux / fleet owner), auto-continue on/off, both switch states.
    Only with a start filter on: say whether THIS session is covered: `test -f .set/handoff/.excluded-<session8>` (the id8
    from the statusline or the newest `~/.claude/sessions/<pid>.json`). Present ⇒ this session
