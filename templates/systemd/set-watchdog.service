@@ -1,0 +1,15 @@
+[Unit]
+# One set-watchdog tick: deterministic probes, GLM triage of new findings only, dispatch of a
+# real finding to its owner (change fleet-watchdog). Run every 5 min by the timer beside it.
+# Kill switch: `set-config set watchdog.enabled false`.
+Description=set-watchdog tick (fleet self-check)
+Documentation=https://github.com/tatargabor/set-core
+After=set-web.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/set-watchdog tick
+Environment=PYTHONPATH=__SET_TOOLS_ROOT__/lib:__SET_TOOLS_ROOT__/modules/web
+Environment=PATH=__SERVICE_PATH__
+TimeoutStartSec=600
+Nice=10

@@ -308,7 +308,7 @@ install_scripts() {
 
     mkdir -p "$INSTALL_DIR"
 
-    local scripts=(set-common.sh set-paths set-project set-new set-work set-add set-list set-merge set-close set-version set-status set-focus set-config set-control set-control-gui set-control-init set-control-sync set-control-chat set-loop set-usage set-skill-start set-hook-stop set-hook-skill set-hook-activity set-hook-waveboard set-hook-question-relay set-hook-wait-detect set-hook-notify-relay set-hook-permission-relay set-hook-continue-relay set-hook-relay-supersede set-wave-board set-kb set-hook-checkout-guard set-leakscan set-hook-leakscan set-deploy-hooks set-openspec set-audit set-orchestrate set-manual set-e2e-report set-orch-core set-web-install set-discord-setup set-run-logs set-agent-owner set-glm set-providers set-now set-fleet-idle-close set-fleet-ask set-fleet-mandate set-auto-answer set-relay-wire set-feed-watch set-doctor)
+    local scripts=(set-common.sh set-paths set-project set-new set-work set-add set-list set-merge set-close set-version set-status set-focus set-config set-control set-control-gui set-control-init set-control-sync set-control-chat set-loop set-usage set-skill-start set-hook-stop set-hook-skill set-hook-activity set-hook-waveboard set-hook-question-relay set-hook-wait-detect set-hook-notify-relay set-hook-permission-relay set-hook-continue-relay set-hook-relay-supersede set-wave-board set-kb set-hook-checkout-guard set-leakscan set-hook-leakscan set-deploy-hooks set-openspec set-audit set-orchestrate set-manual set-e2e-report set-orch-core set-web-install set-discord-setup set-run-logs set-agent-owner set-glm set-providers set-now set-fleet-idle-close set-fleet-ask set-fleet-mandate set-auto-answer set-relay-wire set-feed-watch set-doctor set-watchdog)
 
     # ── Retire the removed memory subsystem ────────────────────────────────
     # Stopping the SHIPPING of a script does not remove one already on the target's
@@ -1153,9 +1153,23 @@ install_systemd_service() {
             warn "  Idle-close template not found: $idle_unit"
         fi
     done
+    # The watchdog tick (fleet-watchdog): without the timer nothing watches the fleet's
+    # quiet failures, and the fleet header shows the watchdog as stale.
+    local wd_unit
+    for wd_unit in set-watchdog.service set-watchdog.timer; do
+        if [[ -f "$SCRIPT_DIR/templates/systemd/$wd_unit" ]]; then
+            sed -e "s|__SET_TOOLS_ROOT__|$SCRIPT_DIR|g" -e "s|__SERVICE_PATH__|$(service_path)|g" \
+                "$SCRIPT_DIR/templates/systemd/$wd_unit" > "$service_dir/$wd_unit"
+            success "  Installed: $service_dir/$wd_unit"
+        else
+            warn "  Watchdog template not found: $wd_unit"
+        fi
+    done
     systemctl --user daemon-reload
     systemctl --user enable --now set-fleet-idle-close.timer 2>/dev/null \
         || warn "  set-fleet-idle-close.timer installed but not enabled (systemctl --user enable --now set-fleet-idle-close.timer)"
+    systemctl --user enable --now set-watchdog.timer 2>/dev/null \
+        || warn "  set-watchdog.timer installed but not enabled (systemctl --user enable --now set-watchdog.timer)"
 }
 
 # Install set-web launchd user agent (macOS)

@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""set-watchdog — the fleet's continuous self-check (change `fleet-watchdog`).
+
+    set-watchdog tick [--force]        one tick: run the due probes (--force: all of them)
+    set-watchdog status [--json]       the badge state, counts and open findings
+    set-watchdog probes                the probes and their intervals
+    set-watchdog mute <fp> --days N    stop counting a fingerprint for N days
+    set-watchdog dispatch <fp>         hand an open finding to its owner now
+
+Run every 5 minutes by `set-watchdog.timer`. Kill switch: `set-config set watchdog.enabled
+false`. State: ~/.local/share/set-core/watchdog/ (mode 600), never inside a repository.
+Logs go to the journal of the unit (stderr), carrying ids and counts, never evidence text.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import sys
+import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "lib"))
+
+
+def _age(seconds):
+    if seconds is None:
+        return "never"
+    if seconds < 120:
+        return f"{int(seconds)} s ago"
+    if seconds < 7200:
+        return f"{int(seconds // 60)} min ago"
+    return f"{seconds / 3600:.1f} h ago"
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(prog="set-watchdog", description=__doc__.split("\n\n")[0])
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    t = sub.add_parser("tick")
+    t.add_argument("--force", action="store_true")
+    s = sub.add_parser("status")
+    s.add_argument("--json", action="store_true")
+    sub.add_parser("probes")
+    m = sub.add_parser("mute")
+    m.add_argument("fp")
+    m.add_argument("--days", type=float, default=7)
+    d = sub.add_parser("dispatch")
+    d.add_argument("fp")
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, stream=sys.stderr,
+                        format="%(levelname)s %(name)s: %(message)s")
+
+    from set_orch.fleet_watchdog import view
+    if args.cmd == "tick":
+        from set_orch.fleet_watchdog.tick import tick
+        print(json.dumps(tick(force=args.force), sort_keys=True))
+        return 0
+    if args.cmd == "probes":
+        from set_orch.fleet_watchdog.probe import registry
+        from set_orch import local_config
+        for name, p in registry().items():
+            print(f"{name:18} every {p.interval(local_config.get) // 60:>3} min  {p.description}")
+        return 0
+    if args.cmd == "mute":
+        ok = view.mute(args.fp, args.days)
+        print("muted" if ok else f"no finding {args.fp}")
+        return 0 if ok else 1
+    if args.cmd == "dispatch":
+        res = view.dispatch_now(args.fp)
+        print(json.dumps(res, sort_keys=True))
+        return 0 if res.get("ok") else 1
+    data = view.summary()
+    if args.json:
+        print(json.dumps(data, indent=1, sort_keys=True))
+        return 0
+    c = data["counts"]
+    print(f"watchdog: {data['badge']}  ·  last tick {_age(data['last_tick_age_s'])}  ·  every "
+          f"{data['interval_s'] // 60} min{'' if data['enabled'] else '  ·  DISABLED'}")
+    print(f"open {c['open']} (fail {c['fail']}, warn {c['warn']}) · untriaged {c['untriaged']} · "
+          f"dispatched {c['dispatched']} · muted {c['muted']} · resolved 24h {c['resolved_24h']}")
+    for r in data["open"]:
+        tri = r["triage"] or {}
+        verdict = tri.get("verdict") or "untriaged"
+        disp = (r["dispatch"] or {}).get("state") or "-"
+        print(f"  [{r['severity']}] {r['fp']}  {r['probe']:15} {r['subject'][:48]:48}  {verdict:12} {disp}")
+        print(f"         {r['summary']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -93,7 +93,7 @@ message body, no file content. The finding store holds the same shape-only data,
 owner's own bus, and it carries only the same fields.
 
 **D8 — Layering.** The tick, the store, triage and dispatch are framework mechanics in
-`lib/set_orch/watchdog/`. The built-in probes watch set features (bus, auto-clear, relay, fleet
+`lib/set_orch/fleet_watchdog/`. The built-in probes watch set features (bus, auto-clear, relay, fleet
 services) and hold no project-type knowledge, so they belong in Layer 1 as well. Anything specific
 to a project or project type arrives as a module doctor through `doctors.d` (D2 of
 `doctor-module-contract`) and reaches the watchdog only through `set-doctor --json`.

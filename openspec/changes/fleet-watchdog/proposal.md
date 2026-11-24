@@ -61,7 +61,7 @@ GLM-esek legyenek"*.
 
 ## Impact
 
-- New: `lib/set_orch/watchdog/` (tick, probes, store, triage, dispatch), `bin/set-watchdog`,
+- New: `lib/set_orch/fleet_watchdog/` (tick, probes, store, triage, dispatch), `bin/set-watchdog`,
   `templates/systemd/set-watchdog.{service,timer}`, `lib/set_orch/api/watchdog.py`
   (`GET /api/fleet/watchdog`, plus the dismiss and dispatch actions), and a header component
   in `web/src`.
