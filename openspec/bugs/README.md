@@ -68,12 +68,54 @@ consumer's name, path, or content.
 
 ## Open
 
-### B-226 — the question-relay `teach` writes a consumer's name verbatim into a public repo's committed rules file
+### B-232 — the question-relay `teach` writes a consumer's name verbatim into a public repo's committed rules file
 - **state:** open
 - **reported:** 2026-11-24 by a peer agent (set-claude-handoff's session, over the bus): a taught answer appended to that repo's `.claude/rules/auto-answer-taught.md` named a private consumer tree; the repo is public, so the leak gate blocked every commit there until the session generalised the name by hand.
 - **measured:** `lib/set_orch/fleet/relay_teach.py` `append_rule` writes the question, answer and explanation verbatim (`entry_text`) and nothing before `commit_rule` consults `set-leakscan` or the repo's visibility. The only guard is the target repo's pre-commit gate. `aefda910` (13:59) already makes a refused commit leave the index as it was, so the file no longer stays STAGED, but the entry stays in the working tree of the public repo, where the owning session's next broad add carries it or is blocked by it, and agents read it as a rule in the meantime.
 - **fail direction:** loud at commit (the gate refuses), calm before it: the panel reports the rule written, and the leak sits in an uncommitted file nobody asked for.
 - **fixed when:** `teach` into a repo whose remote is not private runs the same checks `set-leakscan --staged` would (registry names, deny-list, private `set-*` names) on the entry text BEFORE writing, and refuses or asks for a generalised wording instead of writing; a test holds a consumer-name answer refused for a public repo and accepted for a private one.
+
+### B-231 — `set-leakscan` cannot learn that a self-hosted remote is private, so an agent can never push a private client-work repo hosted outside GitHub
+- **state:** open
+- **reported:** 2026-11-24 by this session, asked by the user to push a private sales repository whose only remote is a self-hosted git server.
+- **measured:** `set-leakscan` in that repo: `1289 finding(s) — 56 scanned file(s), remote is unknown` (consumer-name, env-marker, phone — all the repo's legitimate content). `remote_visibility()` in `bin/set-leakscan` asks only `gh repo view` and only for `github.com` URLs; every other URL is cached as `"unknown"`, which the caller treats as public. There is no allow entry, config key or flag that declares a remote private; the only way through is editing `~/.cache/set-core/leakscan-remote-visibility.json`, which expires after `VIS_TTL` and is a workaround, not a declaration.
+- **fail direction:** loud, blocking — correct for an undecidable remote, but with no legitimate exit it pushes the owner toward pushing by hand outside the agent gate, which is exactly the bypass the gate warns against.
+- **fixed when:** a machine-local, never-committed declaration (e.g. a `remote:<url-prefix>` line in `~/.config/set-core/leakscan-allow.txt`, or `set-config`) marks a self-hosted remote private; a push to it then scans as `remote private`, and an undeclared non-GitHub remote still blocks.
+
+### B-230 — `set-doctor` says "not on the agent bus (no sac hooks)" about a project whose hooks ARE installed, because `sac doctor` has not seen a session there yet
+- **state:** open
+- **reported:** 2026-11-24 by this session, re-running the doctor right after `sac install <project>` in 23 projects.
+- **measured:** all 23 still read `not on the agent bus (no sac hooks)`, while each one's `.claude/settings.json` held the four portable `sac hook` lines and `sac install --dry-run` planned nothing new. `sac doctor --project <one of them>` answered `no local project matches`. `lib/set_doctor/checks.py` `bus_status` maps "absent from `sac doctor`'s list" to that sentence.
+- **fail direction:** loud, false — the printed fix (`sac install`) is already done, so a reader re-runs it, finds nothing changes, and either distrusts the doctor or edits settings by hand.
+- **fixed when:** a project with the hooks in its settings but no seat yet reads as "hooks installed, no session seen yet", with no fix line; a project without the hooks still reads "no sac hooks".
+
+### B-229 — `set-doctor`'s `commands` check reports the pip console scripts of set-core's own package as "run another checkout's code", and its fix (`./install.sh`) recreates them
+- **state:** open
+- **reported:** 2026-11-24 by this session, right after a full `install.sh` run.
+- **measured:** `set-doctor` warned `4 command(s) run another checkout's code: set-control, set-orch-core, set-run-logs, set-agent-owner`. Each is a pip-generated wrapper (`from gui.main import main`, …) written at the install's own timestamp — `pyproject.toml` `[project.scripts]` declares them — and `/usr/bin/python3 -c 'import gui, set_orch'` resolves both to THIS checkout. The check accepts only a symlink into `bin/`, so the editable install's wrappers fail it every time.
+- **fail direction:** loud, false — a permanent warning whose fix cannot clear it teaches the reader to ignore the `commands` row, which is the row that would catch a real second checkout.
+- **fixed when:** the check resolves a console-script wrapper's module to its file and passes when that file is inside this checkout; a wrapper importing from another checkout still warns.
+
+### B-228 — `install.sh` redeploys each project's worktrees AFTER the project, and a worktree's `set-project init` re-registers the main checkout's set-core MCP server with the worktree as `CLAUDE_PROJECT_DIR`
+- **state:** open
+- **reported:** 2026-11-24 by this session, comparing `set-doctor --json` before and after one `install.sh` run.
+- **measured:** before the run, five projects' `mcp` check read `ok — registered for this project, this checkout's server`; after it, the same five read `registered, but CLAUDE_PROJECT_DIR=<a worktree of it>, not <the project>`, each naming one of the worktrees the installer's second loop (`install.sh` ~line 770, `Updating worktree:`) had just initialised. `claude mcp get set-core` in the main checkout confirmed the worktree path. `claude mcp remove set-core -s local; set-project init` in the main checkout restored all seven.
+- **fail direction:** silent — every agent in the main checkout then asks `kb_search` about a worktree's tree (often a stale or half-finished branch), and the install log reports success for every project.
+- **fixed when:** an `install.sh` run over a project with worktrees leaves the main checkout's `mcp` check `ok`, asserted by a test that runs the project-then-worktree order.
+
+### B-227 — the profile deploy's additive YAML merge re-serialises a consumer's `set/orchestration/config.yaml`, dropping every comment and activating a key the consumer had deliberately commented out
+- **state:** open
+- **reported:** 2026-11-24 by this session, diff-checking consumer trees after an `install.sh` redeploy of 36 projects.
+- **measured:** in one web-type consumer, `git diff set/orchestration/config.yaml` after the redeploy showed `17 insertions(+), 26 deletions(-)`; ignoring comments and blank lines, the only value change was an added `test_command: pnpm test` — which the original carried as the commented placeholder `# test_command: pnpm test` under "override profile auto-detection if needed". Source: `lib/set_orch/profile_deploy.py` `_merge_yaml_additive` — `yaml.safe_load` → add missing keys → `yaml.dump` over the file. The bash directive pass in `bin/set-project` (~line 80) already treats a commented placeholder as present; this Python pass does not. The consumer file was restored with `git checkout`, so the next init will rewrite it again.
+- **fail direction:** silent, in the overwrite direction — a hand-authored file changes on a deploy whose pass condition is an empty diff on hand-authored files, and a deliberate "leave this to auto-detection" choice is turned into a pinned command.
+- **fixed when:** a deploy over a config that has comments and a commented-out template key leaves the file byte-identical, or appends only the missing keys as text without re-serialising — asserted by a test that holds the comment-stripping version as the failing case.
+
+### B-226 — `set-doctor` and the auto-clear deploy tell the reader to run `set-project add`, a command that does not exist
+- **state:** open
+- **reported:** 2026-11-24 by this session, following the doctor's fix line after a pull.
+- **measured:** `set-doctor --offline` printed `→ set-project add set-claude-handoff <path-to-checkout>` for every project; running `set-project add --help` answered `Error: Unknown command: add`. The hint is built at `lib/set_doctor/auto_clear.py:172` and `lib/set_orch/auto_clear_deploy.py:276`. `set-project register --name set-claude-handoff --path <checkout>` is the command that works, and after it the doctor's auto-clear line moved on to the next condition.
+- **fail direction:** the fix line is the doctor's whole contract ("reports every problem with the command that fixes it"); a dead command makes a reader conclude the fix is broken, or skip it — the line appeared on ~40 projects at once.
+- **fixed when:** both hints print `set-project register --name set-claude-handoff --path <checkout>`, and a test asserts the printed command's subcommand is one `set-project` accepts.
 
 ### B-225 — `set-leakscan`'s private `set-*` class blocks every own private repo name in a public repo, which the owner's 2026-11-24 rule allows
 - **state:** open
