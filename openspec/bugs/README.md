@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-236 — the auto-answer panel's "not wired" hint always tells the reader to copy a `question_relay.command` that may not exist
+- **state:** open
+- **reported:** 2026-11-24 by the user, from a screenshot of the fleet header's Automatic answers panel right after switching it on.
+- **measured:** `set-config get question_relay.command` → `unset`, `auto_answer.forward_command` → `unset`; `/api/fleet/auto-answer` → `"enabled":true,"wired":false,"forward":false`. The panel still printed `set-config set auto_answer.forward_command "<the current question_relay.command>"` as the first step. The text is a static literal in `web/src/components/FleetAutoAnswer.tsx` (~line 156), and the route does not say whether a relay command exists, so the panel cannot tell the two cases apart.
+- **fail direction:** loud, misleading — the reader is told to forward to a command that does not exist, and may invent one, or set the forward key to the placeholder text literally.
+- **fixed when:** with `question_relay.command` unset, the panel shows only `set-config set question_relay.command set-auto-answer`; with it set, it shows both lines with the actual current value filled in. A web test covers both states.
+
 ### B-235 — the agent-side commit gate scans the whole index, so one session's staged finding refuses every other session's pathspec-limited commit
 - **state:** open
 - **reported:** 2026-11-24 by this session (set-core#8d47865a), committing `fleet-room-request-adoption`.
@@ -95,6 +102,7 @@ consumer's name, path, or content.
 - **measured:** `lib/set_orch/fleet/relay_teach.py` `append_rule` writes the question, answer and explanation verbatim (`entry_text`) and nothing before `commit_rule` consults `set-leakscan` or the repo's visibility. The only guard is the target repo's pre-commit gate. `aefda910` (13:59) already makes a refused commit leave the index as it was, so the file no longer stays STAGED, but the entry stays in the working tree of the public repo, where the owning session's next broad add carries it or is blocked by it, and agents read it as a rule in the meantime.
 - **fail direction:** loud at commit (the gate refuses), calm before it: the panel reports the rule written, and the leak sits in an uncommitted file nobody asked for.
 - **fixed when:** `teach` into a repo whose remote is not private runs the same checks `set-leakscan --staged` would (registry names, deny-list, private `set-*` names) on the entry text BEFORE writing, and refuses or asks for a generalised wording instead of writing; a test holds a consumer-name answer refused for a public repo and accepted for a private one.
+
 
 ### B-231 — `set-leakscan` cannot learn that a self-hosted remote is private, so an agent can never push a private client-work repo hosted outside GitHub
 - **state:** open
