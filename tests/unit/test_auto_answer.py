@@ -690,9 +690,9 @@ def test_allow_families_reads_only_known_families_and_tells_the_model():
 
 
 def test_a_report_of_a_done_act_is_not_the_act_asked_about():
-    """Live 2026-11-24: 'az aiplus-platform értesítve' (already notified) excluded a question
+    """Live 2026-11-24: 'a platform értesítve' (already notified) excluded a question
     about fixing a test as 'send'. A completed participle reports; it does not ask."""
-    text = ("Az /auto-clear skill felismeri a bekötést (704bcf4, pusholva, az aiplus-platform értesítve), "
+    text = ("Az /auto-clear skill felismeri a bekötést (704bcf4, pusholva, a platform értesítve), "
             "215/215 zöld. Maradt egy apróság: a doctor view teszt piros. Javítsam?")
     assert aa.exclusion(aa.KIND_ASK, q(text=text, options=["Javítsd (Recommended)", "Hagyd"]),
                         "Javítsd (Recommended)", False) is None

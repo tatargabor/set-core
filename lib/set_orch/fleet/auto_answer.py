@@ -591,7 +591,7 @@ _COMPLETED_AUX = re.compile(r"\b(?:already|was|were|been|has|have|had|is|are|mar
 
 def _completed(text: str, m: re.Match) -> bool:
     """A report of an act already done, not the act asked about (live 2026-11-24: "az
-    aiplus-platform értesítve" excluded a question about fixing a test as 'send').
+    platform értesítve" excluded a question about fixing a test as 'send').
     Hungarian -va/-ve participles, unless the next word asks for the state ("pusholva
     legyen?"); English past forms only right after already/was/has/…"""
     word = _word_at(text, m.start())
