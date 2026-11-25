@@ -68,6 +68,27 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-242 — the question relay posts a question to Discord from a PreToolUse hook, so a call another hook REJECTS still posts, and the answer given on Discord reaches nobody
+- **state:** open
+- **reported:** 2026-11-25 by a peer project's agent over the agent bus (an AskUserQuestion rejected by that project's family-kb "search first" PreToolUse hook was still posted to Discord; the owner answered there and got "🔒 Closed — … An answer written here would reach nobody").
+- **measured:** `bin/set-hook-question-relay` is a PreToolUse hook on `AskUserQuestion` that posts the question out and blocks waiting for the answer file — it runs BEFORE the hook chain's verdict is known, and a deny from any other PreToolUse hook stops the tool while the post is already live. `lib/set_orch/fleet/relay_discord.py:565-570` then closes the post ("no longer waits") and tells the answerer their answer would reach nobody; nothing delivers that answer to the session in any form. The reporter saw exactly this message and the session never learned an answer had been given.
+- **fail direction:** silent, insulting — the owner does the work of answering twice and the second answer is refused on a question nobody is asking anymore.
+- **fixed when:** an answer given on Discord to a question whose tool call was rejected (or already released) is delivered to the session as a message instead of being dropped; and, longer term, a post is not left open for a call the hook chain did not accept. End-to-end repro: relay on, make a PreToolUse hook reject an `AskUserQuestion`, answer the Discord copy, and assert the answer reaches the session.
+
+### B-243 — a Discord answer reaches the session carrying no provenance, so the session cannot tell it apart from an answer typed at the terminal
+- **state:** open
+- **reported:** 2026-11-25 by a peer project's agent over the agent bus (for the retried batch, relay ids relay-0f00d4a9-acfef01c#Q1 and #Q2, the session got the answers but nothing showed they came from the owner's Discord reply; the owner had to tell the terminal "I have answered on Discord" twice).
+- **measured:** `write_answer` (`lib/set_orch/fleet/relay_discord.py:299-315`) writes only `{"valasz": text}`, and `bin/set-hook-question-relay` returns that as the tool result — the same shape a terminal answer produces. No field, annotation, or side message says where the answer came from, so the session's transcript cannot attribute the decision to the owner acting on Discord. The Discord side DOES confirm receipt ("Recorded (<how>): <option>", `relay_discord.py:604`) — that part of the report already holds in the code; the gap is only on the session side.
+- **fail direction:** quiet, and it erodes trust in the transcript: a decision made on a phone reads in the record as a decision made in the room, and a session waiting on an answer has no signal that it arrived.
+- **fixed when:** an answer delivered by the relay is distinguishable in the session from a terminal answer (annotation on the fabricated tool result, or a message the session receives), and a test holds the distinction for both the delivered and the late-answer case.
+
+### B-244 — the bot's own seed reactions make the owner's reaction visually indistinguishable on the post, though the DECISION already excludes the bot
+- **state:** open
+- **reported:** 2026-11-25 by a peer project's agent over the agent bus (seed reactions 1,2,3,X each at count 1; the owner's reaction "impossible to tell apart").
+- **measured:** the relay seeds each option emoji on the post (`relay_discord.py:477`). The reported ask "exclude the bot's own seed reactions when counting" is ALREADY the code's behaviour: `decide()` (`relay_discord.py:161`) computes `ok = set(allowed) - {bot_id}` and only allowed users' reactions decide — the bot can never answer its own question. What is real is the visual half: after the owner reacts, the emoji shows count 2 with no indication one of them is his and is the counted one, and until the whole verdict resolves the only replies are warnings — no per-reaction acknowledgement that the bot saw an allowed user's reaction. Hover is the only way to see who reacted, and the bot's seeds are what forced the hover.
+- **fail direction:** the owner doubts his own answer landed, and re-answers or re-asks in the terminal — the exact "had to say it twice" cost of B-242/B-243 from the other side.
+- **fixed when:** the post itself shows which reactions count — e.g. the seeds give way to the owner's reaction, or the bot acknowledges an allowed user's reaction on sight — so no hover is needed to know an answer is registered.
+
 ### B-239 — the relay backfill pulled in an ALREADY ANSWERED question and typed its answer into the working agent again
 - **state:** closed 2026-11-25 (this commit)
 - **reported:** 2026-11-25 by this session (set-core#f7306bb0), on its own terminal: at 00:16:08 the relay was switched on, `relay backfill [14c6acba]: 1 question(s) pulled in`, and at 00:17:23 `answered on the channel; typed into set-core-autop2` — the question had been answered in that terminal at 23:07 and the work built on the answer was already pushed.
