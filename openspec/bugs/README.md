@@ -90,6 +90,13 @@ consumer's name, path, or content.
 - **fixed by:** `operator_turns` reads all four carriers (only the ANSWERS of a dialog result, never the question text; a queued command only of human origin; peer and subagent messages dropped), takes `exclude` = the auto-answer's own written choices for the session (`own_written_answers`, from the decision log), and `quote_in` matches case-, accent- and punctuation-free, word for word with one typo per word of 5+ letters (two at 9+); short words like `ne`/`nem` must be exact and no word may be added or dropped. Replay of every recorded operator quote: 23 refused → checked, 0 checked → refused; the 20 still refused are the auto-answer's own writes, a dictation tool output, a history dump and a meeting transcript. 26 new tests fail without the fix (stash-and-rerun); 509 relay tests green.
 - **not done here:** the continuation instruction still tells the agent *"The owner answered from the relay channel"* when the auto-answer wrote it — a false value to the agent; see B-246.
 
+### B-247 — a question the operator has not answered drops off the relay after 55 minutes, and the panel says nothing waits
+- **state:** closed 2026-11-26 by `dd46cec7` (change `relay-keeps-open-questions`)
+- **reported:** 2026-11-26 by the user: *„most nem látom eltűnt a korábbi homokóra ahol ikon tudtam megnézni mi várakozik pedig 3 ! most question várakozik"*.
+- **measured:** `relay.log` 20:34:06, 20:40:12, 20:41:36: `no answer within 3300 s; released` → `left to the terminal; parked for a switch-on` for three sessions; `/api/fleet/question-relay` then listed 0 waiting while all three calls were open (parked, `call_is_open`). Nothing pulled a parked question back while the switch stayed on — only a switch-on did. And `relay_backfill.carry` copied the same `timeout_s` deadline, so a pulled-in question would have dropped again 55 min later. Found on the way: `set-relay-backfill --help` ran a real pull-in (`main` never parsed it); it pulled the three back in at 20:57.
+- **fail direction:** the quiet one — a calm panel over three blocked agents; the operator stops looking exactly when the questions are oldest.
+- **fixed by:** the hook re-pulls on a timeout-only release (`relay(repull=…)`, `relay_backfill.repull_after_timeout`); the carrier has no relay timeout (24 h cap); `--help` prints usage. 6 tests, which fail without the fix; 528 relay tests green. Live confirmation is the change's task 1.6.
+
 ### B-246 — a continuation the auto-answer wrote reaches the agent as "The owner answered from the relay channel"
 - **state:** open
 - **reported:** 2026-11-26 by this session, while fixing B-245.

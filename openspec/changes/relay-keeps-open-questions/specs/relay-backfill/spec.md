@@ -12,6 +12,10 @@ reason, never with question or answer text.
 - **WHEN** the operator presses "to terminal" on a pulled-in question
 - **THEN** the carrier ends, nothing is typed, and the question stays open in the terminal
 
+#### Scenario: The switch goes off again
+- **WHEN** the relay switch is turned off while a pulled-in question waits
+- **THEN** the carrier ends and nothing is typed
+
 #### Scenario: A long wait
 - **WHEN** the operator answers a pulled-in question on the channel three hours after it was pulled in
 - **THEN** the carrier still types the answer into the terminal
