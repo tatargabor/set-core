@@ -26,7 +26,6 @@ import {
 } from '../lib/fleetRelay'
 import { useAgentNames } from '../lib/fleetAutoAnswer'
 import FleetRelayBoard from './FleetRelayBoard'
-import FleetRelayCall, { type RelayCallMode } from './FleetRelayCall'
 
 /** Waiting questions come and go on the scale of seconds; the hook polls every 3 s. */
 const READ_INTERVAL_MS = 5_000
@@ -37,9 +36,6 @@ export default function FleetRelay() {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  /** fleet-relay-teach: the call opened over the panel, and how. */
-  const [call, setCall] = useState<{ id: string; mode: RelayCallMode } | null>(null)
-  const closeCall = useCallback(() => setCall(null), [])
   const rootRef = useRef<HTMLSpanElement>(null)
 
   const read = useCallback(() => {
@@ -57,9 +53,6 @@ export default function FleetRelay() {
     const t = setInterval(read, READ_INTERVAL_MS)
     return () => clearInterval(t)
   }, [read])
-
-  // A call opened over the panel goes with the panel.
-  useEffect(() => { if (!open) setCall(null) }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -201,11 +194,7 @@ export default function FleetRelay() {
 
           <FleetRelayBoard waiting={waiting} busy={busy}
                            onRelease={sid => post(`/api/fleet/question-relay/release/${encodeURIComponent(sid)}`)}
-                           onOpenCall={(id, m) => setCall({ id, mode: m })} onAnswered={read} />
-          {call && (
-            <FleetRelayCall id={call.id} mode={call.mode} onMode={m => setCall({ id: call.id, mode: m })}
-                            onClose={closeCall} onSaved={read} />
-          )}
+                           onAnswered={read} />
         </div>
       )}
     </span>
