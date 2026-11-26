@@ -90,6 +90,20 @@ consumer's name, path, or content.
 - **fixed by:** `operator_turns` reads all four carriers (only the ANSWERS of a dialog result, never the question text; a queued command only of human origin; peer and subagent messages dropped), takes `exclude` = the auto-answer's own written choices for the session (`own_written_answers`, from the decision log), and `quote_in` matches case-, accent- and punctuation-free, word for word with one typo per word of 5+ letters (two at 9+); short words like `ne`/`nem` must be exact and no word may be added or dropped. Replay of every recorded operator quote: 23 refused → checked, 0 checked → refused; the 20 still refused are the auto-answer's own writes, a dictation tool output, a history dump and a meeting transcript. 26 new tests fail without the fix (stash-and-rerun); 509 relay tests green.
 - **not done here:** the continuation instruction still tells the agent *"The owner answered from the relay channel"* when the auto-answer wrote it — a false value to the agent; see B-246.
 
+### B-249 — a Hungarian verbal prefix hid an outward act from the auto-answer's word check
+- **state:** closed 2026-11-26 (change `auto-answer-report-sentences`, this commit)
+- **reported:** 2026-11-26 by this session, writing a control case for B-248.
+- **measured:** every exclusion fragment is compiled behind `(?<![\w-])`, so `kuld\w*` matched `küldöm` but not `elküldöm`, `kiküldjem`, `továbbküldöm`; `torol\w*` not `kitörlöm`. A check over the decision log and 400 transcripts' user turns finds the prefixed forms in real use (`kiküldése` ×9, `kiküldhetem` ×5, `elküldte`, `kitörölni`, `befizetés`, …).
+- **fail direction:** the harmful one — "Elküldöm a levelet a vevőnek, mehet?" answered «Mehet» passed the word check; only the model's own outward flag could still stop it.
+- **fixed by:** `_HU_PREFIX` (el-, ki-, át-, tovább-, vissza-, meg-, le-, fel-, be-, újra-) in `_compile`; the same corpus check shows it adds only real acts. Tests: `test_what_still_excludes_beside_those_rules` (two `elküldöm` cases fail without the fix).
+
+### B-248 — a report sentence or pictures sent back to the operator excluded a correct automatic answer
+- **state:** closed 2026-11-26 (change `auto-answer-report-sentences`, this commit)
+- **reported:** 2026-11-26 by the user (*„megy most az auto válasz? túl sok 12 látok proposedbe"*), measured by this session in `question-relay/auto-answer/*.json`.
+- **measured:** 21:22, seven agents asked at once; the decider decided all of them in 5–18 s and wrote 7 within two minutes. Two of the rest were `excluded` on words outside the act asked: `production` from "A B-233 javítás kész és élesben megy (verify PASS, archive, push)" before "Újraindítsam a watch-ot?", and `send` from "… és küldöm a képeket." closing a plan to approve. Replay of all 125 recorded proposals, old vs new: 4 flips, all of this shape.
+- **fail direction:** quiet — no wrong answer, a question left for the operator that he had delegated.
+- **fixed by:** `_in_report` (a sentence reporting finished work does not exclude unless its act is still meant or it asks) and `_to_operator` (a first-person send of pictures/renders/results with no recipient). 4 pass tests fail without the fix; 6 controls hold the other direction.
+
 ### B-247 — a question the operator has not answered drops off the relay after 55 minutes, and the panel says nothing waits
 - **state:** closed 2026-11-26 by `dd46cec7` (change `relay-keeps-open-questions`)
 - **reported:** 2026-11-26 by the user: *„most nem látom eltűnt a korábbi homokóra ahol ikon tudtam megnézni mi várakozik pedig 3 ! most question várakozik"*.

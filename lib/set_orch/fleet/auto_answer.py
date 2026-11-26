@@ -486,8 +486,15 @@ def fold(text: str) -> str:
     return "".join(c for c in decomposed if not unicodedata.combining(c)).lower()
 
 
+#: A Hungarian verbal prefix in front of the act: `elküldöm`, `kiküldjem`, `kitörlöm`,
+#: `továbbküldöm`. Measured 2026-11-26: none of these matched — the fragments are anchored on a
+#: word start, so the commonest Hungarian form of "send it" passed the word filter (the FAIL
+#: direction: only the model's own outward flag could still stop it).
+_HU_PREFIX = r"(?:el|ki|at|tovabb|vissza|meg|le|fel|be|ujra|ujjra)?"
+
+
 def _compile(fragment: str) -> re.Pattern:
-    return re.compile(r"(?<![\w-])(?:" + fragment + r")(?![\w])")
+    return re.compile(r"(?<![\w-])" + _HU_PREFIX + r"(?:" + fragment + r")(?![\w])")
 
 
 _COMPILED = {fam: [_compile(f) for f in frags] for fam, frags in EXCLUSION_FAMILIES.items()}
@@ -630,6 +637,59 @@ def _reserved(text: str, m: re.Match) -> bool:
     return bool(_RESERVE_TAIL.match(tail))
 
 
+# A sentence that REPORTS finished work is context, not the act a consent agrees to (live
+# 2026-11-26: "A B-233 javítás kész és élesben megy (verify PASS, archive, push). … Újraindítsam
+# a watch-ot?" excluded the watch restart as `production`). Inside such a sentence only an act
+# the speaker still means to do counts — a first-person, subjunctive or imperative verb
+# ("kész, elküldöm a vevőnek" still excludes). A sentence that asks ("?") is never a report.
+_REPORT_MARK = re.compile(r"\b(?:kesz|elkeszult|megvan|lefutott|lement|zold|done|finished|completed?"
+                          r"|pass(?:ed)?|merged|shipped|already|mar)\b")
+_INTENT_VERB = re.compile(r"\w+(?:om|em|om|am|ok|ek|juk|jük|jam|jem|jak|jek|unk|unk|d|jon|jen|jatok|jetek)$"
+                          r"|send|post|push|deploy|publish|notify|delete|email")
+
+
+def _sentence_at(text: str, pos: int) -> str:
+    start = max(text.rfind(c, 0, pos) for c in ".!?\n") + 1
+    ends = [i for i in (text.find(c, pos) for c in ".!?\n") if i != -1]
+    end = min(ends) + 1 if ends else len(text)
+    return text[start:end]
+
+
+def _in_report(text: str, m: re.Match) -> bool:
+    sentence = _sentence_at(text, m.start())
+    if sentence.rstrip().endswith("?") or not _REPORT_MARK.search(sentence):
+        return False
+    word = _word_at(text, m.start())
+    return not (_INTENT_VERB.fullmatch(word) and not word.startswith("eles"))
+
+
+# Pictures, renders or results the agent sends back to the operator are its report, not an
+# outward step (live 2026-11-26: "Ha mehet, megírom a kódot, lefuttatom a v12 dev mold-ot, és
+# küldöm a képeket." excluded an approval as `send`). Narrow, because this is the PASS
+# direction: a first-person send, the object one of these words right after it, and no
+# recipient in the clause — "elküldöm a képeket a vevőnek" and "küldöm a levelet" still exclude.
+_SEND_FIRST_PERSON = re.compile(r"(?:el)?kuldom|(?:el)?kuldjuk|i(?:'ll| will) send(?: you)?|sending you")
+_REPORT_OBJECT = re.compile(r"(?:a |az |the |you )?(?:kep\w*|render\w*|screenshot\w*|eredmeny\w*|preview\w*"
+                            r"|picture\w*|image\w*|result\w*|stills?)\b")
+_RECIPIENT = re.compile(r"\b(?!neked\b|nektek\b|nekem\b)\w+(?:nak|nek)\b|\bto (?!you\b)\w+|@")
+
+
+def _to_operator(text: str, m: re.Match) -> bool:
+    word = _word_at(text, m.start())
+    head = text[m.start():]
+    sm = _SEND_FIRST_PERSON.match(head)
+    english = re.search(r"\bi(?:'ll| will)\s+$", text[:m.start()]) and word == "send"
+    if not (sm or _SEND_FIRST_PERSON.fullmatch(word) or english):
+        return False
+    rest = head[sm.end() if sm else len(word):].lstrip()
+    if english and rest.startswith("you "):
+        rest = rest[4:]
+    if not _REPORT_OBJECT.match(rest):
+        return False
+    clause = _CLAUSE_END.split(rest, maxsplit=1)[0]
+    return not _RECIPIENT.search(clause)
+
+
 def exclusion(kind: str, question: Question, choice: str, model_outward: bool,
               never: Iterable[str] = (), allowed: Iterable[str] = (), taught: bool = False) -> Optional[str]:
     """Why this answer may not be written automatically, or None. Any one reason excludes.
@@ -649,7 +709,8 @@ def exclusion(kind: str, question: Question, choice: str, model_outward: bool,
                                        or _reserved(t, m)))
     if _is_consent(choice):
         hits += [h for h in _families(question.text, never,
-                                      lambda t, m: not (_negated(t, m) or _completed(t, m))) if h not in hits]
+                                      lambda t, m: not (_negated(t, m) or _completed(t, m) or _in_report(t, m)
+                                                        or _to_operator(t, m))) if h not in hits]
     allowed = set(allowed)
     hits = [h for h in hits if h not in allowed]
     if hits:

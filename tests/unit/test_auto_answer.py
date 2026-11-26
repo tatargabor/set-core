@@ -987,3 +987,35 @@ def test_kb_background_refresh_is_detached_and_never_raises(monkeypatch):
         raise FileNotFoundError("set-kb")
     monkeypatch.setattr(aa.subprocess, "Popen", boom)
     aa.kb_refresh_in_background("/bin/set-kb", "/proj")   # logged, not raised
+
+
+# --- a report sentence and a reply to the operator are not the act (live 2026-11-26) -------
+
+@pytest.mark.parametrize("text,choice", [
+    ("A B-233 javítás kész és élesben megy (verify PASS, archive, push). Az inbox watch-ot a "
+     "Claude Code kilőtte memóriahiány miatt. Újraindítsam a watch-ot?", "Indítsd újra (Recommended)"),
+    ("Mindhárom kérésed éles vagy út közben van (pusholva, 226/226 zöld). Mehet így, vagy legyen "
+     "a felirat magyarul?", "Mehet angolul (Recommended)"),
+    ("PDP v12 terv, ezt kérem jóváhagyni: (1) a retention beljebb kerül. Ha mehet, megírom a kódot, "
+     "lefuttatom a dev mold-ot, és küldöm a képeket.", "Mehet"),
+    ("If that's fine I'll send you the renders afterwards. Go ahead?", "Yes"),
+])
+def test_a_report_or_a_reply_to_the_operator_does_not_exclude(text, choice):
+    assert aa.exclusion(aa.KIND_ASK, q(text=text, options=[choice, "No"]), choice, False, allowed=["push"]) is None
+
+
+@pytest.mark.parametrize("text,choice,fam", [
+    # the act still meant, inside a sentence that also reports something done
+    ("A tervezet kész, elküldöm a vevőnek. Mehet?", "Mehet", "send"),
+    # a report sentence that ASKS is the question
+    ("A javítás kész, élesítsük most?", "Igen", "production"),
+    # pictures to someone else, or a letter, are outward
+    ("Ha mehet, elküldöm a képeket a vevőnek.", "Mehet", "send"),
+    ("Ha mehet, küldöm a levelet.", "Mehet", "send"),
+    ("I'll send the results to the client. OK?", "OK", "send"),
+    # no report marker: a plain live-status sentence still counts
+    ("Élesben fut az új verzió. Mehet a következő?", "Mehet", "production"),
+])
+def test_what_still_excludes_beside_those_rules(text, choice, fam):
+    got = aa.exclusion(aa.KIND_ASK, q(text=text, options=[choice, "No"]), choice, False, allowed=["push"])
+    assert got and fam in got
