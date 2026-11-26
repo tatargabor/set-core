@@ -165,8 +165,14 @@ def continue_turn(hook_input: Dict[str, Any], *,
                   sleep: Callable[[float], None] = time.sleep,
                   read_entries: Callable[[Any], List[Dict[str, Any]]] = qr.transcript_entries,
                   env: Optional[Dict[str, str]] = None,
-                  base: Optional[Path] = None) -> Optional[str]:
-    """Decide one finished turn. Returns the instruction to wake the session with, or None."""
+                  base: Optional[Path] = None,
+                  on_timeout: Optional[Callable[[Dict[str, Any]], Any]] = None) -> Optional[str]:
+    """Decide one finished turn. Returns the instruction to wake the session with, or None.
+
+    `on_timeout` gets a carrier job when the relay let the item go ONLY because the hook's
+    time ran out (B-250): measured 2026-11-26 21:54, a next step the operator had not seen
+    yet dropped off the board after 55 minutes. The hook passes the backfill's carrier.
+    """
     env = os.environ if env is None else env
     if env.get(wd.GUARD_ENV):
         return None
@@ -230,11 +236,24 @@ def continue_turn(hook_input: Dict[str, Any], *,
                               project_name=lambda _cwd: project, wall=wall, base=base)
     if record is None:
         return None
+    note: Dict[str, Any] = {}
     try:
-        answer = qr.wait_one(record, get=get, clock=clock, sleep=sleep, base=base, stale=stale)
+        answer = qr.wait_one(record, get=get, clock=clock, sleep=sleep, base=base, stale=stale, note=note)
     finally:
         qr.clear_own(record, base)
     if answer is None:
+        if note.get("timed_out") and on_timeout is not None:
+            job = {"kind": qr.KIND_CONTINUATION, "session_id": session_id,
+                   "cwd": str(hook_input.get("cwd") or ""), "project": project,
+                   "transcript": transcript, "armed": armed, "started": record.get("started"),
+                   "prompt_id": hook_input.get("prompt_id"),
+                   "question": continuation_question(project, sid, summary),
+                   "options": [NEXT_MARK + n for n in nexts]}
+            try:
+                on_timeout(job)
+            except Exception as exc:  # the next step stays in the terminal, as before
+                logger.warning("continuation [%s]: hand-over after the hook's timeout failed (%s)",
+                               sid, type(exc).__name__)
         return None
     logger.info("continuation [%s]: waking the session with the channel answer", sid)
     return instruction(answer)

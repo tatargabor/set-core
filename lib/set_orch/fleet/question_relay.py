@@ -1162,8 +1162,13 @@ def clear_own(record: Dict[str, Any], base: Path) -> None:
 
 def wait_one(record: Dict[str, Any], *, get: Getter, clock: Callable[[], float],
              sleep: Callable[[float], None], base: Path,
-             stale: Callable[[], Optional[str]] = lambda: None) -> Optional[str]:
+             stale: Callable[[], Optional[str]] = lambda: None,
+             timeout: Optional[float] = None, note: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """Poll for the one answer. Returns its text, or None when released (reason logged).
+
+    `timeout` overrides the relay's own (a carrier is not a hook and has no runtime limit);
+    `note["timed_out"]` is set when the release was ONLY for lack of time (B-250), so the
+    caller can hand the item to a carrier instead of letting it drop off the relay.
 
     `stale` names a reason the item no longer stands (answered in the terminal, superseded)
     or returns None; it is asked every poll and once more after an answer arrived, so an
@@ -1173,7 +1178,8 @@ def wait_one(record: Dict[str, Any], *, get: Getter, clock: Callable[[], float],
     kind = record.get("kind", "?")
     cid = str(record.get("id"))
     answer_dir = base / "answers"
-    deadline = clock() + timeout_s(get)
+    limit = timeout_s(get) if timeout is None else timeout
+    deadline = clock() + limit
     while True:
         reason = stale()
         if reason:
@@ -1198,7 +1204,9 @@ def wait_one(record: Dict[str, Any], *, get: Getter, clock: Callable[[], float],
             logger.info("question relay %s [%s]: released from the fleet", kind, sid)
             return None
         if clock() >= deadline:
-            logger.info("question relay %s [%s]: no answer within %.0f s; released", kind, sid, timeout_s(get))
+            logger.info("question relay %s [%s]: no answer within %.0f s; released", kind, sid, limit)
+            if note is not None:
+                note["timed_out"] = True
             return None
         sleep(POLL_S)
 

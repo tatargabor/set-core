@@ -56,7 +56,10 @@ def main() -> int:
         folder.mkdir(parents=True, exist_ok=True)
         logging.basicConfig(filename=str(folder / "relay.log"), level=logging.INFO,
                             format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-        text = continuation.continue_turn(hook_input)
+        from set_orch.fleet import relay_backfill
+
+        # B-250: a next step that reaches the hook's limit is carried on, not dropped.
+        text = continuation.continue_turn(hook_input, on_timeout=relay_backfill.repull_continuation)
     except Exception as exc:  # a failed continuation leaves the session idle, as today
         logging.getLogger("set-hook-continue-relay").warning("continuation failed (%s)", type(exc).__name__)
         return 0

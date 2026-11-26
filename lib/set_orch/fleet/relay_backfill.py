@@ -500,6 +500,8 @@ def pull_in(trigger: str, w: Optional[World] = None, *, decide_waiting: bool = F
 def run_job(job: Dict[str, Any], w: Optional[World] = None) -> str:
     """The carrier's body: hand over with its own pid, then carry to the answer."""
     w = w or World()
+    if job.get("kind") == qr.KIND_CONTINUATION:
+        return run_continuation(job, w)
     q = OpenQuestion(session_id=str(job["session_id"]), cwd=str(job.get("cwd") or ""),
                      project=str(job.get("project") or ""), transcript=str(job.get("transcript") or ""),
                      tool_use_id=str(job["tool_use_id"]), tool_input=job.get("tool_input") or {},
@@ -527,6 +529,96 @@ into the terminal. The relay's switch-on and the hook's own timeout do the same.
   --decide   also start the decider for relay-held questions no decider has seen
   --help     this text; nothing is pulled in
 """
+
+
+# --------------------------------------------------------------------------- #
+# a finished turn's next step, past the hook's limit (B-250)
+# --------------------------------------------------------------------------- #
+
+def fleet_label(session_id: str, w: World) -> Optional[str]:
+    """The fleet terminal holding this session, or None (not fleet-held)."""
+    for agent in w.fleet_agents():
+        rec = _session_record(agent.get("pid"), w.records) if agent.get("pid") else None
+        if rec and str(rec.get("sessionId") or "") == session_id:
+            return str(agent.get("label") or "") or None
+    return None
+
+
+def repull_continuation(job: Dict[str, Any], w: Optional[World] = None) -> str:
+    """The continuation hook let a next step go only because its time ran out: carry it on.
+
+    Measured 2026-11-26 21:54: a finished turn's "what next?" the operator had not seen
+    yet dropped off the board after 55 minutes, while B-247 kept questions on. Only a
+    fleet-held session can be carried: the answer is typed into its terminal.
+    """
+    w = w or World()
+    sid = qr._safe_id(str(job.get("session_id")))[:8] or "unknown"
+    try:
+        label = fleet_label(str(job.get("session_id") or ""), w)
+    except Exception as exc:
+        logger.warning("relay backfill [%s]: the fleet's terminals could not be listed (%s); "
+                       "the next step stays in the terminal", sid, type(exc).__name__)
+        return "not fleet-held"
+    if not label:
+        logger.info("relay backfill [%s]: the next step is not in a fleet terminal; left in the terminal", sid)
+        return "not fleet-held"
+    (w.launch or launch_carrier)({**job, "kind": qr.KIND_CONTINUATION, "label": label})
+    logger.info("question relay continuation [%s]: the hook's time ran out; handed to a carrier to keep it "
+                "on the relay", sid)
+    return "launched"
+
+
+def run_continuation(job: Dict[str, Any], w: Optional[World] = None, *,
+                     clock: Callable[[], float] = time.monotonic,
+                     sleep: Callable[[float], None] = time.sleep,
+                     label_live: Callable[[str], bool] = _label_live,
+                     type_line: Callable[[str, str], None] = _type) -> str:
+    """The carrier's body for a next step: post it again, wait without the hook's limit, type it in."""
+    from . import continuation as ct
+    w = w or World()
+    base = w.base or qr.state_dir()
+    session_id = str(job.get("session_id") or "")
+    sid = qr._safe_id(session_id)[:8] or "unknown"
+    label = str(job.get("label") or "")
+    armed = float(job.get("armed") or 0.0)
+    transcript = job.get("transcript")
+
+    def stale() -> Optional[str]:
+        if ct._superseded_since(session_id, armed, base):
+            return "superseded by a prompt typed in the terminal"
+        if ct.moved_on(w.read(transcript), armed):
+            return "the session moved on to a newer turn"
+        if label and not label_live(label):
+            return "its fleet terminal is gone"
+        return None
+
+    if qr.waiting_record(session_id, base):
+        logger.info("relay backfill [%s]: the relay already holds something here; next step not carried", sid)
+        return "already-held"
+    reason = stale()
+    if reason:
+        logger.info("relay backfill [%s]: %s; next step not carried", sid, reason)
+        return reason
+    project = str(job.get("project") or "unknown")
+    record = qr.hand_over_one({"session_id": session_id, "cwd": job.get("cwd"), "prompt_id": job.get("prompt_id")},
+                              qr.KIND_CONTINUATION, str(job.get("question") or ""), list(job.get("options") or []),
+                              get=w.get, run=w.run, project_name=lambda _cwd: project, wall=w.wall, base=base)
+    if record is None:
+        return "not handed over"
+    if isinstance(job.get("started"), (int, float)):
+        # The board's age is how long the operator has been away from this, not the carrier's.
+        record = {**record, "started": job["started"]}
+        qr._write_json(qr.waiting_path(session_id, base), record)
+    try:
+        answer = qr.wait_one(record, get=w.get, clock=clock, sleep=sleep, base=base, stale=stale,
+                             timeout=CARRY_MAX_S)
+    finally:
+        qr.clear_own(record, base)
+    if answer is None:
+        return "released"
+    type_line(label, ct.instruction(answer))
+    logger.info("relay backfill [%s]: next step answered on the channel; typed into %s", sid, label or "?")
+    return "typed"
 
 
 def repull_after_timeout(session_id: str) -> Dict[str, Any]:

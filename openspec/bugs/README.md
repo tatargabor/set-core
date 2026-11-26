@@ -91,7 +91,7 @@ consumer's name, path, or content.
 - **not done here:** the continuation instruction still tells the agent *"The owner answered from the relay channel"* when the auto-answer wrote it — a false value to the agent; see B-246.
 
 ### B-250 — a continuation (a finished turn's "what next?") drops off the relay after 55 minutes
-- **state:** open
+- **state:** fixed in code 2026-11-26 (change `relay-keeps-next-steps`, this commit); closes on the live check (its task 1.5)
 - **reported:** 2026-11-26 by this session, watching relay-keeps-open-questions 1.6 live.
 - **measured:** `relay.log` 21:54:16, `question relay continuation [e33f330b]: no answer within 3300 s; released`; the call (`relay-e33f330b-a4da5152`, handed over 20:59:14, decider abstained: public PR comments to an outside contributor) is gone from `question-relay/waiting/` and not in `parked/`, so the board no longer shows it. B-247's re-pull (`relay(repull=…)` in `question_relay.py`) covers `AskUserQuestion` calls only; the continuation path (`continuation.py`, `set-hook-continue-relay`) releases with nothing to pick it up.
 - **fail direction:** quiet — no wrong answer; the session sits idle with its last message, and a next step the operator never saw leaves the one screen that lists what waits on him. The owner's ask was „hogy lehet legközelebb ne maradjon ki semmi?".

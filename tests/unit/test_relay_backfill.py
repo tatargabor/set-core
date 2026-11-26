@@ -377,3 +377,114 @@ def test_repull_after_timeout_is_a_pull_in(monkeypatch):
     monkeypatch.setattr(rb, "pull_in", lambda trigger, *a, **k: seen.append(trigger) or {})
     rb.repull_after_timeout("sid")
     assert seen == ["hook-timeout"]
+
+
+
+# --------------------------------------------------------------------------- B-250 next steps
+
+NEXT_Q = "✅ Finished, waiting for the next instruction — proj · 735ae75b"
+
+
+def cjob(**over):
+    job = {"kind": qr.KIND_CONTINUATION, "session_id": SID, "cwd": "/w/proj", "project": "proj",
+           "transcript": None, "armed": 1000.0, "started": 990.0, "prompt_id": "p1",
+           "question": NEXT_Q, "options": ["→ Close the PR with thanks", "→ Merge it"], "label": "proj-1"}
+    job.update(over)
+    return job
+
+
+class NextStep:
+    """A carrier for a finished turn's next step, on a fake clock."""
+
+    def __init__(self, tmp_path, *, entries=(), events=None, get=None):
+        self.ran = []
+        self.w = world(tmp_path, get=get, ran=self.ran)
+        self.w.read = lambda path: list(self.entries)
+        self.w.wall = lambda: 1000.0 + 3400 + self.t
+        self.base = tmp_path / "state"
+        self.entries = list(entries)
+        self.events = events or {}
+        self.t = 0.0
+        self.typed = []
+
+    def answer(self, text):
+        rec = qr.waiting_record(SID, self.base)
+        qr._write_json(qr.answer_file(self.base / "answers", rec["id"], "Q1"), {"valasz": text})
+
+    def sleep(self, s):
+        self.t += s
+        for at, fn in list(self.events.items()):
+            if self.t >= at:
+                self.events.pop(at)
+                fn(self)
+
+    def run(self, job=None, label_live=lambda label: True):
+        return rb.run_continuation(job or cjob(), self.w, clock=lambda: self.t, sleep=self.sleep,
+                                   label_live=label_live, type_line=lambda label, line: self.typed.append((label, line)))
+
+
+def test_a_next_step_past_the_hooks_limit_stays_on_the_board_and_is_typed_in(tmp_path):
+    """B-250: measured 2026-11-26 21:54, a next step dropped off the board at 3300 s. The
+    carrier posts it again, keeps the age the operator sees, waits past the hook's limit,
+    and types the channel's answer into the idle session."""
+    late = qr.DEFAULT_TIMEOUT_S * 3
+    seen = {}
+
+    def on_board(c):
+        seen["record"] = qr.waiting_record(SID, c.base)
+        c.answer("→ Close the PR with thanks")
+
+    n = NextStep(tmp_path, events={late: on_board})
+    assert n.run() == "typed" and n.t >= late
+    rec = seen["record"]
+    assert rec["kind"] == qr.KIND_CONTINUATION and rec["started"] == 990.0, "the board keeps the original age"
+    (_cmd, envelope, _env), = n.ran
+    q = envelope["questions"][0]
+    assert NEXT_Q in json.dumps(envelope, ensure_ascii=False) and "Merge it" in json.dumps(q, ensure_ascii=False)
+    (label, line), = n.typed
+    assert label == "proj-1" and line.endswith("Close the PR with thanks")
+    assert not qr.waiting_path(SID, n.base).exists(), "the record is gone once answered"
+
+
+def test_a_next_step_the_operator_typed_past_is_not_carried(tmp_path):
+    """The session produced a newer turn (a wake, a typed prompt) after this one ended."""
+    newer = {"type": "assistant", "timestamp": "1970-01-01T00:16:41Z", "message": {"content": []}}
+    n = NextStep(tmp_path, entries=[newer])
+    from set_orch.fleet import continuation as ct
+    assert ct.moved_on(n.entries, 1000.0), "fixture: the entry is newer than the armed time"
+    assert n.run() == "the session moved on to a newer turn" and n.ran == [] and n.typed == []
+
+
+def test_a_next_step_superseded_while_carried_types_nothing(tmp_path):
+    from set_orch.fleet import continuation as ct
+    n = NextStep(tmp_path, events={5: lambda c: ct.mark_superseded(SID, c.base, wall=lambda: 1500.0)})
+    assert n.run() == "released" and n.typed == [] and n.ran, "posted, then let go untyped"
+    assert not qr.waiting_path(SID, n.base).exists()
+
+
+def test_a_next_step_is_not_carried_over_a_question_the_relay_holds(tmp_path):
+    n = NextStep(tmp_path)
+    qr._write_json(qr.waiting_path(SID, n.base), {"session_id": SID, "id": "relay-other", "pid": os.getpid()})
+    assert n.run() == "already-held" and n.ran == []
+
+
+def test_a_next_step_in_a_gone_terminal_types_nothing(tmp_path):
+    n = NextStep(tmp_path)
+    assert n.run(label_live=lambda label: False) == "its fleet terminal is gone" and n.typed == []
+
+
+def test_repull_continuation_carries_only_a_fleet_held_session(tmp_path):
+    launched = []
+    w = world(tmp_path, fleet=[{"label": "proj-1", "pid": 4242, "sid": SID}], launched=launched)
+    job = cjob(label=None)
+    assert rb.repull_continuation(job, w) == "launched"
+    (sent,), = [launched]
+    assert sent["label"] == "proj-1" and sent["kind"] == qr.KIND_CONTINUATION and sent["question"] == NEXT_Q
+    w2 = world(tmp_path, fleet=[], launched=launched)
+    assert rb.repull_continuation(job, w2) == "not fleet-held" and len(launched) == 1
+
+
+def test_the_carrier_job_routes_a_next_step(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(rb, "run_continuation", lambda job, w=None: seen.append(job["kind"]) or "typed")
+    assert rb.run_job(cjob(), world(tmp_path)) == "typed" and seen == [qr.KIND_CONTINUATION]

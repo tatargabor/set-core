@@ -77,8 +77,8 @@ class World:
         self._p = self.polls
         return self.suggestion
 
-    def decide(self, get=None, inp=None, env=None):
-        return ct.continue_turn(inp or stop_input(), get=get or config(), run=self.run,
+    def decide(self, get=None, inp=None, env=None, on_timeout=None):
+        return ct.continue_turn(inp or stop_input(), get=get or config(), run=self.run, on_timeout=on_timeout,
                                 project_name=lambda c: "proj", suggester=self.suggester,
                                 clock=lambda: self.t, wall=lambda: self.now, sleep=self.sleep,
                                 read_entries=lambda p: list(self.entries), env=env or {}, base=self.base)
@@ -233,3 +233,44 @@ def test_a_headless_run_gets_no_continuation(tmp_path):
     assert w.envelopes == [] and not qr.waiting_path(SID, tmp_path).exists()
     w2 = World(tmp_path, answer="→ Promote to the test system")
     assert w2.decide(env={"CLAUDE_CODE_ENTRYPOINT": "cli"}), "an interactive session is still continued"
+
+
+def test_a_next_step_that_reaches_the_hooks_limit_is_handed_to_a_carrier(tmp_path):
+    """B-250: measured 2026-11-26 21:54, a next step dropped off the board at 3300 s. On a
+    timeout-only release the hook hands the job on, with what the carrier needs to post it
+    again and to tell a superseded turn."""
+    verdict(tmp_path, "DONE")
+    jobs = []
+    w = World(tmp_path, answer=None)
+    assert w.decide(get=config(**{qr.KEY_TIMEOUT: "30"}), on_timeout=jobs.append) is None
+    (job,) = jobs
+    assert job["kind"] == qr.KIND_CONTINUATION and job["session_id"] == SID and job["armed"] == ARMED
+    assert job["transcript"] == "/t.jsonl" and job["project"] == "proj" and job["prompt_id"] == "8593cae2"
+    assert job["question"].startswith("✅ Finished") and job["options"] == [
+        ct.NEXT_MARK + "Promote to the test system", ct.NEXT_MARK + "Write the release note"]
+    assert not qr.waiting_path(SID, tmp_path).exists(), "the hook's own record is cleared; the carrier writes its own"
+
+
+def test_only_a_timeout_hands_a_next_step_on(tmp_path):
+    """Superseded, moved on, released from the fleet, switch off: the item no longer stands."""
+    def woke(w):
+        w.entries.append({"type": "assistant", "timestamp": iso(w.now), "message": {"content": []}})
+    cases = [
+        {2: lambda w: ct.mark_superseded(SID, tmp_path, wall=lambda: w.now)},
+        {2: woke},
+        {2: lambda w: qr.request_release(SID, tmp_path)},
+    ]
+    for events in cases:
+        verdict(tmp_path, "DONE")
+        jobs = []
+        w = World(tmp_path, answer=None, events=events)
+        assert w.decide(get=config(**{qr.KEY_TIMEOUT: "30"}), on_timeout=jobs.append) is None
+        assert jobs == [], events
+        qr.release_path(SID, tmp_path).unlink(missing_ok=True)
+        ct.supersede_path(SID, tmp_path).unlink(missing_ok=True)
+
+
+def test_a_failing_hand_on_leaves_the_session_as_before(tmp_path):
+    verdict(tmp_path, "DONE")
+    w = World(tmp_path, answer=None)
+    assert w.decide(get=config(**{qr.KEY_TIMEOUT: "30"}), on_timeout=lambda job: 1 / 0) is None
