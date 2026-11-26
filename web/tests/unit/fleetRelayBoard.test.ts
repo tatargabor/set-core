@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  answerable, boardChoices, composeAnswer, oneClick, readyToSend, taughtLine, verdictSentence,
+  answerable, boardChoices, composeAnswer, oneClick, readyToSend, rowStatus, statusCounts, taughtLine, verdictSentence,
 } from '../../src/lib/fleetRelayBoard'
+import type { WaitingQuestion } from '../../src/lib/fleetRelay'
 import { parseDetail, type DetailQuestion } from '../../src/lib/fleetRelayTeach'
 
 const q = (over: Partial<DetailQuestion> = {}): DetailQuestion => ({
@@ -88,5 +89,71 @@ describe('fleet-relay-board: a note beside the option, teach per question', () =
     expect(taughtLine({ ...base, written: false, commit: { sha: '', branch: '', reason: 'no checkout' } }, 1)!.text).toBe('Rule not written: no checkout')
     expect(taughtLine(null, 1)).toBeNull()
     expect(taughtLine(base, 0)).toBeNull()
+  })
+})
+
+describe('fleet-relay-board row status', () => {
+  const w = (over: Partial<WaitingQuestion> = {}): WaitingQuestion => ({
+    id: 'relay-1', session_id: 's1', project: 'p', questions: 1, target: 'command', seconds: 20,
+    release_requested: false, kind: 'question', auto_answer: null, auto_on: true, auto_off: null, ...over,
+  })
+  const key = (s: ReturnType<typeof rowStatus>) => [s.key, s.why]
+
+  it('a fresh call with the decider on and no verdict yet is "decider reading", not yours', () => {
+    expect(rowStatus(w(), null, false, 120).key).toBe('reading')
+    expect(rowStatus(w({ seconds: 149 }), null, false, 120).key).toBe('reading')
+  })
+
+  it('past the bound with no verdict it is yours, naming that the decider gave none', () => {
+    expect(key(rowStatus(w({ seconds: 151 }), null, false, 120))).toEqual(['yours', 'the decider gave no verdict'])
+  })
+
+  it('auto off — for the machine or for this agent — is yours, never "reading"', () => {
+    expect(key(rowStatus(w({ auto_on: false, auto_off: 'off' }), null, false, 120))).toEqual(['yours', 'auto answering is off'])
+    expect(key(rowStatus(w({ auto_on: false, auto_off: 'agent' }), null, false, 120))).toEqual(['yours', 'auto off for this agent'])
+    expect(rowStatus(w({ auto_on: undefined }), null, false, 120).key).toBe('yours')
+  })
+
+  it('an allowed proposal with a countdown is "auto in N s"', () => {
+    const s = rowStatus(w(), detail([q({ outcome: 'allowed' })], { decider: { state: 'proposed', method: 'fork', seconds_left: 41.6, questions: [q({ outcome: 'allowed' })] } }), false, 120)
+    expect([s.key, s.word, s.tone]).toEqual(['due', 'auto in 42 s', 'auto'])
+  })
+
+  it('the list summary alone is enough for the countdown (detail not read yet)', () => {
+    const v = { state: 'proposed', outcome: 'allowed', reason: '', choice: 'A', tier: 'decided', seconds_left: 10 }
+    expect(rowStatus(w({ auto_answer: v }), null, false, 120).key).toBe('due')
+  })
+
+  it('every verdict that is not written says why it is yours', () => {
+    const one = (outcome: string) => key(rowStatus(w(), detail([q({ outcome })]), false, 120))
+    expect(one('excluded')).toEqual(['yours', 'outward step'])
+    expect(one('no-decision')).toEqual(['yours', 'no source settles it'])
+    expect(one('below-bar')).toEqual(['yours', 'not sure enough to write it'])
+  })
+
+  it('a two-question call with one allowed and one excluded is yours for the outward step', () => {
+    expect(key(rowStatus(w(), detail([q({ outcome: 'held' }), q({ outcome: 'excluded' })]), false, 120)))
+      .toEqual(['yours', 'outward step'])
+  })
+
+  it('precedence: answered beats permission beats to-terminal beats a verdict', () => {
+    const perm = w({ kind: 'permission' })
+    expect(rowStatus(perm, null, true, 120).key).toBe('answered')
+    expect(rowStatus({ ...perm, release_requested: true }, null, false, 120).key).toBe('permission')
+    expect(rowStatus(w({ release_requested: true }), detail([q({ outcome: 'excluded' })]), false, 120).key).toBe('terminal')
+  })
+
+  it('a cancelled automatic answer is yours', () => {
+    expect(key(rowStatus(w(), detail([q({ outcome: 'allowed' })], { decider: { state: 'cancelled', method: 'fork', seconds_left: null, questions: [q({ outcome: 'allowed' })] } }), false, 120)))
+      .toEqual(['yours', 'the automatic answer was cancelled'])
+  })
+
+  it('the heading counts per status, yours first, zeros left out', () => {
+    const c = statusCounts([
+      rowStatus(w(), null, false, 120),
+      rowStatus(w(), detail([q({ outcome: 'excluded' })]), false, 120),
+      rowStatus(w({ auto_on: false, auto_off: 'off' }), null, false, 120),
+    ])
+    expect(c.map(x => [x.key, x.n])).toEqual([['yours', 2], ['reading', 1]])
   })
 })

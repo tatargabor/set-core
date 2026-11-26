@@ -25,6 +25,7 @@ import {
   canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, showUnwired, type RelayState,
 } from '../lib/fleetRelay'
 import { useAgentNames } from '../lib/fleetAutoAnswer'
+import { rowStatus, statusCounts } from '../lib/fleetRelayBoard'
 import FleetRelayBoard from './FleetRelayBoard'
 
 /** Waiting questions come and go on the scale of seconds; the hook polls every 3 s. */
@@ -98,6 +99,10 @@ export default function FleetRelay() {
 
   const mode = relayMode(state)
   const waiting = orderWaiting(state.waiting)
+  // Row status from the list alone (the board refines it per row from each call's detail):
+  // enough to count, on the closed header too, how many calls wait on the operator.
+  const counts = statusCounts(waiting.map(w => rowStatus(w, null, false, state.decide_timeout_s)))
+  const yoursN = counts.filter(c => c.tone === 'mine').reduce((n, c) => n + c.n, 0)
   const toggleTone = mode === 'on'
     ? 'border-sky-400/60 bg-sky-400/10 text-sky-300'
     : mode === 'on-not-ready'
@@ -140,12 +145,13 @@ export default function FleetRelay() {
                 className={`inline-flex items-center gap-0.5 text-xs tabular-nums ${
                   waiting.length > 0 ? 'text-amber-400' : 'text-fg-muted'} hover:underline underline-offset-2`}
                 title={waiting.length > 0
-                  ? `${waiting.length} question(s) waiting on the chat channel — click to answer one here instead`
+                  ? `${waiting.length} question(s) waiting on the chat channel (${counts.map(c => `${c.n} ${c.label}`).join(', ')}) — click to answer here`
                   : 'Question relay detail'}
                 aria-label={waiting.length > 0 ? `${waiting.length} question(s) waiting on the channel` : 'question relay detail'}
                 data-fleet-relay-waiting={waiting.length}>
           {waiting.length > 0
-            ? <><Hourglass size={12} strokeWidth={1.75} aria-hidden />{waiting.length}</>
+            ? <><Hourglass size={12} strokeWidth={1.75} aria-hidden />{waiting.length}
+                {yoursN > 0 && <span className="ml-1 rounded bg-amber-400/20 px-1 text-amber-200" data-fleet-relay-yours={yoursN}>✋{yoursN}</span>}</>
             : <span aria-hidden>…</span>}
         </button>
       )}
@@ -157,6 +163,18 @@ export default function FleetRelay() {
           <div className="flex items-center gap-2 pb-1 border-b border-surface-line">
             <span className="text-sm font-semibold text-fg-loud">Question relay</span>
             {waiting.length > 0 && <span className="text-amber-400">{waiting.length} waiting</span>}
+            {counts.length > 0 && (
+              <span className="flex flex-wrap items-center gap-1" data-fleet-relay-status-counts>
+                {counts.map(c => (
+                  <span key={c.key} className={`rounded px-1.5 py-0.5 ${
+                    c.tone === 'mine' ? 'bg-amber-400/20 text-amber-200' : c.tone === 'auto' ? 'bg-sky-400/15 text-sky-200'
+                      : c.tone === 'done' ? 'bg-emerald-400/15 text-emerald-200' : 'bg-surface-panel text-fg-muted'}`}
+                        data-fleet-relay-status-count={c.key}>
+                    <span aria-hidden>{c.icon}</span> {c.n} {c.label}
+                  </span>
+                ))}
+              </span>
+            )}
             <span className="text-fg-muted">{mode === 'on' ? 'on' : mode === 'off' ? 'off' : 'not configured'}
               {state.target ? ` · ${state.target}` : ''}</span>
             <button type="button" onClick={() => setOpen(false)} aria-label="Close the question relay detail"
@@ -192,7 +210,7 @@ export default function FleetRelay() {
             </div>
           )}
 
-          <FleetRelayBoard waiting={waiting} busy={busy}
+          <FleetRelayBoard waiting={waiting} busy={busy} decideBound={state.decide_timeout_s}
                            onRelease={sid => post(`/api/fleet/question-relay/release/${encodeURIComponent(sid)}`)}
                            onAnswered={read} />
         </div>

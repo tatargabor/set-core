@@ -67,6 +67,14 @@ describe('parseRelayState', () => {
       waiting: [{ session_id: 'a', project: 'p', questions: 1, target: 'command', seconds: 3, release_requested: false }, 'junk'] })
     expect(s?.waiting).toHaveLength(1)
   })
+  it('carries the decider bound and each row\'s auto_on through (row status), null on an older server', () => {
+    const base = { enabled: true, ready: true, target: 'command', missing: [] }
+    const s = parseRelayState({ ...base, decide_timeout_s: 300,
+      waiting: [{ session_id: 'a', project: 'p', questions: 1, target: 'command', seconds: 3, release_requested: false, auto_on: false, auto_off: 'agent' }] })
+    expect(s?.decide_timeout_s).toBe(300)
+    expect([s?.waiting[0].auto_on, s?.waiting[0].auto_off]).toEqual([false, 'agent'])
+    expect(parseRelayState({ ...base, waiting: [] })?.decide_timeout_s).toBeNull()
+  })
 })
 
 describe('unwired projects (B-182)', () => {

@@ -192,3 +192,30 @@ def test_one_agent_is_turned_off_and_on_again(world):
     assert s["off_agents"] == []
     with pytest.raises(HTTPException):
         api.fleet_auto_answer_agent(api.AutoAnswerAgentBody(off=True))
+
+
+def test_the_waiting_listing_says_whether_the_decider_reads_the_call(world, monkeypatch):
+    """fleet-relay-board 4.1 (row status): without `auto_on` a call with no verdict yet
+    cannot be told from one the decider will never read, and "decider reading" is a guess."""
+    from set_orch.api import fleet as api
+    base = world / "state"
+    qr._write_json(qr.waiting_path(SID, base), {"session_id": SID, "id": CID, "project": "proj", "questions": 1,
+                                                 "target": "command", "started": time.time(), "pid": os.getpid()})
+
+    def row():
+        payload = api.fleet_question_relay()
+        return payload, next(w for w in payload["waiting"] if w["session_id"] == SID)
+
+    payload, r = row()
+    assert r["auto_on"] is False and r["auto_off"] == "off", "the machine switch is off"
+    assert payload["decide_timeout_s"] == aa.decide_timeout_s()
+    aa.local_config.set_value(aa.KEY_ENABLED, "true")
+    _, r = row()
+    assert r["auto_on"] is True and r["auto_off"] is None
+    aa.local_config.set_value(aa.KEY_OFF_AGENTS, json.dumps([f"session:{SID}"]))
+    _, r = row()
+    assert r["auto_on"] is False and r["auto_off"] == "agent"
+    aa.local_config.set_value(aa.KEY_OFF_AGENTS, json.dumps(["label:planner"]))
+    monkeypatch.setattr(aa, "label_of_session", lambda sid: "planner")
+    _, r = row()
+    assert r["auto_off"] == "agent", "a label opt-out is resolved through the fleet label"

@@ -46,3 +46,31 @@ Opening the fleet's question-relay panel SHALL show a large floating board, abov
 #### Scenario: A permission prompt
 - **WHEN** the waiting call is a permission prompt
 - **THEN** its row shows no option or free-text control
+
+### Requirement: Every board row says where its call stands
+Each waiting call's row SHALL carry one status, shown with an icon, a word and a colour on the row itself, so the operator sees without reading the question whether it waits on them. The status SHALL be exactly one of, in this precedence:
+- **answered** — the operator's own answer was sent from this board (until the call leaves the list);
+- **permission** — a permission prompt: never answered automatically, Allow or Deny at the channel or the terminal;
+- **to terminal** — handed back to the terminal;
+- **auto in N s** — the decider will write its proposal in N seconds unless the operator answers first;
+- **auto written** — the decider wrote its answer and the agent continues;
+- **decider reading** — the automatic answering is on for this agent and the call is younger than the decider's time bound, with no verdict yet;
+- **your answer** — everything else, naming why: an outward step, no source settles it, not sure enough, another question of the call needs you, the automatic answering is off (for the machine or for this agent), or the decider gave no verdict within its time bound.
+
+The board's heading SHALL count the calls per status, so a call waiting on the operator is counted where the reader stands even when its row is scrolled out of view.
+
+#### Scenario: A call the decider is still reading
+- **WHEN** a question arrived 20 s ago, the automatic answering is on, and the decider has written no verdict
+- **THEN** its row shows "decider reading", and the heading counts it under that status, not under "your answer"
+
+#### Scenario: A call the decider gave up on
+- **WHEN** the automatic answering is on and a call older than the decider's time bound has no verdict
+- **THEN** its row shows "your answer — the decider gave no verdict", never "decider reading"
+
+#### Scenario: An excluded proposal
+- **WHEN** the decider proposed an answer that was not written because it is an outward step
+- **THEN** the row shows "your answer — outward step", in the colour that means the operator must act
+
+#### Scenario: Automatic answering off for this agent
+- **WHEN** the agent is on the machine's off list
+- **THEN** its row shows "your answer — auto off for this agent", and never "decider reading"

@@ -2952,8 +2952,36 @@ def _relay_payload() -> Dict[str, Any]:
         proposals = aw.verdict_view(now)
     except Exception as exc:  # a broken pending store must not hide the waiting list
         logger.warning("fleet api: auto-answer pending read failed: %s", type(exc).__name__)
+    # Whether the decider is expected to look at a call at all (fleet-relay-board, row
+    # status): without this a call with no verdict yet cannot be told apart from one the
+    # decider will never read, and "decider reading" would be a guess.
+    auto_enabled, decide_bound = False, None
+    try:
+        from ..fleet import auto_answer as aa
+        auto_enabled, decide_bound = aa.enabled(), aa.decide_timeout_s()
+    except Exception as exc:
+        logger.warning("fleet api: auto-answer switch read failed: %s", type(exc).__name__)
+        aa = None  # type: ignore[assignment]
+    labels: Dict[str, Optional[str]] = {}
+
+    def _auto_off(session_id: str) -> Optional[str]:
+        if not auto_enabled:
+            return "off"
+        if aa is None or not session_id:
+            return None
+        try:
+            def resolve(sid: str) -> Optional[str]:
+                if sid not in labels:
+                    labels[sid] = aa.label_of_session(sid)
+                return labels[sid]
+            return "agent" if aa.agent_off(session_id, resolve_label=resolve) else None
+        except Exception as exc:  # the status degrades to "your answer"-side, never hides a row
+            logger.warning("fleet api: auto-answer off-list read failed: %s", type(exc).__name__)
+            return None
+
     for rec in qr.list_waiting():
         started = rec.get("started")
+        auto_off = _auto_off(str(rec.get("session_id") or ""))
         waiting.append({
             "id": rec.get("id"),
             "session_id": rec.get("session_id"),
@@ -2968,13 +2996,17 @@ def _relay_payload() -> Dict[str, Any]:
             # fleet-auto-answer: the decider's verdict on this call — a proposal that will be
             # written unless a human answers (`seconds_left`), or why it will not be.
             "auto_answer": proposals.get(rec.get("id")),
+            # Whether the decider reads this call: False with `auto_off` "off" (the machine's
+            # switch) or "agent" (this agent is on the off list).
+            "auto_on": auto_off is None,
+            "auto_off": auto_off,
         })
     try:
         unwired = qr.unwired_projects()
     except Exception as exc:  # the header must still render the switch and the waiting list
         logger.warning("fleet api: unwired-project scan failed: %s", type(exc).__name__)
         unwired = []
-    return {**state, "waiting": waiting, "unwired": unwired}
+    return {**state, "waiting": waiting, "unwired": unwired, "decide_timeout_s": decide_bound}
 
 
 @router.get("/api/fleet/question-relay")

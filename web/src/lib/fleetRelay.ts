@@ -20,6 +20,10 @@ export interface WaitingQuestion {
   kind?: string | null
   /** fleet-auto-answer: the decider's verdict on this call; absent when it has none. */
   auto_answer?: AutoVerdict | null
+  /** fleet-relay-board row status: whether the decider reads this call at all (absent on an older server). */
+  auto_on?: boolean
+  /** Why it does not: "off" (the machine's switch) or "agent" (this agent is on the off list). */
+  auto_off?: string | null
 }
 
 export interface AutoVerdict {
@@ -65,6 +69,8 @@ export interface RelayState {
   waiting: WaitingQuestion[]
   /** Projects whose sessions bypass the relay — their questions stay in the terminal. */
   unwired: UnwiredProject[]
+  /** The decider's time bound, so a call with no verdict yet can be told from one it gave up on. */
+  decide_timeout_s?: number | null
 }
 
 export type RelayMode = 'on' | 'off' | 'not-ready' | 'on-not-ready'
@@ -147,6 +153,9 @@ export function parseRelayState(d: unknown): RelayState | null {
           !!u && typeof u === 'object' && typeof (u as UnwiredProject).project === 'string'
           && Array.isArray((u as UnwiredProject).missing))
       : [],
+    // fleet-relay-board row status: without it every no-verdict call reads as "the decider
+    // gave no verdict" after the default bound, whatever this machine's bound is.
+    decide_timeout_s: typeof o.decide_timeout_s === 'number' && Number.isFinite(o.decide_timeout_s) ? o.decide_timeout_s : null,
   }
 }
 

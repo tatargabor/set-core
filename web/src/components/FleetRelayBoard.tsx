@@ -26,20 +26,43 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { age } from '../lib/fleetAge'
 import { agentName, kindLabel } from '../lib/fleetAutoAnswer'
 import {
-  answerable, boardChoices, composeAnswer, oneClick, readyToSend, taughtLine, verdictSentence, type TaughtResult,
+  answerable, boardChoices, composeAnswer, oneClick, readyToSend, rowStatus, taughtLine, verdictSentence,
+  type RowStatus, type TaughtResult,
 } from '../lib/fleetRelayBoard'
 import type { WaitingQuestion } from '../lib/fleetRelay'
 import { parseDetail, type RelayDetail } from '../lib/fleetRelayTeach'
 
 const READ_INTERVAL_MS = 5_000
 
+/** One colour per meaning: amber = the operator must act, sky = the machine is on it, emerald = done. */
+const TONE: Record<RowStatus['tone'], { row: string; edge: string; pill: string }> = {
+  mine: { row: 'bg-amber-400/5', edge: 'border-l-amber-400', pill: 'bg-amber-400/20 text-amber-200 border-amber-400/60' },
+  auto: { row: 'bg-sky-400/5', edge: 'border-l-sky-400', pill: 'bg-sky-400/15 text-sky-200 border-sky-400/50' },
+  done: { row: 'bg-emerald-400/5', edge: 'border-l-emerald-400', pill: 'bg-emerald-400/15 text-emerald-200 border-emerald-400/50' },
+  muted: { row: '', edge: 'border-l-surface-line', pill: 'bg-surface-panel text-fg-muted border-surface-line' },
+}
+
+export function StatusPill({ status }: { status: RowStatus }) {
+  const t = TONE[status.tone]
+  return (
+    <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs font-semibold ${t.pill} ${
+      status.key === 'reading' ? 'animate-pulse' : ''}`}
+          title={status.why ? `${status.word} — ${status.why}` : status.word}
+          data-fleet-relay-status={status.key}>
+      <span aria-hidden>{status.icon}</span>{status.word}
+    </span>
+  )
+}
+
 type Sent = { ok: boolean; lines: string[] }
 /** Per call, per question index. */
 type PerQ<T> = Record<string, Record<number, T>>
 
-export default function FleetRelayBoard({ waiting, busy, onRelease, onAnswered }: {
+export default function FleetRelayBoard({ waiting, busy, decideBound, onRelease, onAnswered }: {
   waiting: WaitingQuestion[]
   busy: boolean
+  /** The decider's time bound (`decide_timeout_s`), for telling "still reading" from "gave up". */
+  decideBound?: number | null
   onRelease: (sessionId: string) => void
   onAnswered: () => void
 }) {
@@ -124,10 +147,15 @@ export default function FleetRelayBoard({ waiting, busy, onRelease, onAnswered }
           const qs = d?.decider?.questions ?? []
           const done = id ? sent[id] : undefined
           const canAnswer = !!d && answerable(d) && !done?.ok && !!id
+          const status = rowStatus(w, d, !!done?.ok, decideBound)
+          const tone = TONE[status.tone]
           const single = !!d && oneClick(d)
           const composed = qs.map((_, i) => composeAnswer(picks[id]?.[i], notes[id]?.[i]))
           const agentCell = (
-            <td rowSpan={Math.max(1, qs.length)} className="py-2 pr-2 align-top" data-fleet-relay-board-agent={w.session_id}>
+            <td rowSpan={Math.max(1, qs.length)} className={`border-l-4 ${tone.edge} py-2 pl-2 pr-2 align-top`}
+                data-fleet-relay-board-agent={w.session_id}>
+              <div className="mb-1"><StatusPill status={status} /></div>
+              {status.why && <div className="mb-1 text-xs text-fg-muted" data-fleet-relay-status-why>{status.why}</div>}
               <div className="break-words">
                 {n.project && <span className="text-fg-muted">{n.project} · </span>}
                 <span className={n.live ? 'text-fg-loud font-semibold' : 'text-fg-strong'}>{n.label ?? 'unknown agent'}</span>
@@ -150,7 +178,7 @@ export default function FleetRelayBoard({ waiting, busy, onRelease, onAnswered }
 
           if (!d || qs.length === 0) {
             return (
-              <tr key={w.session_id} className="border-b border-surface-line/60" data-fleet-relay-row={w.session_id}>
+              <tr key={w.session_id} className={`border-b border-surface-line/60 ${tone.row}`} data-fleet-relay-row={w.session_id}>
                 {agentCell}
                 <td colSpan={3} className="py-2 text-fg-muted">
                   {typeof raw === 'string'
@@ -179,7 +207,7 @@ export default function FleetRelayBoard({ waiting, busy, onRelease, onAnswered }
               else setIn(setPicks, id, i, pick === value ? '' : value)
             }
             return (
-              <tr key={`${w.session_id}-${i}`} className={last ? 'border-b border-surface-line/60' : ''}
+              <tr key={`${w.session_id}-${i}`} className={`${last ? 'border-b border-surface-line/60' : ''} ${tone.row}`}
                   data-fleet-relay-row={i === 0 ? w.session_id : undefined} data-fleet-relay-board-question={q.key ?? i}>
                 {i === 0 && agentCell}
                 <td className="py-2 pr-3 align-top">
