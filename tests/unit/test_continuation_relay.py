@@ -46,8 +46,9 @@ def iso(epoch):
 
 class World:
     def __init__(self, base: Path, answer=None, answer_after=1, code=0, suggestion=("Staging is green.", ["Promote to the test system", "Write the release note"]),
-                 events=None):
+                 events=None, by=None):
         self.base, self.answer, self.answer_after, self.code = base, answer, answer_after, code
+        self.by = by
         self.suggestion = suggestion
         self.events = events or {}          # poll number -> callable(world)
         self.envelopes, self.t, self.polls, self.now = [], 0.0, 0, ARMED
@@ -64,7 +65,8 @@ class World:
         self.polls += 1
         if self.envelopes and self.answer is not None and self.polls == self.answer_after + self._posted_at:
             q = self.envelopes[-1]["questions"][0]
-            (Path(q["valasz_tar"]) / f"{q['id']}__Q1.json").write_text(json.dumps({"valasz": self.answer}))
+            body = {"valasz": self.answer, **({"by": self.by} if self.by else {})}
+            (Path(q["valasz_tar"]) / f"{q['id']}__Q1.json").write_text(json.dumps(body))
         if self.polls in self.events:
             self.events[self.polls](self)
 
@@ -274,3 +276,15 @@ def test_a_failing_hand_on_leaves_the_session_as_before(tmp_path):
     verdict(tmp_path, "DONE")
     w = World(tmp_path, answer=None)
     assert w.decide(get=config(**{qr.KEY_TIMEOUT: "30"}), on_timeout=lambda job: 1 / 0) is None
+
+
+def test_an_auto_written_next_step_does_not_claim_the_owner_said_it(tmp_path):
+    """B-246: measured 2026-11-26, an auto-written next step reached sessions as "The owner
+    answered from the relay channel", and was built on as the owner's words."""
+    verdict(tmp_path, "DONE")
+    text = World(tmp_path, answer="→ Promote to the test system", by="auto-answer").decide()
+    assert "The owner answered" not in text and "on the owner's behalf" in text and "did not type it" in text
+    assert text.endswith("Promote to the test system")
+    verdict(tmp_path, "DONE")
+    own = World(tmp_path, answer="→ Promote to the test system").decide()
+    assert own.startswith("The owner answered from the relay channel"), "the operator's own wording is unchanged"

@@ -145,10 +145,18 @@ def continuation_question(project: str, sid: str, summary: str) -> str:
     return f"{head}{body}\nPick a suggestion or write what it should do next; the session continues with it."
 
 
-def instruction(answer: str) -> str:
+def instruction(answer: str, by: Optional[str] = None) -> str:
+    """The wake text. `by` names a writer other than the operator (B-246): measured
+    2026-11-26, an auto-written next step reached two sessions as "The owner answered", and
+    one of them built on it as the owner's words. The owner's own wording is unchanged —
+    `auto_answer._RELAY_CONTINUE` reads it as an operator quote, and must not read this one."""
     text = answer.strip()
     if text.startswith(NEXT_MARK.strip()):
         text = text[len(NEXT_MARK.strip()):].strip()
+    if by:
+        return ("The auto-answer chose this next step on the owner's behalf, from his standing rules and "
+                "earlier answers — the owner did not type it and has not seen it yet. "
+                f"Continue with this instruction: {text}")
     return f"The owner answered from the relay channel (they are away from this terminal). Continue with this instruction: {text}"
 
 
@@ -255,5 +263,6 @@ def continue_turn(hook_input: Dict[str, Any], *,
                 logger.warning("continuation [%s]: hand-over after the hook's timeout failed (%s)",
                                sid, type(exc).__name__)
         return None
-    logger.info("continuation [%s]: waking the session with the channel answer", sid)
-    return instruction(answer)
+    logger.info("continuation [%s]: waking the session with the channel answer%s", sid,
+                " (written by the auto-answer)" if note.get("by") else "")
+    return instruction(answer, note.get("by"))

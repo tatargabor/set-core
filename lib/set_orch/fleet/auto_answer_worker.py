@@ -405,6 +405,10 @@ class World:
     log: Optional[Path] = None
 
 
+#: The `by` an answer file carries when the decider wrote it (B-246).
+AUTO_WRITER = "auto-answer"
+
+
 def _write_answer(answer_dir: Path, cid: str, key: str, text: str) -> bool:
     """Create the answer file only if none exists: a link, never a rename over it (D7)."""
     target = qr.answer_file(answer_dir, cid, key)
@@ -412,7 +416,9 @@ def _write_answer(answer_dir: Path, cid: str, key: str, text: str) -> bool:
     fd, tmp = tempfile.mkstemp(dir=str(answer_dir), prefix=".auto-", suffix=".json")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump({"valasz": text}, handle, ensure_ascii=False)
+            # B-246: the writer is named, so the instruction the session gets does not
+            # claim the owner said it.
+            json.dump({"valasz": text, "by": AUTO_WRITER}, handle, ensure_ascii=False)
         os.link(tmp, target)
         return True
     except FileExistsError:

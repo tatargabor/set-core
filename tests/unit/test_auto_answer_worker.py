@@ -503,3 +503,14 @@ def test_status_names_the_relay_command_so_the_hint_can_b236(tmp_path):
     some = aw.status(get=lambda k, default=None: {qr.KEY_COMMAND: " my-bridge "}.get(k, default),
                      base=tmp_path, now=0.0)
     assert some["relay_command"] == "my-bridge"
+
+
+def test_an_auto_written_answer_names_its_writer(tmp_path):
+    """B-246: an auto-written next step reached sessions as "The owner answered"; the file now
+    says who wrote it, and an operator's file says nothing."""
+    answers = tmp_path / "answers"
+    assert aw._write_answer(answers, CID, "Q1", "TEAL") is True
+    assert json.loads(qr.answer_file(answers, CID, "Q1").read_text()) == {"valasz": "TEAL", "by": "auto-answer"}
+    assert qr.answer_by(answers, CID, "Q1") == "auto-answer"
+    qr._write_json(qr.answer_file(answers, CID, "Q2"), {"valasz": "ORANGE"})
+    assert qr.answer_by(answers, CID, "Q2") is None

@@ -609,14 +609,15 @@ def run_continuation(job: Dict[str, Any], w: Optional[World] = None, *,
         # The board's age is how long the operator has been away from this, not the carrier's.
         record = {**record, "started": job["started"]}
         qr._write_json(qr.waiting_path(session_id, base), record)
+    note: Dict[str, Any] = {}
     try:
         answer = qr.wait_one(record, get=w.get, clock=clock, sleep=sleep, base=base, stale=stale,
-                             timeout=CARRY_MAX_S)
+                             timeout=CARRY_MAX_S, note=note)
     finally:
         qr.clear_own(record, base)
     if answer is None:
         return "released"
-    type_line(label, ct.instruction(answer))
+    type_line(label, ct.instruction(answer, note.get("by")))
     logger.info("relay backfill [%s]: next step answered on the channel; typed into %s", sid, label or "?")
     return "typed"
 

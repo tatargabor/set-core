@@ -497,6 +497,16 @@ def answer_file(answer_dir: Path, cid: str, key: str) -> Path:
     return answer_dir / f"{cid}__{key}.json"
 
 
+def answer_by(answer_dir: Path, cid: str, key: str) -> Optional[str]:
+    """Who wrote an answer file, when it says so (`"auto-answer"`); None for the operator's."""
+    try:
+        data = json.loads(answer_file(answer_dir, cid, key).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    by = data.get("by") if isinstance(data, dict) else None
+    return by if isinstance(by, str) and by.strip() else None
+
+
 def collect_answers(answer_dir: Path, cid: str, count: int) -> List[Optional[str]]:
     """Each question's answer text, or None where it has not arrived (or is unreadable/empty)."""
     out: List[Optional[str]] = []
@@ -1187,6 +1197,8 @@ def wait_one(record: Dict[str, Any], *, get: Getter, clock: Callable[[], float],
             return None
         text = collect_answers(answer_dir, cid, 1)[0]
         if text is not None:
+            if note is not None:
+                note["by"] = answer_by(answer_dir, cid, "Q1")
             answer_file(answer_dir, cid, "Q1").unlink(missing_ok=True)
             reason = stale()
             if reason:
