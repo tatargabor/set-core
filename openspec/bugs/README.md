@@ -90,6 +90,13 @@ consumer's name, path, or content.
 - **fixed by:** `operator_turns` reads all four carriers (only the ANSWERS of a dialog result, never the question text; a queued command only of human origin; peer and subagent messages dropped), takes `exclude` = the auto-answer's own written choices for the session (`own_written_answers`, from the decision log), and `quote_in` matches case-, accent- and punctuation-free, word for word with one typo per word of 5+ letters (two at 9+); short words like `ne`/`nem` must be exact and no word may be added or dropped. Replay of every recorded operator quote: 23 refused → checked, 0 checked → refused; the 20 still refused are the auto-answer's own writes, a dictation tool output, a history dump and a meeting transcript. 26 new tests fail without the fix (stash-and-rerun); 509 relay tests green.
 - **not done here:** the continuation instruction still tells the agent *"The owner answered from the relay channel"* when the auto-answer wrote it — a false value to the agent; see B-246.
 
+### B-250 — a continuation (a finished turn's "what next?") drops off the relay after 55 minutes
+- **state:** open
+- **reported:** 2026-11-26 by this session, watching relay-keeps-open-questions 1.6 live.
+- **measured:** `relay.log` 21:54:16, `question relay continuation [e33f330b]: no answer within 3300 s; released`; the call (`relay-e33f330b-a4da5152`, handed over 20:59:14, decider abstained: public PR comments to an outside contributor) is gone from `question-relay/waiting/` and not in `parked/`, so the board no longer shows it. B-247's re-pull (`relay(repull=…)` in `question_relay.py`) covers `AskUserQuestion` calls only; the continuation path (`continuation.py`, `set-hook-continue-relay`) releases with nothing to pick it up.
+- **fail direction:** quiet — no wrong answer; the session sits idle with its last message, and a next step the operator never saw leaves the one screen that lists what waits on him. The owner's ask was „hogy lehet legközelebb ne maradjon ki semmi?".
+- **proof of fix:** a continuation that reaches the limit is still listed on the board (a carrier record, as backfill does for questions), and an answer given there after the limit reaches the idle session; a test that fails without it.
+
 ### B-249 — a Hungarian verbal prefix hid an outward act from the auto-answer's word check
 - **state:** closed 2026-11-26 (change `auto-answer-report-sentences`, this commit)
 - **reported:** 2026-11-26 by this session, writing a control case for B-248.
