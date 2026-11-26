@@ -355,3 +355,25 @@ def test_an_answer_far_above_the_tail_still_closes_the_call(tmp_path):
     assert rb.call_is_open(str(path), "toolu_never_answered") is True
     assert rb.has_result(str(tmp_path / "missing.jsonl"), tid) is None
     assert rb.call_is_open(None, tid) is True, "no transcript to read: still named as open, as before"
+
+
+def test_a_carrier_outlasts_the_hooks_limit(tmp_path):
+    """fleet-relay-board, 2026-11-26: the carrier copied the hook's 55 min and dropped a
+    pulled-in question off the relay a second time. It now waits while the question is open."""
+    late = qr.DEFAULT_TIMEOUT_S * 3
+    c = Carry(tmp_path, events={late: lambda c: c.answer("ORANGE")})
+    assert c.run() == "typed" and c.t >= late
+
+
+def test_help_pulls_nothing_in(capsys, monkeypatch):
+    """Measured 2026-11-26: `set-relay-backfill --help` ran a real pull-in."""
+    monkeypatch.setattr(rb, "pull_in", lambda *a, **k: (_ for _ in ()).throw(AssertionError("pulled in")))
+    assert rb.main(["--help"]) == 0 and "usage:" in capsys.readouterr().out
+    assert rb.main(["--bogus"]) == 2
+
+
+def test_repull_after_timeout_is_a_pull_in(monkeypatch):
+    seen = []
+    monkeypatch.setattr(rb, "pull_in", lambda trigger, *a, **k: seen.append(trigger) or {})
+    rb.repull_after_timeout("sid")
+    assert seen == ["hook-timeout"]

@@ -58,7 +58,9 @@ def main() -> int:
         folder.mkdir(parents=True, exist_ok=True)
         logging.basicConfig(filename=str(folder / "relay.log"), level=logging.INFO,
                             format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-        out = qr.relay(hook_input)
+        from set_orch.fleet import relay_backfill as rb
+
+        out = qr.relay(hook_input, repull=rb.repull_after_timeout)
     except Exception as exc:  # never block the tool over the relay's own failure
         logging.getLogger("set-hook-question-relay").warning(
             "relay failed (%s); released", type(exc).__name__)

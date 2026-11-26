@@ -40,6 +40,8 @@ Getter = Callable[..., Any]
 #: The worker's decide-only switch, passed beside the relay's three variables (D5).
 ENV_NO_FORWARD = "SET_RELAY_NO_FORWARD"
 POLL_S = 1.0
+#: The carrier's last-resort cap; its real end is the question closing (see `carry`).
+CARRY_MAX_S = 24 * 3600.0
 HEADER_CHARS = 60
 SESSION_RECORDS = Path.home() / ".claude" / "sessions"
 
@@ -329,7 +331,11 @@ def carry(record: Dict[str, Any], *, get: Getter = local_config.get, base: Optio
     transcript = record.get("transcript")
     label = str(record.get("label") or "")
     answer_dir = base / "answers"
-    deadline = clock() + qr.timeout_s(get)
+    # A carrier is not a hook: no runtime limit binds it, so it waits as long as the question
+    # is open, the terminal lives and the switch is on (`stale()`). The cap only stops a
+    # carrier whose checks can no longer see anything (fleet-relay-board, 2026-11-26: with the
+    # hook's 55 min copied here, a pulled-in question dropped off the relay a second time).
+    deadline = clock() + CARRY_MAX_S
 
     def stale() -> Optional[str]:
         if not qr.record_is_own(record, base):
@@ -370,7 +376,7 @@ def carry(record: Dict[str, Any], *, get: Getter = local_config.get, base: Optio
                 return outcome
             if clock() >= deadline:
                 logger.info("relay backfill [%s]: no answer within %.0f s; left in the terminal", sid,
-                            qr.timeout_s(get))
+                            CARRY_MAX_S)
                 return "timeout"
             sleep(POLL_S)
     finally:
@@ -512,7 +518,32 @@ def run_job(job: Dict[str, Any], w: Optional[World] = None) -> str:
     return carry(record, get=w.get, base=base, read=w.read, tool_input=q.tool_input)
 
 
+USAGE = """usage: set-relay-backfill [--decide]
+
+Pulls every question that is open in a fleet-held terminal, and not on the relay, onto the
+relay now: each gets a carrier that posts it to the channel and types the channel's answer
+into the terminal. The relay's switch-on and the hook's own timeout do the same.
+
+  --decide   also start the decider for relay-held questions no decider has seen
+  --help     this text; nothing is pulled in
+"""
+
+
+def repull_after_timeout(session_id: str) -> Dict[str, Any]:
+    """The hook let a question go only because its time ran out: pull it straight back in."""
+    return pull_in("hook-timeout")
+
+
 def main(argv: List[str]) -> int:
+    # Measured 2026-11-26: `set-relay-backfill --help` ran a real pull-in and started three
+    # carriers. A help flag that acts is a trap; it now prints and leaves.
+    if "--help" in argv or "-h" in argv:
+        print(USAGE, end="")
+        return 0
+    unknown = [a for a in argv if a.startswith("-") and a not in ("--decide", "--carry", "--job")]
+    if unknown:
+        print(f"set-relay-backfill: unknown option {unknown[0]}\n\n{USAGE}", end="", file=sys.stderr)
+        return 2
     qr.state_dir().mkdir(parents=True, exist_ok=True)
     logging.basicConfig(filename=str(qr.state_dir() / "relay.log"), level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")

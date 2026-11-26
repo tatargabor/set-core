@@ -976,14 +976,31 @@ def list_parked(base: Optional[Path] = None) -> List[Dict[str, Any]]:
     return out
 
 
-def relay(hook_input: Dict[str, Any], **kwargs: Any) -> Optional[Dict[str, Any]]:
+def relay(hook_input: Dict[str, Any], *, repull: Optional[Callable[[str], Any]] = None,
+          **kwargs: Any) -> Optional[Dict[str, Any]]:
     """Decide one `AskUserQuestion` call. Returns the hook output to print, or None to release.
 
     A question released to the terminal is parked, so the next switch-on can pull it in.
+
+    `repull` is called when the hook let go ONLY because its own time ran out
+    (`question_relay.timeout_s`, bounded by the runtime's hook limit): the question is still
+    open and the relay still on, so it must not drop off the panel and the channel. Measured
+    2026-11-26 20:34–20:41: three questions the owner had not answered yet left the relay this
+    way, the panel's hourglass vanished, and they sat in terminals nobody was looking at.
+    The hook passes the backfill's pull-in, whose carrier has no hook limit.
     """
-    out = _relay(hook_input, **kwargs)
+    note: Dict[str, Any] = {}
+    out = _relay(hook_input, note=note, **kwargs)
     if out is None and hook_input.get("tool_name") == TOOL:
         park(hook_input, kwargs.get("base"), kwargs.get("wall") or time.time)
+        if repull is not None and note.get("timed_out"):
+            sid = _safe_id(str(hook_input.get("session_id") or ""))[:8]
+            try:
+                repull(str(hook_input.get("session_id") or ""))
+                logger.info("question relay [%s]: the hook's time ran out; handed to a carrier to keep it on the relay", sid)
+            except Exception as exc:
+                logger.warning("question relay [%s]: re-pull after the hook's timeout failed (%s); left in the terminal",
+                               sid, type(exc).__name__)
     return out
 
 
@@ -995,7 +1012,8 @@ def _relay(hook_input: Dict[str, Any], *,
           clock: Callable[[], float] = time.monotonic,
           wall: Callable[[], float] = time.time,
           sleep: Callable[[float], None] = time.sleep,
-          base: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+          base: Optional[Path] = None,
+          note: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """Decide one `AskUserQuestion` call. Returns the hook output to print, or None to release."""
     if hook_input.get("tool_name") != TOOL:
         return None
@@ -1068,6 +1086,8 @@ def _relay(hook_input: Dict[str, Any], *,
                 return None
             if clock() >= deadline:
                 logger.info("question relay [%s]: no answer within %.0f s; released", sid, timeout_s(get))
+                if note is not None:
+                    note["timed_out"] = True
                 return None
             sleep(POLL_S)
     finally:

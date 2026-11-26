@@ -68,7 +68,7 @@ def answer(base: Path, envelope: dict, key: str, text: str):
     (d / f"{q['id']}__{key}.json").write_text(json.dumps({"valasz": text}), encoding="utf-8")
 
 
-def run_relay(tmp_path, get, *, run=None, post=None, on_sleep=None, inp=None):
+def run_relay(tmp_path, get, *, run=None, post=None, on_sleep=None, inp=None, repull=None):
     clock = Clock()
     seen = {}
 
@@ -84,7 +84,7 @@ def run_relay(tmp_path, get, *, run=None, post=None, on_sleep=None, inp=None):
     out = qr.relay(inp or hook_input(), get=get, run=run or default_run,
                    post=post or (lambda url, content: seen.setdefault("posts", []).append((url, content))),
                    project_name=lambda cwd: "proj", clock=clock, wall=lambda: 1000.0 + clock.t,
-                   sleep=sleep, base=tmp_path)
+                   sleep=sleep, base=tmp_path, repull=repull)
     return out, seen, clock
 
 
@@ -198,6 +198,37 @@ def test_timeout_releases_and_a_late_answer_is_never_used(tmp_path):
     assert out is None and 30 <= clock.t < 30 + qr.POLL_S + 0.001   # on time, not merely eventually
     answer(tmp_path, seen["envelope"], "Q1", "Yes")       # arrives after the release
     assert list((tmp_path / "waiting").iterdir()) == []   # nothing left that would read it
+
+
+def test_a_timed_out_question_is_handed_straight_back_to_the_relay(tmp_path):
+    """Measured 2026-11-26 20:34–20:41: three unanswered questions left the relay when the
+    hook's own time ran out, and the panel showed nothing waiting. Only that release re-pulls."""
+    pulled = []
+    out, _, _ = run_relay(tmp_path, config(**{qr.KEY_TIMEOUT: "30"}), repull=pulled.append)
+    assert out is None and pulled == [SESSION]
+    assert qr.list_parked(tmp_path)[0]["session_id"] == SESSION      # parked first, then re-pulled
+
+
+@pytest.mark.parametrize("how", ["switch-off", "fleet-release", "outbound-failed"])
+def test_other_releases_are_not_re_pulled(tmp_path, how):
+    pulled = []
+    get = config()
+
+    def on_sleep(seen, clock):
+        if how == "switch-off":
+            get.store[qr.KEY_ENABLED] = "false"
+        else:
+            qr.request_release(SESSION, tmp_path)
+    out, _, _ = run_relay(tmp_path, get, on_sleep=on_sleep, repull=pulled.append,
+                          run=(lambda c, p: 3) if how == "outbound-failed" else None)
+    assert out is None and pulled == []
+
+
+def test_a_failing_re_pull_still_releases(tmp_path):
+    def boom(sid):
+        raise RuntimeError("systemd-run missing")
+    out, _, _ = run_relay(tmp_path, config(**{qr.KEY_TIMEOUT: "30"}), repull=boom)
+    assert out is None
 
 
 def test_timeout_cannot_exceed_the_hook_ceiling():
