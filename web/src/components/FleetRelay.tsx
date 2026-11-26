@@ -14,17 +14,18 @@
  * back to the terminal short of turning the whole relay off.
  *
  * The detail floats under the header and pushes nothing; it closes on its own control,
- * Escape and an outside click.
+ * Escape and an outside click. Since fleet-relay-board (2026-11-26) it is a large board that
+ * shows every waiting question in full and answers it in place (FleetRelayBoard).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Hourglass, Send, TriangleAlert, X } from 'lucide-react'
 
-import { age } from '../lib/fleetAge'
 import {
-  canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, sendable, showUnwired, verdictLine, type RelayState,
+  canFlip, orderWaiting, parseRelayState, relayMode, relayTitle, setupCommands, showUnwired, type RelayState,
 } from '../lib/fleetRelay'
-import { agentName, kindLabel, useAgentNames } from '../lib/fleetAutoAnswer'
+import { useAgentNames } from '../lib/fleetAutoAnswer'
+import FleetRelayBoard from './FleetRelayBoard'
 import FleetRelayCall, { type RelayCallMode } from './FleetRelayCall'
 
 /** Waiting questions come and go on the scale of seconds; the hook polls every 3 s. */
@@ -73,22 +74,6 @@ export default function FleetRelay() {
       document.removeEventListener('pointerdown', onDown)
     }
   }, [open])
-
-  /** The send route answers with the auto-answer state, not the relay's: re-read after. */
-  const send = (id: string) => {
-    setBusy(true)
-    fetch(`/api/fleet/auto-answer/${encodeURIComponent(id)}/send`, { method: 'POST' })
-      .then(async r => {
-        if (!r.ok) {
-          const d = await r.json().catch(() => null)
-          throw new Error(d?.detail ?? `HTTP ${r.status}`)
-        }
-        setError(null)
-        read()
-      })
-      .catch(e => { setError(`not sent: ${String(e?.message ?? e)}`); setOpen(true) })
-      .finally(() => setBusy(false))
-  }
 
   const post = (url: string, body?: unknown) => {
     setBusy(true)
@@ -173,11 +158,12 @@ export default function FleetRelay() {
       )}
 
       {open && (
-        <div className="absolute left-2 md:left-6 top-full mt-1 z-30 w-[min(42rem,calc(100vw-1rem))]
-                        rounded border border-surface-line bg-surface-raised px-3 py-2 shadow-lg text-xs"
+        <div className="fixed left-1/2 -translate-x-1/2 top-12 z-30 w-[min(96rem,96vw)] max-h-[85vh] overflow-auto
+                        rounded border border-surface-line bg-surface-raised px-4 py-3 shadow-2xl text-xs"
              role="dialog" aria-label="Question relay" data-fleet-relay-detail={mode}>
           <div className="flex items-center gap-2 pb-1 border-b border-surface-line">
-            <span className="font-semibold text-fg-loud">Question relay</span>
+            <span className="text-sm font-semibold text-fg-loud">Question relay</span>
+            {waiting.length > 0 && <span className="text-amber-400">{waiting.length} waiting</span>}
             <span className="text-fg-muted">{mode === 'on' ? 'on' : mode === 'off' ? 'off' : 'not configured'}
               {state.target ? ` · ${state.target}` : ''}</span>
             <button type="button" onClick={() => setOpen(false)} aria-label="Close the question relay detail"
@@ -213,82 +199,9 @@ export default function FleetRelay() {
             </div>
           )}
 
-          {waiting.length === 0
-            ? <p className="mt-1.5 text-fg-muted">No question is waiting on the channel.</p>
-            : (
-              <ul className="mt-1 divide-y divide-surface-line/60">
-                {waiting.map(w => {
-                  const n = agentName(w.session_id, w.project ? `${w.project} · ${w.session_id.slice(0, 8)}` : null, w.project)
-                  const v = verdictLine(w.auto_answer)
-                  const snd = sendable(w)
-                  return (
-                  <li key={w.session_id} className="py-1.5" data-fleet-relay-row={w.session_id}>
-                    <div className="flex items-center gap-2">
-                      <span className="min-w-0 truncate" data-fleet-relay-agent={n.live ? 'live' : 'gone'}
-                            title={`${n.project ?? ''} · ${n.label ?? ''} — session ${w.session_id.slice(0, 8)}`}>
-                        {n.project && <span className="text-fg-muted">{n.project} · </span>}
-                        <span className={n.live ? 'text-fg-loud font-semibold' : 'text-fg-strong'}>{n.label ?? 'unknown agent'}</span>
-                      </span>
-                      <span className="text-fg-muted whitespace-nowrap">{kindLabel(w.kind === 'question' ? 'ask' : w.kind ?? 'ask')} · {age(w.seconds)}</span>
-                      {w.id && (
-                        <span className="ml-auto flex items-center gap-2 whitespace-nowrap">
-                          <button type="button" onClick={() => setCall({ id: w.id as string, mode: 'details' })}
-                                  className="underline decoration-dotted text-fg-muted hover:text-fg-strong"
-                                  title="What is asked, its options, what the decider did with it, and what the call waits for"
-                                  data-fleet-relay-details={w.id}>
-                            details
-                          </button>
-                          {w.kind !== 'permission' && !w.release_requested && (
-                            <button type="button" onClick={() => setCall({ id: w.id as string, mode: 'answer' })}
-                                    className="underline decoration-dotted text-amber-300/80 hover:text-amber-300"
-                                    title="Answer it yourself, in your own words — different from what the decider proposed. The agent gets it at once."
-                                    data-fleet-relay-answer={w.id}>
-                              answer…
-                            </button>
-                          )}
-                          {w.kind !== 'permission' && (w.questions ?? 1) === 1 && (
-                            <button type="button" onClick={() => setCall({ id: w.id as string, mode: 'teach' })}
-                                    className="underline decoration-dotted text-sky-300/80 hover:text-sky-300"
-                                    title="Answer it now AND teach the project the answer for next time, with an optional condition — committed in the project"
-                                    data-fleet-relay-teach={w.id}>
-                              teach
-                            </button>
-                          )}
-                        </span>
-                      )}
-                      {w.release_requested
-                        ? <span className={`${w.id ? '' : 'ml-auto '}text-fg-muted`}>releasing…</span>
-                        : (
-                          <button type="button" disabled={busy}
-                                  onClick={() => post(`/api/fleet/question-relay/release/${encodeURIComponent(w.session_id)}`)}
-                                  className={`${w.id ? '' : 'ml-auto '}whitespace-nowrap underline decoration-dotted text-fg-muted hover:text-fg-strong`}
-                                  title="Takes the question OFF the channel: it then waits at the agent's terminal for an answer typed there. It does not answer or approve anything — use it only when you are at the machine."
-                                  data-fleet-relay-release={w.session_id}>
-                            to terminal ↩
-                          </button>
-                        )}
-                    </div>
-                    {v && (
-                      <div className="mt-0.5 flex items-center gap-2 min-w-0">
-                        <p className={`min-w-0 truncate ${v.tone === 'due' ? 'text-amber-300' : v.tone === 'held' ? 'text-amber-400/80' : 'text-fg-muted'}`}
-                           title={v.text} data-fleet-relay-auto={w.auto_answer?.outcome ?? 'none'}>
-                          {v.text}
-                        </p>
-                        {snd && (
-                          <button type="button" disabled={busy} onClick={() => send(snd.id)}
-                                  className="ml-auto shrink-0 rounded border border-sky-400/50 px-1.5 text-sky-300 hover:bg-sky-400/10"
-                                  title={`Answer with «${snd.choice}» as YOUR answer, now — the agent gets it at once`}
-                                  data-fleet-relay-send={snd.id}>
-                            {snd.label}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </li>
-                  )
-                })}
-              </ul>
-            )}
+          <FleetRelayBoard waiting={waiting} busy={busy}
+                           onRelease={sid => post(`/api/fleet/question-relay/release/${encodeURIComponent(sid)}`)}
+                           onOpenCall={(id, m) => setCall({ id, mode: m })} onAnswered={read} />
           {call && (
             <FleetRelayCall id={call.id} mode={call.mode} onMode={m => setCall({ id: call.id, mode: m })}
                             onClose={closeCall} onSaved={read} />
