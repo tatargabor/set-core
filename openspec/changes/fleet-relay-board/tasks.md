@@ -12,6 +12,14 @@
 - [x] 2.2 The separate Details / Answer / Teach overlay (`FleetRelayCall.tsx`) is removed; its spec text (`fleet-relay-teach` relay-teach delta, `relay-own-answer`) rewritten for the board
 - [x] 2.3 Visual check of the teach controls in the browser — 2026-11-26 ~21:05, localhost:7400/fleet, with NO live call waiting, so the page's `fetch` was stubbed in the tab for three made-up calls (a single question, a two-question call, a permission prompt); every POST to them was answered 409 by the stub, so nothing left the page. Seen: the teach checkbox and the condition field on the single-question row only, the proposal marked on the two-question row's option, "send all 2 answers" disabled until both picks, the permission row with no controls. With teach ticked, an option click posted `…/relay-fake-1/teach {"answer":"Előbb megnézem","explanation":""}` and the row showed the stub's refusal.
 
+## 3. Note beside the option, teach on any question (owner, 2026-11-26: „itt első kérdésre akarnék teach-et és/vagy customot a választás mellé, de csak felülírni tudom")
+
+- [x] 3.1 `composeAnswer`: pick + note → "<pick> — <note>"; picking no longer clears the note
+- [x] 3.2 Teach per question on any non-permission call with a decider record; `POST …/answer` takes `teach: [{index, explanation}]`, delivers the answers, then `relay_teach.teach_rules` appends the ticked rules and commits them once; the single-call `/teach` route still refuses several questions
+- [x] 3.3 Tests: 4 route tests (one-of-two taught, none taught, a bad index, `/teach` still refuses), 2 vitest; set-web restarted on it
+- [x] 3.4 Browser, LIVE calls, every POST stubbed in the tab (409, nothing left the page): on the real three-question MyGLS call, Q1 picked «Nem tudom, kérdezd meg» with a note typed beside it, the pick stayed; "teach it too" on Q1 showed its condition field; Q2/Q3 kept their own teach boxes; "send all 3 answers" disabled until all three. One single-question row's option click reached the stub as `…/answer {"answers":[…],"teach":[]}`
+- [ ] 3.5 A real per-question teach committed from the board (the owner's first use)
+
 ## Acceptance
 
 - [ ] AC-4 (the click → `…/teach` request seen on a stubbed call, 2.3; a real commit from the board not yet): WHEN "teach it too" is ticked with a condition and an option is clicked THEN the agent is answered and the rule is committed in the project, and the row shows the sha [REQ: an-own-answer-can-also-be-taught, scenario: answer-and-teach]

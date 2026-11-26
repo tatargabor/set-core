@@ -76,3 +76,31 @@ export function verdictSentence(q: DetailQuestion, secondsLeft: number | null): 
       return { text: `${q.outcome}${why ? `: ${why}` : ''}`, tone: 'muted' }
   }
 }
+
+/**
+ * The answer one question sends: the picked option, a note written beside it, or both.
+ * Owner, 2026-11-26: „a választás mellé … de csak felülírni tudom" — a note no longer
+ * replaces the option; it travels with it.
+ */
+export function composeAnswer(pick: string | undefined, note: string | undefined): string {
+  const p = (pick ?? '').trim()
+  const n = (note ?? '').trim()
+  if (p && n) return `${p} — ${n}`
+  return p || n
+}
+
+export interface TaughtResult {
+  written: boolean
+  project: string
+  rules_file: string
+  commit: { sha: string; branch: string; reason: string }
+}
+
+/** The teach half of an answer's result, in one line; `ok` is false when the rule did not land. */
+export function taughtLine(t: TaughtResult | null | undefined, count: number): { text: string; ok: boolean } | null {
+  if (!t || count === 0) return null
+  const what = count === 1 ? 'Rule' : `${count} rules`
+  if (!t.written) return { text: `${what} not written: ${t.commit.reason || 'unknown reason'}`, ok: false }
+  if (t.commit.sha) return { text: `${what} committed in ${t.project} (${t.commit.branch}) as ${t.commit.sha}. Not pushed.`, ok: true }
+  return { text: `${what} written to ${t.project}/${t.rules_file}, not committed: ${t.commit.reason || 'unknown reason'}`, ok: false }
+}

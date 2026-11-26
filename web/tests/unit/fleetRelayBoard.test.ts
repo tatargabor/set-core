@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { answerable, boardChoices, oneClick, readyToSend, verdictSentence } from '../../src/lib/fleetRelayBoard'
+import {
+  answerable, boardChoices, composeAnswer, oneClick, readyToSend, taughtLine, verdictSentence,
+} from '../../src/lib/fleetRelayBoard'
 import { parseDetail, type DetailQuestion } from '../../src/lib/fleetRelayTeach'
 
 const q = (over: Partial<DetailQuestion> = {}): DetailQuestion => ({
@@ -67,5 +69,24 @@ describe('fleet-relay-board', () => {
     expect(verdictSentence(q({ outcome: 'excluded', reason: 'outward step: send' }), null).text).toContain('not written: outward step: send')
     expect(verdictSentence(q({ outcome: 'allowed' }), 41.6).text).toBe('Writes «Előbb a devauth-os felvétel» in 42 s unless you answer first.')
     expect(verdictSentence(q({ outcome: null }), null).text).toBe('The decider is still reading it.')
+  })
+})
+
+
+describe('fleet-relay-board: a note beside the option, teach per question', () => {
+  it('a note travels with the option instead of replacing it', () => {
+    expect(composeAnswer('Nem tudom, kérdezd meg', 'a GLS ügyfélszolgálatot')).toBe('Nem tudom, kérdezd meg — a GLS ügyfélszolgálatot')
+    expect(composeAnswer('Ugyanaz működik', '  ')).toBe('Ugyanaz működik')
+    expect(composeAnswer(undefined, 'saját válasz')).toBe('saját válasz')
+    expect(composeAnswer('', '')).toBe('')
+  })
+
+  it('says whether the rule landed', () => {
+    const base = { written: true, project: 'proj', rules_file: '.claude/rules/auto-answer-taught.md', commit: { sha: 'abc1234', branch: 'main', reason: '' } }
+    expect(taughtLine(base, 1)).toEqual({ text: 'Rule committed in proj (main) as abc1234. Not pushed.', ok: true })
+    expect(taughtLine({ ...base, commit: { sha: '', branch: '', reason: 'hook refused' } }, 2)!.ok).toBe(false)
+    expect(taughtLine({ ...base, written: false, commit: { sha: '', branch: '', reason: 'no checkout' } }, 1)!.text).toBe('Rule not written: no checkout')
+    expect(taughtLine(null, 1)).toBeNull()
+    expect(taughtLine(base, 0)).toBeNull()
   })
 })

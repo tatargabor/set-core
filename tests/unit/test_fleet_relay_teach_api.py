@@ -128,7 +128,7 @@ def test_an_own_answer_differs_from_the_proposal(world, caplog):
     wait(world)
     pending(world, outcome="excluded", choice="Igen, draftold (Recommended)")
     text = "Nem — és ne küldd minden beszélgetés után"
-    assert api.question_relay_answer(CID, api.AnswerBody(answers=[text])) == {"answered": True, "count": 1}
+    assert api.question_relay_answer(CID, api.AnswerBody(answers=[text])) == {"answered": True, "count": 1, "teach": None}
     assert answers_written(world, 1) == [text]
     assert text not in caplog.text
 
@@ -176,3 +176,57 @@ def test_a_permission_prompt_gets_no_free_text_but_keeps_the_send_button(world):
     assert answers_written(world, 1) == [None]
     assert qr.deliver_answer(SID, "Allow", world / "state") is None
     assert answers_written(world, 1) == ["Allow"]
+
+
+def _two_question_pending(world):
+    aw._private_write(aw.pending_path(world / "state", CID), {
+        "id": CID, "session_id": SID, "kind": "ask", "source": "proj · 47f1763f", "project": "proj",
+        "cwd": str(world / "proj"), "created": time.time() - 100, "write_at": None, "state": "forwarded",
+        "cancelled": False, "questions": [
+            {"key": "Q1", "question": "Működik a teszt user?", "options": ["Nem tudom", "Ugyanaz"],
+             "outcome": "no-decision", "reason": "abstained"},
+            {"key": "Q2", "question": "Mehet élesre?", "options": ["Igen", "Csak olvas"],
+             "outcome": "no-decision", "reason": "abstained"}]})
+
+
+def test_a_several_question_call_is_taught_question_by_question(world):
+    """fleet-relay-board (owner, 2026-11-26: „itt első kérdésre akarnék teach-et"): only the
+    ticked question becomes a rule; every answer is delivered; one commit."""
+    from set_orch.api import fleet_relay_teach as api
+    wait(world, questions=2)
+    _two_question_pending(world)
+    assert api.question_relay_detail(CID)["teach"]["allowed"] is True
+    res = api.question_relay_answer(CID, api.AnswerBody(
+        answers=["Nem tudom — kérdezd meg a GLS-t", "Csak olvas"],
+        teach=[api.TeachItem(index=0, explanation="amíg nincs teszt user")]))
+    assert res["answered"] and res["teach"]["written"] and res["teach"]["commit"]["sha"]
+    assert answers_written(world, 2) == ["Nem tudom — kérdezd meg a GLS-t", "Csak olvas"]
+    body = (world / "proj" / rt.RULES_REL).read_text()
+    assert "Működik a teszt user?" in body and "amíg nincs teszt user" in body
+    assert "Mehet élesre?" not in body
+
+
+def test_an_answer_without_teach_writes_no_rule(world):
+    from set_orch.api import fleet_relay_teach as api
+    wait(world, questions=2)
+    _two_question_pending(world)
+    res = api.question_relay_answer(CID, api.AnswerBody(answers=["a", "b"]))
+    assert res["teach"] is None and not (world / "proj" / rt.RULES_REL).exists()
+
+
+def test_teaching_a_question_that_does_not_exist_writes_nothing(world):
+    from set_orch.api import fleet_relay_teach as api
+    wait(world, questions=2)
+    _two_question_pending(world)
+    with pytest.raises(HTTPException) as e:
+        api.question_relay_answer(CID, api.AnswerBody(answers=["a", "b"], teach=[api.TeachItem(index=5)]))
+    assert e.value.status_code == 422
+    assert answers_written(world, 2) == [None, None] or not (world / "state" / "answers").exists()
+
+
+def test_the_single_call_teach_route_still_refuses_several_questions(world):
+    from set_orch.api import fleet_relay_teach as api
+    wait(world, questions=2)
+    _two_question_pending(world)
+    res = api.question_relay_teach(CID, api.TeachBody(answer="x"))
+    assert res["answered"] is False and "several questions" in res["answer_reason"]

@@ -1,6 +1,6 @@
 ## IN SCOPE
 - Each waiting call shown in full on the question-relay panel (the relay board), with what is asked and what the decider did
-- A "teach it too" choice on each single-question, non-permission row of the board: the operator's answer plus an optional explanation or condition
+- A "teach it too" choice on each question of a non-permission call on the board: the operator's answer plus an optional explanation or condition
 - The project-level taught-rules file `.claude/rules/auto-answer-taught.md` in the asking project's main checkout: appended to, one entry per taught question
 - Committing that one file in that project, pathspec-limited, with the project's own commit hooks running
 - Answering the waiting call at once with the taught answer, as the operator's answer
@@ -8,7 +8,7 @@
 ## OUT OF SCOPE
 - Pushing the commit (the project's own push carries it)
 - Editing or deleting a taught rule from the screen (the file is plain Markdown in the project; edit it there)
-- Teaching from a multi-question call, or from a permission prompt
+- Teaching from a permission prompt
 - Rules shared across projects, or stored on the machine instead of in the project
 - Answering a permission prompt automatically, by a rule or otherwise
 
@@ -29,11 +29,11 @@ When the decider never saw the call, its row SHALL say so instead of showing an 
 - **AND** the row offers no teach control, because the question's text is not recorded outside the decider
 
 ### Requirement: A waiting question can be answered once and taught for next time
-On the board, a single-question waiting row that is not a permission prompt SHALL carry, beside its answer controls, a "teach it too" choice and — once chosen — an optional field for the condition or reason ("whenever the design change is verified, it may go live"). With it chosen, the operator's answer on that row — an option click or a typed answer — SHALL:
+On the board, every question of a waiting call that is not a permission prompt SHALL carry, beside its answer controls, a "teach it too" choice and — once chosen — an optional field for the condition or reason ("whenever the design change is verified, it may go live"). With it chosen, the operator's answer on that row — an option click or a typed answer — SHALL:
 - answer the waiting call at once with the answer, as the operator's own answer, through the relay's answer store;
 - append the rule to the asking project's taught-rules file and commit it (next requirement).
 
-Each step's result SHALL be reported on the row: answered or why not, and the commit's short sha or why there is none. A failure of one step SHALL NOT undo or block the other. For a multi-question call, a permission prompt, or a call the decider has no record of, the teach choice SHALL NOT be offered, and the row SHALL say why when the server gives a reason. The question's text is held only in the decider's private pending record: the relay's own waiting record deliberately carries no question text, and this change does not add any.
+Each step's result SHALL be reported on the row: answered or why not, and the commit's short sha or why there is none. A failure of one step SHALL NOT undo or block the other. On a several-question call each question is taught on its own, and the rules ticked on one call are committed together. For a permission prompt or a call the decider has no record of, the teach choice SHALL NOT be offered. The question's text is held only in the decider's private pending record: the relay's own waiting record deliberately carries no question text, and this change does not add any.
 
 #### Scenario: Teaching an answer with a condition
 - **WHEN** the operator ticks "teach it too", writes "ha a tervezet módosítás le van ellenőrizve" as the condition, and clicks the option "Igen, mehet" on a waiting question

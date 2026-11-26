@@ -22,8 +22,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+class TeachItem(BaseModel):
+    #: 0-based question index within the call.
+    index: int
+    explanation: str = ""
+
+
 class AnswerBody(BaseModel):
     answers: List[str]
+    #: Questions whose answer is also taught as a project rule (fleet-relay-board).
+    teach: List[TeachItem] = []
 
 
 class TeachBody(BaseModel):
@@ -61,7 +69,11 @@ def _detail(call_id: str) -> Dict[str, Any]:
             } for q in pending.get("questions") or []],
         }
     why_not = rt.teachable(waiting)
-    if why_not is None and (decider is None or len(decider["questions"]) != 1):
+    # fleet-relay-board: a several-question call is taught question by question through the
+    # answer route; the single-call `/teach` route still refuses it (`rt.teach`).
+    if why_not == rt.SEVERAL_QUESTIONS:
+        why_not = None
+    if why_not is None and (decider is None or not decider["questions"]):
         why_not = ("the decider has no record of this call, so its text is not kept here — "
                    "answer it on the channel or in the terminal")
     if waiting.get("release_requested"):
@@ -124,8 +136,24 @@ def question_relay_answer(call_id: str, body: AnswerBody) -> Dict[str, Any]:
     if waiting.get("kind") == "permission":
         # D4: two fixed answers, on the channel and in the terminal; free text is not one.
         raise HTTPException(status_code=409, detail="a permission prompt is answered with Allow or Deny")
+    taught: Optional[Dict[str, Any]] = None
+    items = []
+    if body.teach:
+        from ..fleet import auto_answer_worker as aw
+        pending = aw.read_pending(qr.state_dir(), call_id) or {}
+        questions = pending.get("questions") or []
+        for t in body.teach:
+            if not (0 <= t.index < len(questions) and t.index < len(body.answers)):
+                raise HTTPException(status_code=422, detail=f"no question {t.index + 1} to teach")
+            text = str(questions[t.index].get("question") or "")
+            if not text:
+                raise HTTPException(status_code=409, detail="the decider has no record of that question's text")
+            items.append((text, body.answers[t.index], t.explanation))
     why = qr.deliver_answers(str(waiting.get("session_id") or ""), body.answers)
     if why is not None:
         raise HTTPException(status_code=409, detail=why)
-    logger.info("fleet api: own answer to %s — %d answer(s)", qr._safe_id(call_id)[-12:], len(body.answers))
-    return {"answered": True, "count": len(body.answers)}
+    logger.info("fleet api: own answer to %s — %d answer(s), %d taught", qr._safe_id(call_id)[-12:],
+                len(body.answers), len(items))
+    if items:
+        taught = rt.teach_rules(call_id, str(waiting.get("cwd") or ""), items).as_dict()
+    return {"answered": True, "count": len(body.answers), "teach": taught}

@@ -24,7 +24,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import question_relay as qr
 
@@ -173,6 +173,9 @@ class TeachResult:
                 "commit": {"sha": self.commit.sha, "branch": self.commit.branch, "reason": self.commit.reason}}
 
 
+SEVERAL_QUESTIONS = "the agent asked several questions at once; answer them in its terminal"
+
+
 def teachable(waiting: Optional[Dict[str, Any]]) -> Optional[str]:
     """Why this waiting call cannot be taught, or None."""
     if not waiting:
@@ -180,8 +183,39 @@ def teachable(waiting: Optional[Dict[str, Any]]) -> Optional[str]:
     if (waiting.get("kind") or "question") == "permission":
         return "a permission prompt is answered only by a person"
     if int(waiting.get("questions") or 0) != 1:
-        return "the agent asked several questions at once; answer them in its terminal"
+        return SEVERAL_QUESTIONS
     return None
+
+
+def teach_rules(call_id: str, cwd: str, items: List[Tuple[str, str, str]],
+                today: Optional[str] = None) -> TeachResult:
+    """Append one rule per (question, answer, explanation) and commit them together.
+
+    The relay board's answer route uses this for the questions the operator ticked "teach"
+    on — one or several questions of one call (owner, 2026-11-26: „itt első kérdésre akarnék
+    teach-et"). The answer itself is delivered by the caller; this writes only the rules.
+    """
+    today = today or _dt.date.today().isoformat()
+    res = TeachResult()
+    items = [(q, a.strip(), e) for q, a, e in items if (a or "").strip()]
+    if not items:
+        return res
+    root = main_checkout(cwd)
+    if isinstance(root, str):
+        res.commit = CommitResult(reason=root + "; the rule was not written")
+        logger.warning("relay teach [%s]: rules not written (%s)", qr._safe_id(call_id)[-12:], root)
+        return res
+    path = None
+    for question, answer, explanation in items:
+        path = append_rule(root, question, answer, explanation, today)
+    res.written, res.rules_file, res.project = True, str(RULES_REL), root.name
+    res.commit = commit_rule(root, path, today)
+    logger.info("relay teach [%s]: %d rule(s) appended to %s in %s; commit=%s",
+                qr._safe_id(call_id)[-12:], len(items), RULES_REL, root.name, res.commit.sha or "none")
+    if res.commit.reason:
+        logger.warning("relay teach [%s]: not committed in %s: %s", qr._safe_id(call_id)[-12:],
+                       root.name, res.commit.reason[:120])
+    return res
 
 
 def find_waiting(call_id: str, base: Optional[Path] = None) -> Optional[Dict[str, Any]]:
