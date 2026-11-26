@@ -1213,6 +1213,77 @@ def normalise(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+#: The continuation's suggestion mark (`continuation.NEXT_MARK` without its space).
+NEXT_MARK_TEXT = "→"
+
+
+def _fold(text: str) -> str:
+    """Case, accents, punctuation and spacing do not decide whether the operator said it."""
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", fold(text))).strip()
+
+
+def _edits(a: str, b: str, limit: int) -> int:
+    """Optimal-string-alignment distance, cut off once it is past `limit`."""
+    if abs(len(a) - len(b)) > limit:
+        return limit + 1
+    prev2: List[int] = []
+    prev = list(range(len(b) + 1))
+    for i in range(1, len(a) + 1):
+        cur = [i] + [0] * len(b)
+        for j in range(1, len(b) + 1):
+            cost = 0 if a[i - 1] == b[j - 1] else 1
+            cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
+            if i > 1 and j > 1 and a[i - 1] == b[j - 2] and a[i - 2] == b[j - 1]:
+                cur[j] = min(cur[j], prev2[j - 2] + 1)
+        if min(cur) > limit:
+            return limit + 1
+        prev2, prev = prev, cur
+    return prev[-1]
+
+
+def _word_close(q: str, t: str) -> bool:
+    """One typo in a word of five or more letters, two in one of nine or more; a short word
+    — `ne`, `nem`, `not` — must be exact, so a negation can never be typo'd in or out."""
+    if q == t:
+        return True
+    limit = 2 if min(len(q), len(t)) >= 9 else 1 if min(len(q), len(t)) >= 5 else 0
+    return limit > 0 and _edits(q, t, limit) <= limit
+
+
+def quote_in(quote: str, turn: str) -> bool:
+    """Whether `quote` is the operator's `turn` (or a run of it), up to his typos.
+
+    Measured 2026-11-26: the fork quotes the operator with his typos corrected
+    („képernyőseket … legyen” for „képernyősekezt … legyne”), and he types without
+    accents while the fork adds them. Word for word, same word count, so a word can be
+    neither added nor dropped; the first and last word may be cut, as a quote's edge is.
+    """
+    q, t = _fold(quote), _fold(turn)
+    if not q:
+        return False
+    if q in t:
+        return True
+    qw, tw = q.split(), t.split()
+    n = len(qw)
+    if n < 2 or n > len(tw):
+        return False
+    for i in range(len(tw) - n + 1):
+        ok = True
+        for k in range(n):
+            a, b = qw[k], tw[i + k]
+            if _word_close(a, b):
+                continue
+            if k == 0 and len(a) >= 3 and b.endswith(a):
+                continue
+            if k == n - 1 and len(a) >= 3 and b.startswith(a):
+                continue
+            ok = False
+            break
+        if ok:
+            return True
+    return False
+
+
 def _epoch(stamp: Any) -> Optional[float]:
     if not isinstance(stamp, str) or not stamp:
         return None
@@ -1222,44 +1293,147 @@ def _epoch(stamp: Any) -> Optional[float]:
         return None
 
 
-def operator_turns(path: Optional[Path], before: float) -> List[str]:
+#: A peer session's or a subagent's message arrives as a `user` entry too; not the operator's words.
+_PEER_PREFIXES = ("<cross-session-message", "<agent-message")
+#: The relay's continuation reaches the session inside a Stop-hook notification
+#: (`continuation.instruction`); the instruction is the operator's channel answer.
+_RELAY_CONTINUE = re.compile(
+    r"The owner answered from the relay channel \(they are away from this terminal\)\. "
+    r"Continue with this instruction: (.*?)\s*(?:</system-reminder>|$)", re.S)
+#: An `AskUserQuestion` result, answered at the terminal or through the relay. Both
+#: wordings are the runtime's own, measured in this machine's transcripts (2026-11-26):
+#: `"<question>"="<answer>", … . <a closing sentence>`.
+_ANSWERED = ("Your questions have been answered:", "The user answered:")
+_ANSWER_PAIR = re.compile(r'"=\s*"(.*?)"(?=\s*(?:,\s*"|\.\s+[A-Z]|\.?\s*$))', re.S)
+
+
+def _answers_in_result(text: str) -> List[str]:
+    """The operator's answers in an `AskUserQuestion` tool result — never the question text."""
+    if not text.startswith(_ANSWERED):
+        return []
+    return [a for a in _ANSWER_PAIR.findall(text) if a.strip()]
+
+
+def _tool_result_text(block: Dict[str, Any]) -> str:
+    content = block.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+    return ""
+
+
+def _human_origin(entry: Dict[str, Any], origin: Any) -> bool:
+    """A typed prompt; an entry with no origin (older runtimes) counts, a declared non-human one does not."""
+    return not isinstance(origin, dict) or origin.get("kind") in (None, "human")
+
+
+def operator_turns(path: Optional[Path], before: float, exclude: Iterable[str] = ()) -> List[str]:
     """The operator's own words in the transcript, before `before`, normalised.
 
-    A `user` entry that is not meta, whose content is text (not a tool result), with the
-    harness's injected blocks removed: a system reminder, a task notification, a local
-    command echo are not something the operator said.
+    Four carriers, all measured on 2026-11-26 — 42 of 43 operator quotes the check had
+    refused were in the transcript, in one of the last three:
+      - a `user` entry with text content (a prompt typed at an idle prompt);
+      - a `queued_command` attachment of human origin (a prompt typed WHILE the agent
+        worked: 214 of them in three days, none of which the check used to see);
+      - an `AskUserQuestion` result — only the answers, never the question text;
+      - the relay's continuation instruction inside its Stop-hook notification.
+    Harness-injected blocks (a system reminder, a task notification, a local command
+    echo) and a peer session's or subagent's message are not the operator's words.
+
+    `exclude` is what the auto-answer itself wrote into this session: it reaches the
+    transcript through the same carriers, and a proposal must not be evidence for the next.
     """
     if path is None:
         return []
+    dropped = {_fold(e) for e in exclude if e and e.strip()}
     out: List[str] = []
     try:
         handle = path.open("rb")
     except OSError:
         return []
+
+    def keep(text: str) -> None:
+        text = normalise(text)
+        if text and _fold(text) not in dropped:
+            out.append(text)
+
     with handle:
         for line in handle:
-            if b'"user"' not in line:
+            if b'"user"' not in line and b'"queued_command"' not in line:
                 continue
             try:
                 entry = json.loads(line)
             except ValueError:
                 continue
-            if not isinstance(entry, dict) or entry.get("type") != "user" or entry.get("isMeta"):
+            if not isinstance(entry, dict) or entry.get("isMeta"):
                 continue
             ts = _epoch(entry.get("timestamp"))
             if ts is None or ts >= before:
+                continue
+            if entry.get("type") == "attachment":
+                att = entry.get("attachment")
+                if (isinstance(att, dict) and att.get("type") == "queued_command"
+                        and att.get("commandMode") == "prompt" and _human_origin(entry, att.get("origin"))
+                        and isinstance(att.get("prompt"), str)):
+                    t = _REMINDER.sub(" ", att["prompt"]).strip()
+                    if t and not t.startswith(_INJECTED_PREFIXES + _PEER_PREFIXES):
+                        keep(t)
+                continue
+            if entry.get("type") != "user" or not _human_origin(entry, entry.get("origin")):
                 continue
             content = (entry.get("message") or {}).get("content") if isinstance(entry.get("message"), dict) else None
             texts: List[str] = []
             if isinstance(content, str):
                 texts = [content]
             elif isinstance(content, list):
-                texts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
+                for b in content:
+                    if not isinstance(b, dict):
+                        continue
+                    if b.get("type") == "text":
+                        texts.append(b.get("text", ""))
+                    elif b.get("type") == "tool_result":
+                        for answer in _answers_in_result(_tool_result_text(b)):
+                            keep(answer)
             for t in texts:
+                for instruction in _RELAY_CONTINUE.findall(t):
+                    keep(instruction)
                 t = _REMINDER.sub(" ", t).strip()
-                if t and not t.startswith(_INJECTED_PREFIXES):
-                    out.append(normalise(t))
+                if t and not t.startswith(_INJECTED_PREFIXES + _PEER_PREFIXES):
+                    keep(t)
     return out
+
+
+def own_written_answers(session_id: str, log: Optional[Path] = None) -> List[str]:
+    """What the auto-answer wrote into one session, from its decision log (newest last)."""
+    path = log or decision_log_path()
+    out: List[str] = []
+    if not session_id:
+        return out
+    try:
+        handle = path.open(encoding="utf-8", errors="replace")
+    except OSError:
+        return out
+    with handle:
+        for line in handle:
+            if session_id not in line:
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if (isinstance(rec, dict) and rec.get("session") == session_id
+                    and rec.get("outcome") == "written" and isinstance(rec.get("choice"), str)):
+                choice = rec["choice"].strip()
+                out.append(choice)
+                if choice.startswith(NEXT_MARK_TEXT):
+                    out.append(choice[len(NEXT_MARK_TEXT):].strip())
+    return out
+
+
+def decision_log_path() -> Path:
+    root = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(root) / "set-core" / "auto-answer" / "decisions.jsonl"
 
 
 def _resolve(path: str, cwd: str) -> Path:
@@ -1275,7 +1449,7 @@ def check_references(answer: Answer, turns: Sequence[str], cwd: str) -> Answer:
             ref.checked, ref.reason = False, "too short to prove anything"
             continue
         if ref.kind == "operator":
-            ref.checked = any(quote in t for t in turns)
+            ref.checked = any(quote_in(quote, t) for t in turns)
             ref.reason = "" if ref.checked else "not in an operator turn before the question"
             continue
         target = _resolve(ref.path, cwd)
@@ -1318,7 +1492,8 @@ def decide(envelope: Dict[str, Any], *, kind: str, session_id: str, cwd: str, as
            kb: Callable[[Sequence[Question], str], Tuple[List[Dict[str, str]], str]] = kb_candidates,
            launch_of: Callable[[str, Optional[Path]], Optional[Launch]] = session_launch,
            transcript: Callable[[str], Optional[Path]] = transcript_of,
-           runner: Callable[..., Tuple[Optional[str], str]] = run_bounded) -> Decision:
+           runner: Callable[..., Tuple[Optional[str], str]] = run_bounded,
+           written: Callable[[str], List[str]] = lambda sid: own_written_answers(sid)) -> Decision:
     """Look it up, fork, check. Never raises: a failure is a Decision with no answers."""
     questions = questions_of(envelope)
     if not questions:
@@ -1354,7 +1529,7 @@ def decide(envelope: Dict[str, Any], *, kind: str, session_id: str, cwd: str, as
                         launch=launch.describe() if launch else "")
     text, usage = result_text(out)
     answers, refused = parse_decision(text, questions, kind)
-    turns = operator_turns(path, asked_at) if method == "fork" else []
+    turns = operator_turns(path, asked_at, written(session_id)) if method == "fork" else []
     for a in answers.values():
         check_references(a, turns, cwd)
     logger.info("auto answer [%s]: %s — %d answered, %d refused (%s)", (session_id or "?")[:8], method,

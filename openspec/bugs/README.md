@@ -82,6 +82,21 @@ consumer's name, path, or content.
 - **fail direction:** quiet, and it erodes trust in the transcript: a decision made on a phone reads in the record as a decision made in the room, and a session waiting on an answer has no signal that it arrived.
 - **fixed when:** an answer delivered by the relay is distinguishable in the session from a terminal answer (annotation on the fabricated tool result, or a message the session receives), and a test holds the distinction for both the delivered and the late-answer case.
 
+### B-245 — the auto-answer's quote check could not see most of what the operator says, so his real decisions read as guesses and fell below the bar
+- **state:** closed 2026-11-26 (this commit)
+- **reported:** 2026-11-26 by the user (*„van/volt-e olyan hogy nem auto volt … pedig nem volt security"*), and measured by this session over `~/.local/share/set-core/auto-answer/decisions.jsonl`.
+- **measured:** of the 43 operator quotes the check had refused, **42 were in the session's own transcript**, in carriers `operator_turns()` never read: 16 in a `queued_command` attachment (a prompt typed WHILE the agent worked; 214 human-origin ones in three days of this machine's transcripts), 19 in an `AskUserQuestion` result (B-240 — and in TWO runtime wordings, `Your questions have been answered:` and `The user answered:`), 5 in the relay's continuation instruction, which reaches the session inside a Stop-hook `<task-notification>` and was dropped as injected. The 43rd was the fork quoting him with his typos corrected (`képernyőseket … legyen` for `képernyősekezt … legyne`). The other direction too: a peer session's `<cross-session-message>` in a `user` entry counted as his words. And a quote of what the auto-answer had itself written (20:10, citing its own 19:43 continuation) could become evidence the moment those carriers were read.
+- **fail direction:** the quiet one — nothing broke, the decider just did not answer. A checked operator quote makes the tier `decided`; without it a correct proposal was `likely` and the model's own 0.5–0.6 put it below the 0.8 bar. 20:05 (`Előbb a devauth-os felvétel`, the operator later chose exactly that) is one of 5 below-bar records that replay to allowed.
+- **fixed by:** `operator_turns` reads all four carriers (only the ANSWERS of a dialog result, never the question text; a queued command only of human origin; peer and subagent messages dropped), takes `exclude` = the auto-answer's own written choices for the session (`own_written_answers`, from the decision log), and `quote_in` matches case-, accent- and punctuation-free, word for word with one typo per word of 5+ letters (two at 9+); short words like `ne`/`nem` must be exact and no word may be added or dropped. Replay of every recorded operator quote: 23 refused → checked, 0 checked → refused; the 20 still refused are the auto-answer's own writes, a dictation tool output, a history dump and a meeting transcript. 26 new tests fail without the fix (stash-and-rerun); 509 relay tests green.
+- **not done here:** the continuation instruction still tells the agent *"The owner answered from the relay channel"* when the auto-answer wrote it — a false value to the agent; see B-246.
+
+### B-246 — a continuation the auto-answer wrote reaches the agent as "The owner answered from the relay channel"
+- **state:** open
+- **reported:** 2026-11-26 by this session, while fixing B-245.
+- **measured:** `continuation.instruction()` (`lib/set_orch/fleet/continuation.py:148`) words every channel answer the same way; the worker's answer file (`{"valasz": …}`, `auto_answer_worker._write_answer`) carries nothing that says who wrote it. In session `812883d6` the 19:43 auto-written `Nézd meg, visszaadta-e a UNAS session a box2-t.` arrived as the owner's instruction.
+- **fail direction:** the agent reports and builds on "the owner said X" when the owner said nothing — the false-value class; the decision log is the only place the truth survives.
+- **fixed when:** the worker's answer file names its writer and the instruction says "auto-answer, on the owner's behalf" for those; a test holds both wordings.
+
 ### B-244 — the bot's own seed reactions make the owner's reaction visually indistinguishable on the post, though the DECISION already excludes the bot
 - **state:** open
 - **reported:** 2026-11-25 by a peer project's agent over the agent bus (seed reactions 1,2,3,X each at count 1; the owner's reaction "impossible to tell apart").
@@ -104,7 +119,7 @@ consumer's name, path, or content.
 - **fixed when:** the lookup's cause of timing out is named and removed, or the lookup is bounded well under the decision time; across 5 consecutive relayed questions none carries the timeout note, and `latency_s` stays under 15 s.
 
 ### B-240 — an answer the operator gives in a question dialog can never check as "operator", so a real decision of theirs is only ever "likely"
-- **state:** open
+- **state:** closed 2026-11-26 with B-245 (this commit) — `operator_turns` reads a dialog result's ANSWERS, never its question text and never another tool's output; `test_operator_words_in_every_carrier` and `test_operator_quote_that_does_not_count` hold both halves.
 - **reported:** 2026-11-24 by this session, running the auto-write path end to end.
 - **measured:** a question the operator had already answered ("Leave them", chosen in an `AskUserQuestion` dialog) was decided `Leave them`, tier `likely`, confidence 0.95, and written. Its only reference, kind `operator`, quote `Leave them`, has `checked: False`. `operator_turns()` in `lib/set_orch/fleet/auto_answer.py` reads only `user` entries whose content is text, and excludes tool results by design. A dialog answer arrives as a tool result, so it is invisible to the check.
 - **fail direction:** two ways at once. The tier under-reports, since a decision the operator actually made reads as a guess. And a write the operator did authorise is indistinguishable in the log from one resting on the model's confidence alone. With `likely_min` at 0.8, the second kind is written too, so the panel cannot show which writes had a checked source.

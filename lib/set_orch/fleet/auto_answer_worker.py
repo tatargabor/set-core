@@ -64,8 +64,7 @@ OUT_HELD = "held"                 # allowed, but another question of the same ca
 # --------------------------------------------------------------------------- #
 
 def log_path() -> Path:
-    root = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return Path(root) / "set-core" / "auto-answer" / "decisions.jsonl"
+    return aa.decision_log_path()
 
 
 def pending_dir(base: Path) -> Path:

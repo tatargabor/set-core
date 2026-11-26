@@ -25,7 +25,7 @@ The relay SHALL export to the outbound process the kind of the blocking point (`
 - **THEN** the outbound's environment names the kind `continuation`, the session id and the session's working directory, and the envelope carries no new field
 
 ### Requirement: The decision names its tier and its source
-For each question the decider SHALL produce one choice and a tier: `decided` when an earlier operator decision covers it, `found` when the answer is written in the project's information, `likely` when it is inferred. The tier SHALL be derived from CHECKED references, not taken from the model: a conversation reference counts only if its quote occurs verbatim in an operator turn of the session before the question, and a file reference only if its excerpt occurs verbatim in that file. `decided` SHALL require at least one checked operator quote or recorded decision; `found` at least one checked file excerpt; a choice whose references all fail the check SHALL be treated as `likely`. A `likely` choice SHALL carry a confidence between 0 and 1. A choice for a question with a closed option list SHALL be one of those options; a continuation's choice MAY be free text. A decision without a choice, or a closed-list choice outside the list, SHALL be treated as no decision.
+For each question the decider SHALL produce one choice and a tier: `decided` when an earlier operator decision covers it, `found` when the answer is written in the project's information, `likely` when it is inferred. The tier SHALL be derived from CHECKED references, not taken from the model: a conversation reference counts only if its quote matches an operator turn of the session before the question — word for word, ignoring case, accents and punctuation, with at most one typo in a word of five or more letters and two in a word of nine or more, a shorter word exact, and no word added or dropped. An operator turn is a prompt the operator typed (also one queued while the agent worked, of human origin only), the operator's answers in a question dialog's result (never its question text), or the relay's continuation instruction; a peer session's or a subagent's message is not, and neither is anything the automatic answer itself wrote into the session; and a file reference only if its excerpt occurs verbatim in that file. `decided` SHALL require at least one checked operator quote or recorded decision; `found` at least one checked file excerpt; a choice whose references all fail the check SHALL be treated as `likely`. A `likely` choice SHALL carry a confidence between 0 and 1. A choice for a question with a closed option list SHALL be one of those options; a continuation's choice MAY be free text. A decision without a choice, or a closed-list choice outside the list, SHALL be treated as no decision.
 
 #### Scenario: A decision already on record
 - **WHEN** the project's rules state the operator's decision that answers the question
@@ -38,6 +38,18 @@ For each question the decider SHALL produce one choice and a tier: `decided` whe
 #### Scenario: An answer outside the options
 - **WHEN** the model returns a choice that is not one of the question's options
 - **THEN** no automatic answer is made and the question is forwarded unchanged
+
+#### Scenario: A quote the operator typed while the agent worked
+- **WHEN** the operator typed the decision while the agent was working, so the runtime recorded it as a queued prompt
+- **THEN** the fork's quote of it checks out and the tier is `decided`
+
+#### Scenario: The automatic answer's own words are not evidence
+- **WHEN** the fork quotes, as the operator's, a continuation the automatic answer wrote into the session earlier
+- **THEN** the quote does not check out
+
+#### Scenario: A quote with the operator's typos corrected
+- **WHEN** the operator wrote „akkor a képernyősekezt vedd fel legyne meg!” and the fork quotes „akkor a képernyőseket vedd fel legyen meg!”
+- **THEN** the quote checks out; a quote that adds or drops a `ne` or `nem` does not
 
 ### Requirement: The lookup reads where decisions live, and only reads
 Before the decision, the decider SHALL run the project knowledge-base search (`set-kb search --json`) in the asking session's working directory with the question and its options, and SHALL hand the ranked sections (path, heading, excerpt) to the decision as candidate sources. When the knowledge base cannot search in that project, the decider SHALL continue without it and SHALL log that it did. The decision SHALL be made by a fork of the asking session (the session's conversation resumed into a new session id, the original left unchanged), on the same model and provider as the original session — `auto_answer.model` SHALL apply only to the fallback — with read-only file tools only, hooks disabled, the relay's guard set, and a time bound. The fork SHALL be asked for the operator's answer and for references, each either an operator message quoted from the conversation or a file path with an excerpt; it SHALL also be pointed at the instruction files of the project and of the user, the project's rules directory, the session's newest handoff, the open OpenSpec changes, the bug register, the project's memory directory, and any paths listed in `auto_answer.extra_paths`. When the session cannot be forked, the decider SHALL fall back to one headless call in the session's working directory with the same sources and SHALL log the fallback. A decision that fails or times out SHALL produce no decision.

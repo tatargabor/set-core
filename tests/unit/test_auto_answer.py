@@ -546,6 +546,114 @@ def test_operator_quote_that_does_not_count(tmp_path, entries):
     assert aa.allow(a.tier, a.confidence, None, 0.95) == "below-bar"
 
 
+# --- the carriers the operator's words actually arrive in (measured 2026-11-26) ---------
+
+def queued(text, at=ASKED - 20, origin=None, mode="prompt"):
+    att = {"type": "queued_command", "prompt": text, "commandMode": mode}
+    if origin is not None:
+        att["origin"] = origin
+    return {"type": "attachment", "timestamp": iso(at), "attachment": att}
+
+
+def asked_result(pairs, at=ASKED - 20, old=False):
+    body = ", ".join(f'"{qq}"="{aa_}"' for qq, aa_ in pairs)
+    text = (f"The user answered: {body}. Read the answers carefully — they may request clarification."
+            if old else f"Your questions have been answered: {body}. You can now continue with these answers in mind.")
+    return {"type": "user", "timestamp": iso(at), "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "toolu_1", "content": text}]}}
+
+
+def relay_continue(text, at=ASKED - 20):
+    return user("<task-notification>\n<summary>Stop hook feedback</summary>\n</task-notification>\n<system-reminder>\n"
+                "Stop hook blocking error from command \"Stop\": The owner answered from the relay channel "
+                f"(they are away from this terminal). Continue with this instruction: {text}\n</system-reminder>", at=at)
+
+
+@pytest.mark.parametrize("entries", [
+    # typed while the agent worked: the runtime stores it as a queued command, not a user entry
+    [queued("the release color is TEAL", origin={"kind": "human"})],
+    [queued("the release color is TEAL")],                       # an older runtime: no origin
+    # his answer to an earlier question, at the terminal or through the relay
+    [asked_result([("Which colour this time?", "the release color is TEAL")])],
+    [asked_result([("Which machine?", "MacBook"), ("Which colour?", "the release color is TEAL")], old=True)],
+    [asked_result([("Which colour?", " the release color is TEAL ")], old=True)],
+    # his answer to a finished turn, from the relay channel
+    [relay_continue("the release color is TEAL")],
+])
+def test_operator_words_in_every_carrier(tmp_path, entries):
+    t = write_transcript(tmp_path / "t.jsonl", entries)
+    a = aa.check_references(answer_with(aa.Reference("operator", "the release color is TEAL")),
+                            aa.operator_turns(t, ASKED), str(tmp_path))
+    assert a.tier == "decided" and a.references[0].checked is True
+
+
+@pytest.mark.parametrize("entries", [
+    # the agent's own question text inside the answered result is not the operator's
+    [asked_result([("Is the release color is TEAL fine?", "no")])],
+    # a queued task notification, a peer session, a subagent
+    [queued("<task-notification> the release color is TEAL", mode="task-notification")],
+    [queued("the release color is TEAL", origin={"kind": "peer", "from": "uds:/x.sock"})],
+    [queued('<cross-session-message from="x">the release color is TEAL</cross-session-message>')],
+    [user('<cross-session-message from="x">the release color is TEAL</cross-session-message>')],
+    [{**user("the release color is TEAL"), "origin": {"kind": "task-notification"}}],
+    # queued after the question
+    [queued("the release color is TEAL", at=ASKED + 5)],
+])
+def test_carriers_that_are_not_the_operator(tmp_path, entries):
+    t = write_transcript(tmp_path / "t.jsonl", entries)
+    a = aa.check_references(answer_with(aa.Reference("operator", "the release color is TEAL")),
+                            aa.operator_turns(t, ASKED), str(tmp_path))
+    assert a.tier == "likely" and a.references[0].checked is False
+
+
+@pytest.mark.parametrize("entry", [relay_continue("Check whether box2 came back."),
+                                   asked_result([("Which first?", "Check whether box2 came back.")])])
+def test_what_the_auto_answer_wrote_is_not_evidence(tmp_path, entry):
+    """Measured 2026-11-26 20:10: the fork cited the continuation the auto-answer itself had
+    written at 19:43 as the operator's words. A proposal must not prove the next one."""
+    t = write_transcript(tmp_path / "t.jsonl", [entry])
+    ref = aa.Reference("operator", "Check whether box2 came back.")
+    a = aa.check_references(answer_with(ref), aa.operator_turns(t, ASKED, ["→ Check whether box2 came back."]),
+                            str(tmp_path))
+    assert ref.checked is False and a.tier == "likely"
+    # the same words, said by him, still count
+    a = aa.check_references(answer_with(aa.Reference("operator", "Check whether box2 came back.")),
+                            aa.operator_turns(t, ASKED, ["something else entirely"]), str(tmp_path))
+    assert a.tier == "decided"
+
+
+def test_own_written_answers_reads_only_this_sessions_writes(tmp_path):
+    log = tmp_path / "decisions.jsonl"
+    rows = [{"session": "s1", "outcome": "written", "choice": "→ Do the next step."},
+            {"session": "s1", "outcome": "below-bar", "choice": "Not written"},
+            {"session": "s2", "outcome": "written", "choice": "Other session"}]
+    log.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    assert aa.own_written_answers("s1", log) == ["→ Do the next step.", "Do the next step."]
+    assert aa.own_written_answers("", log) == []
+    assert aa.own_written_answers("s1", tmp_path / "missing.jsonl") == []
+
+
+@pytest.mark.parametrize("quote,turn", [
+    ("akkor a képernyőseket vedd fel legyen meg!", "akkor a képernyősekezt vedd fel legyne meg!"),  # measured
+    ("fixáld a hibákat, válaszold meg", "fixald a hibakat, valaszold meg akérdéseket"),            # accents added
+    ("release color is TEAL", "the release colour is TEAL now"),
+    ("elease color is TEA", "the release color is TEAL"),                                           # cut edges
+])
+def test_a_quote_up_to_his_typos(quote, turn):
+    assert aa.quote_in(quote, turn)
+
+
+@pytest.mark.parametrize("quote,turn", [
+    ("ne vedd fel a képernyőseket", "vedd fel a képernyőseket"),        # a negation added
+    ("nem kell feltenni", "kell feltenni"),
+    ("the release color is ORANGE", "the release color is TEAL"),
+    ("the color is TEAL", "the release color is TEAL"),                 # a word dropped
+    ("deploy to prod", "deploy to test"),                               # a short word changed
+])
+def test_a_quote_that_says_something_else(quote, turn):
+    assert not aa.quote_in(quote, turn)
+
+
 def test_file_excerpt_found_and_decision_record(tmp_path):
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "release.md").write_text("# Release\n\nThe release colour   is\nTEAL from now on.\n")
@@ -586,7 +694,7 @@ def run_decide(tmp_path, out, *, launch=True, kb=None, transcript_entries=None, 
                   get=cfg(**{aa.KEY_MODEL: "claude-fable-5-2"}),
                   kb=kb or (lambda qs, cwd: ([], "kb: not used (exit 2)")),
                   launch_of=lambda s, p: lnch if launch else None,
-                  transcript=lambda s: t, runner=runner)
+                  transcript=lambda s: t, runner=runner, written=lambda s: [])
     return d, seen
 
 
