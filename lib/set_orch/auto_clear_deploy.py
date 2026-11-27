@@ -166,8 +166,17 @@ def shipped_blobs(pkg: Path, blob: str) -> set:
     return known
 
 
-def install_templates(pkg: Path, tree: Path, env: dict, dry_run: bool) -> list:
+def install_templates(pkg: Path, tree: Path, env: dict, dry_run: bool,
+                      package_route: bool = False) -> list:
+    """Copy the package's produced files into the tree (D1).
+
+    On the package route (B-253) the watcher runs the package's own templates and a plugin
+    wires the hooks, so a `.claude/hooks/` copy is written only where the tree's settings call
+    it; every other hook copy is left out and named once.
+    """
     lines = []
+    called = {n for n in ac.HOOK_FILES for _, _, c in ac._settings_commands(str(tree)) if n in c}
+    left_out = []
     scratch, files, sha = produced_files(pkg, env)
     if scratch is None:
         return [f"  auto-clear templates: skipped — {files}"]
@@ -175,6 +184,10 @@ def install_templates(pkg: Path, tree: Path, env: dict, dry_run: bool) -> list:
         for rel in files:
             new = scratch / rel
             target = tree / rel
+            if (package_route and rel.startswith(".claude/hooks/")
+                    and os.path.basename(rel) not in called):
+                left_out.append(os.path.basename(rel))
+                continue
             new_blob = _git(pkg, "hash-object", str(new))
             if target.is_file():
                 cur = _git(pkg, "hash-object", str(target))
@@ -193,7 +206,11 @@ def install_templates(pkg: Path, tree: Path, env: dict, dry_run: bool) -> list:
             logger.info("auto-clear template %s %s in %s", verb, rel, tree)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
-    if lines:
+    if left_out:
+        logger.info("auto-clear templates: package route in %s, hook copies left out: %s", tree, left_out)
+        lines.append(f"  auto-clear templates: package route — the watcher runs the package's own "
+                     f"files, so {', '.join(sorted(left_out))} not copied")
+    if lines and not all("package route" in l for l in lines):
         # Every line appended above means a file was written/upgraded (or planned to be)
         # or kept as locally modified — name where those templates came from, first.
         header = f"  auto-clear templates: from {ac.PACKAGE} {sha}"
@@ -227,7 +244,7 @@ def overriding_flags(exec_start: str) -> list:
 def install_unit(name: str, tree: Path, home: Path, env: dict, dry_run: bool) -> list:
     unit_dir = home / ".config" / "systemd" / "user"
     unit_name = f"{name}-auto-clear.service"
-    existing = ac.watcher_units(str(home), str(tree))
+    existing = ac.watcher_units(str(home), str(tree)) + ac.package_units(str(home), str(tree))
     if (unit_dir / unit_name).is_file() and not any(u == unit_name for u, _ in existing):
         existing.append((unit_name, ""))
     if existing:
@@ -274,8 +291,14 @@ def deploy(name: str, tree: Path, registry: dict, home: Path, env: dict, dry_run
     if not pkg:
         return [f"  auto-clear: skipped — the {ac.PACKAGE} checkout is not in the registry "
                 f"(set-project add {ac.PACKAGE} <path>)"]
-    lines = install_templates(Path(pkg), tree, env, dry_run)
-    lines += merge_hooks(tree, dry_run)
+    package_route = bool(ac.package_units(str(home), str(tree)))
+    lines = install_templates(Path(pkg), tree, env, dry_run, package_route)
+    reload_, arm, _ = ac.hooks_wired(str(tree), str(home))
+    if package_route and reload_ and arm:
+        # B-253: a plugin already wires reload + arm; settings hooks would run them twice.
+        lines.append("  auto-clear hooks: package route — reload and arm come from an enabled plugin, left as is")
+    else:
+        lines += merge_hooks(tree, dry_run)
     lines += install_unit(name, tree, home, env, dry_run)
     return lines
 

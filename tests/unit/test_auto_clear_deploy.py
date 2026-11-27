@@ -301,3 +301,52 @@ def test_a_dry_run_plans_and_writes_nothing(box):
     assert "would write .claude/hooks/clear-gate.mjs" in out
     assert "would add reload" in out and "would create" in out
     assert all(c.startswith("--user show-environment") for c in calls(log)), calls(log)
+
+
+# ── B-253: the package route ────────────────────────────────────────────────
+
+
+def package_route(tree, home, tmp_path, settings_hooks=None):
+    """A unit running the package's own watcher for the tree, and a plugin that wires reload + arm."""
+    (home / ".config" / "systemd" / "user" / "proj-pkg-watch.service").write_text(
+        f"[Service]\nExecStart=/usr/bin/env set-claude-handoff watch --dir {tree} --interval 60\n")
+    install = tmp_path / "plugin"
+    (install / "hooks").mkdir(parents=True)
+    (install / "hooks" / "hooks.json").write_text(json.dumps({"hooks": {
+        "SessionStart": [{"matcher": "clear|compact", "hooks": [{"command": "set-claude-handoff hook reinject --from-plugin"}]}],
+        "PostToolUse": [{"matcher": "Write|Edit|MultiEdit|Bash", "hooks": [{"command": "set-claude-handoff hook arm --from-plugin"}]}]}}))
+    (home / ".claude" / "plugins").mkdir(parents=True)
+    (home / ".claude" / "plugins" / "installed_plugins.json").write_text(json.dumps({"version": 2, "plugins": {
+        "kit@kit": [{"scope": "local", "projectPath": str(tree), "installPath": str(install)}]}}))
+    (tree / ".claude").mkdir(exist_ok=True)
+    doc = {"enabledPlugins": {"kit@kit": True}}
+    if settings_hooks:
+        doc["hooks"] = settings_hooks
+    (tree / ".claude" / "settings.json").write_text(json.dumps(doc))
+
+
+def test_a_package_route_tree_gets_no_second_install_b253(box, tmp_path):
+    """No hook copies, no settings hooks, no second watcher unit."""
+    run, _, tree, home, log, _ = box
+    package_route(tree, home, tmp_path)
+    before = (tree / ".claude" / "settings.json").read_text()
+    out = run()
+    for f in FILES:
+        assert not hook(tree, f).exists(), f
+    assert (tree / ".claude" / "settings.json").read_text() == before
+    assert not unit_file(home).exists()
+    assert "enable" not in " ".join(calls(log))
+    assert any("package route" in l and "not copied" in l for l in out)
+    assert any("proj-pkg-watch.service exists" in l for l in out)
+
+
+def test_a_called_copy_is_still_upgraded_on_the_package_route_b253(box, tmp_path):
+    run, _, tree, home, _, _ = box
+    package_route(tree, home, tmp_path, settings_hooks={"PostToolUse": [{"matcher": "Bash", "hooks": [
+        {"command": 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/handoff-arm.mjs"'}]}]})
+    hook(tree, "handoff-arm.mjs").parent.mkdir(parents=True, exist_ok=True)
+    hook(tree, "handoff-arm.mjs").write_text("// handoff-arm.mjs v1\n")
+    out = run()
+    assert hook(tree, "handoff-arm.mjs").read_text() == "// handoff-arm.mjs v2\n"
+    assert not hook(tree, "clear-gate.mjs").exists()
+    assert any("upgraded .claude/hooks/handoff-arm.mjs" in l for l in out)
