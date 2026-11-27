@@ -25,7 +25,7 @@
 ## 5. Adoption and acceptance
 
 - [x] 5.1 Announce the carrier and its stdin shape on the bus to the family plugin's owner [REQ: a-hook-can-hand-its-ask-reason-to-the-relay]
-- [ ] 5.2 Live acceptance: a real guarded command whose guard calls the carrier reaches the channel with its `Why it asks` line and its command; record the measurement in B-188 and close (a) [REQ: the-permission-post-shows-the-matching-reason]
+- [ ] 5.2 *(Partly measured 2026-11-27: the real devkit 0.24.1 guard, driven by hand, stores a reason that the permission post for the same call shows and consumes; see B-188. Open: the same on the real channel from a restarted session.)* Live acceptance: a real guarded command whose guard calls the carrier reaches the channel with its `Why it asks` line and its command; record the measurement in B-188 and close (a) [REQ: the-permission-post-shows-the-matching-reason]
 
 ## Acceptance Criteria (from spec scenarios)
 
