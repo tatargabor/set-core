@@ -116,11 +116,75 @@ def _settings_commands(tree: str) -> list:
     return out
 
 
-def hooks_wired(tree: str) -> tuple:
-    """(reload_wired, arm_wired, keep_going_thresholds) — the package's hook OR a project's own."""
+def _enabled_plugins(tree: str, home: str) -> dict:
+    """{plugin key: enabled} — the user's settings, overridden by the tree's settings.json, then
+    its settings.local.json (the runtime's own precedence)."""
+    out = {}
+    for path in (os.path.join(home, ".claude", "settings.json"),
+                 os.path.join(tree, ".claude", "settings.json"),
+                 os.path.join(tree, ".claude", "settings.local.json")):
+        try:
+            data = json.load(open(path, encoding="utf-8"))
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError) as e:
+            logger.warning("auto-clear: unreadable %s: %s", path, e)
+            continue
+        out.update({k: bool(v) for k, v in (data.get("enabledPlugins") or {}).items()})
+    return out
+
+
+def plugin_commands(tree: str, home: str) -> list:
+    """[(event, matcher, command)] from the hooks.json of every plugin enabled for this tree.
+
+    The package route (B-253): a plugin's hooks.json calls `set-claude-handoff hook reinject` /
+    `hook arm`, so the tree's own settings name neither. The install that counts is the one
+    `installed_plugins.json` records for this tree (local/project scope) or for the user.
+    """
+    enabled = [k for k, on in _enabled_plugins(tree, home).items() if on]
+    if not enabled:
+        return []
+    try:
+        installed = json.load(open(os.path.join(home, ".claude", "plugins", "installed_plugins.json"),
+                                   encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    except (OSError, ValueError) as e:
+        logger.warning("auto-clear: unreadable installed_plugins.json: %s", e)
+        return []
+    plugins = installed.get("plugins", installed) if isinstance(installed, dict) else {}
+    real = os.path.realpath(tree)
+    out = []
+    for key in enabled:
+        entries = plugins.get(key) or []
+        mine = [e for e in entries if e.get("projectPath") and os.path.realpath(e["projectPath"]) == real]
+        chosen = (mine or [e for e in entries if e.get("scope") == "user"] or [None])[0]
+        if not chosen or not chosen.get("installPath"):
+            logger.debug("auto-clear: plugin %s enabled for %s but no install recorded", key, tree)
+            continue
+        path = os.path.join(chosen["installPath"], "hooks", "hooks.json")
+        try:
+            data = json.load(open(path, encoding="utf-8"))
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError) as e:
+            logger.warning("auto-clear: unreadable %s: %s", path, e)
+            continue
+        for event, items in (data.get("hooks") or {}).items():
+            for item in items or []:
+                for h in item.get("hooks") or []:
+                    out.append((event, item.get("matcher") or "", h.get("command") or ""))
+    return out
+
+
+def hooks_wired(tree: str, home: Optional[str] = None) -> tuple:
+    """(reload_wired, arm_wired, keep_going_thresholds) — the package's hook OR a project's own,
+    from the tree's settings or, with `home`, from a plugin enabled for the tree (B-253)."""
     cmds = _settings_commands(tree)
-    reload_ = any(ev == "SessionStart" and "clear" in m and "reinject" in c for ev, m, c in cmds)
-    arm = any(ev == "PostToolUse" and "handoff-arm" in c for ev, m, c in cmds)
+    hooked = cmds + (plugin_commands(tree, home) if home else [])
+    reload_ = any(ev == "SessionStart" and "clear" in m and "reinject" in c for ev, m, c in hooked)
+    arm = any(ev == "PostToolUse" and ("handoff-arm" in c or re.search(r"\bhook arm\b", c))
+              for ev, m, c in hooked)
     kg = sorted({int(t) for ev, m, c in cmds if "keep-going" in c
                  for t in re.findall(r"--threshold\s+(\d+)", c)})
     return reload_, arm, kg
@@ -142,6 +206,35 @@ def watcher_units(home: str, tree: str) -> list:
                 continue
             words = line[len("ExecStart="):].split()
             if any(w.endswith(WATCHER) and os.path.realpath(w) == real for w in words):
+                out.append((os.path.basename(f), line[len("ExecStart="):]))
+    return out
+
+
+def package_watcher(cmd: str, tree: str) -> bool:
+    """Does this ExecStart run the PACKAGE's watcher for `tree` (B-253)? Either
+    `set-claude-handoff watch --dir <tree>` or the package checkout's
+    `templates/watch-auto-clear.sh … --dir <tree>`; the tree compared resolved (B-218)."""
+    words = cmd.split()
+    runs = any(w.endswith("/templates/watch-auto-clear.sh") for w in words) or any(
+        os.path.basename(w) == PACKAGE and i + 1 < len(words) and words[i + 1] == "watch"
+        for i, w in enumerate(words))
+    if not runs:
+        return False
+    real = os.path.realpath(tree)
+    return any(w == "--dir" and i + 1 < len(words) and os.path.realpath(words[i + 1]) == real
+               for i, w in enumerate(words))
+
+
+def package_units(home: str, tree: str) -> list:
+    """[(unit name, ExecStart)] of user units that run the package's watcher for THIS tree."""
+    out = []
+    for f in sorted(glob.glob(os.path.join(home, ".config", "systemd", "user", "*.service"))):
+        try:
+            text = open(f, encoding="utf-8").read()
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if line.startswith("ExecStart=") and package_watcher(line[len("ExecStart="):], tree):
                 out.append((os.path.basename(f), line[len("ExecStart="):]))
     return out
 
@@ -171,19 +264,26 @@ def check(name: str, entry: dict, tree: str, registry: Optional[dict], home: str
         return rec("warn", f"the {PACKAGE} checkout is not in the registry, so auto-clear cannot be installed "
                            "or checked", sh(f"set-project add {PACKAGE} <path-to-checkout>"))
     problems, fix = [], None
+    pkg_units = package_units(home, tree)
     missing, stale = stale_templates(pkg, tree)
+    if pkg_units:
+        # Package route (B-253): the watcher runs the package's own templates, so a copy under
+        # .claude/hooks/ matters only when the tree's settings call it.
+        called = {n for n in HOOK_FILES for _, _, c in _settings_commands(tree) if n in c}
+        missing = [n for n in missing if n in called]
+        stale = [n for n in stale if n in called]
     if missing:
         problems.append(f"templates missing: {', '.join(missing)}")
     if stale:
         problems.append(f"templates not current: {', '.join(stale)}")
-    reload_, arm, kg = hooks_wired(tree)
+    reload_, arm, kg = hooks_wired(tree, home)
     if not reload_:
         problems.append("no SessionStart clear reload hook (neither the package's nor the project's own)")
     if not arm:
         problems.append("no PostToolUse handoff-arm hook")
     if problems:
         fix = init_fix
-    units = watcher_units(home, tree)
+    units = watcher_units(home, tree) + pkg_units
     default = package_default_threshold(pkg)
     native = native_trigger(home)
 
@@ -220,4 +320,6 @@ def check(name: str, entry: dict, tree: str, registry: Optional[dict], home: str
         logger.info("auto-clear %s: %d problem(s): %s", name, len(problems), "; ".join(problems))
         return rec("warn", "; ".join(problems), fix)
     names = ", ".join(u for u, _ in units)
+    if pkg_units:
+        return rec("ok", f"package route: reload + arm wired, {names} active")
     return rec("ok", f"templates current, reload + arm wired, {names} active")

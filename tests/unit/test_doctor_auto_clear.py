@@ -209,3 +209,78 @@ def test_the_native_trigger_prefers_the_per_model_key(tmp_path):
     assert ac.native_trigger(str(tmp_path)) == 540000
     s.write_text("{}")
     assert ac.native_trigger(str(tmp_path)) is None
+
+
+# ── B-253: the package route ────────────────────────────────────────────────
+
+
+PLUGIN_RELOAD = 'H="$(command -v set-claude-handoff)"; "$H" hook reinject --from-plugin'
+PLUGIN_ARM = 'H="$(command -v set-claude-handoff)"; "$H" hook arm --from-plugin'
+
+
+def package_route(tree, home, tmp_path, *, plugin_enabled=True, unit_cmd=None):
+    """A tree wired the way a plugin-installed project is: no hook copies, no hooks in its
+    settings, the reload and arm hooks in an enabled plugin's hooks.json, and a unit running
+    the package's own watcher for the tree."""
+    shutil.rmtree(tree / ".claude" / "hooks")
+    (tree / ".claude" / "settings.json").write_text(json.dumps(
+        {"enabledPlugins": {"kit@kit": plugin_enabled}}))
+    install = tmp_path / "plugins" / "kit" / "1.0.0"
+    (install / "hooks").mkdir(parents=True)
+    (install / "hooks" / "hooks.json").write_text(json.dumps({"hooks": {
+        "SessionStart": [{"matcher": "clear|compact", "hooks": [{"command": PLUGIN_RELOAD}]}],
+        "PostToolUse": [{"matcher": "Write|Edit|MultiEdit|Bash", "hooks": [{"command": PLUGIN_ARM}]}]}}))
+    (home / ".claude" / "plugins").mkdir(parents=True, exist_ok=True)
+    (home / ".claude" / "plugins" / "installed_plugins.json").write_text(json.dumps({"version": 2, "plugins": {
+        "kit@kit": [{"scope": "local", "projectPath": str(tree), "installPath": str(install)}]}}))
+    (home / ".config" / "systemd" / "user" / "proj-auto-clear.service").write_text(
+        "[Service]\nExecStart=" + (unit_cmd or f"/usr/bin/env set-claude-handoff watch --dir {tree} --interval 60") + "\n")
+
+
+def test_a_package_route_install_is_ok_b253(box, tmp_path):
+    """B-253: plugin-wired hooks + the package's watcher is a complete install, not 'missing all'."""
+    run, _, tree, home, _ = box
+    package_route(tree, home, tmp_path)
+    c = run()
+    assert c.status == "ok", c.detail
+    assert "package route" in c.detail and "proj-auto-clear.service" in c.detail
+    assert c.fix is None
+
+
+def test_the_package_template_watcher_counts_as_the_package_route_b253(box, tmp_path):
+    run, pkg, tree, home, _ = box
+    package_route(tree, home, tmp_path, unit_cmd=(
+        f"bash {pkg}/templates/watch-auto-clear.sh --gate {pkg}/templates/clear-gate.mjs --dir {tree}"))
+    assert run().status == "ok"
+
+
+def test_unused_stale_copies_do_not_count_on_the_package_route_but_called_ones_do_b253(box, tmp_path):
+    """Leftover copies the package watcher never runs are not a finding; a copy the tree's own
+    settings still call is."""
+    run, pkg, tree, home, _ = box
+    package_route(tree, home, tmp_path)
+    (tree / ".claude" / "hooks").mkdir()
+    (tree / ".claude" / "hooks" / "clear-gate.mjs").write_text("// clear-gate v0\n")
+    assert run().status == "ok"
+    (tree / ".claude" / "hooks" / "handoff-arm.mjs").write_text("// handoff-arm v0\n")
+    (tree / ".claude" / "settings.json").write_text(json.dumps({
+        "enabledPlugins": {"kit@kit": True},
+        "hooks": {"PostToolUse": [{"matcher": "Bash", "hooks": [{"command": ARM}]}]}}))
+    c = run()
+    assert c.status == "warn" and "templates not current: handoff-arm.mjs" in c.detail
+    assert "clear-gate.mjs" not in c.detail
+
+
+def test_a_disabled_plugin_wires_nothing_b253(box, tmp_path):
+    run, _, tree, home, _ = box
+    package_route(tree, home, tmp_path, plugin_enabled=False)
+    c = run()
+    assert "no SessionStart clear reload hook" in c.detail and "no PostToolUse handoff-arm hook" in c.detail
+
+
+def test_another_trees_package_watcher_does_not_count_b253(box, tmp_path):
+    run, _, tree, home, _ = box
+    package_route(tree, home, tmp_path,
+                  unit_cmd=f"/usr/bin/env set-claude-handoff watch --dir {tmp_path / 'proj-other'}")
+    c = run()
+    assert "no watcher unit" in c.detail
