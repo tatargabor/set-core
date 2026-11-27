@@ -280,6 +280,14 @@ export function sessionStartAt(sessionId) {
   return earliest
 }
 
+/**
+ * The text block the runtime writes when the user interrupts a turn (Esc), with " for tool use"
+ * when the interrupt answered a tool call. It is not a message to answer: the turn is over and the
+ * session waits at its prompt. Read as a user message, it held the idle gate shut for ever
+ * (B-252, measured 2026-11-27 on a consumer session at 421k with an armed handoff).
+ */
+const INTERRUPT_MARKER = /^\[Request interrupted by user( for tool use)?\]\s*$/
+
 /** Idle: no unanswered user message, no tool_use left without its tool_result. */
 export function transcriptIdle(path, window = 200) {
   if (!path || !existsSync(path)) return { idle: false, reason: "transcript missing" }
@@ -303,12 +311,17 @@ export function transcriptIdle(path, window = 200) {
     if (type === "user" && Array.isArray(e.message?.content)) {
       for (const block of e.message.content) {
         if (block?.type === "tool_result") pending.delete(block.tool_use_id)
-        else last = { type: "user" } // an unanswered user message ⇒ mid-turn
+        else if (block?.type === "text" && INTERRUPT_MARKER.test(block.text ?? "")) {
+          // The interrupt ended the turn: a tool call it cut off will never get its result.
+          pending.clear()
+          last = { type: "interrupt" }
+        } else last = { type: "user" } // an unanswered user message ⇒ mid-turn
       }
     }
   }
   if (pending.size > 0) return { idle: false, reason: `tool call(s) awaiting result: ${[...pending].length}` }
   if (last?.type === "user") return { idle: false, reason: "user message awaiting response" }
+  if (last?.type === "interrupt") return { idle: true, reason: "turn interrupted by the user, nothing pending" }
   return { idle: true, reason: "turn ended, nothing pending" }
 }
 
