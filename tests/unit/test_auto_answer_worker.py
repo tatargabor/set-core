@@ -495,6 +495,27 @@ def test_decide_only_without_a_forward_command_still_does_not_release(tmp_path):
     assert not qr.release_path(SID, tmp_path).exists()
 
 
+def test_a_question_still_waiting_keeps_its_verdict_when_the_watch_ends_b251(tmp_path):
+    """B-251: the watch ends at the hook's bound, the carrier keeps the question on the relay.
+    The verdict and the question's text must stay readable for the board."""
+    d = aa.Decision({}, {"Q1": "abstained: only the operator knows"}, "fork")
+    r = Relay(tmp_path, d)          # the waiting record never goes away
+    assert _decide_only(r) == {"Q1": "no-decision"}
+    assert r.t - r.start >= 600, "the watch ran to its deadline"
+    kept = aw.read_pending(tmp_path, CID)
+    assert kept is not None and kept["questions"][0]["question"] == SECRET
+    view = aw.verdict_view(r.t, tmp_path)
+    assert view[CID]["outcome"] == "no-decision" and view[CID]["reason"].startswith("abstained")
+
+
+def test_a_question_that_ended_still_drops_its_verdict_b251(tmp_path):
+    """The other direction: once the question is gone from the relay, the record goes too."""
+    d = aa.Decision({}, {"Q1": "abstained"}, "fork")
+    r = Relay(tmp_path, d, events={30: lambda rl: qr.waiting_path(SID, rl.base).unlink()})
+    assert _decide_only(r) == {"Q1": "no-decision"}
+    assert not aw.pending_path(tmp_path, CID).exists()
+
+
 def test_status_names_the_relay_command_so_the_hint_can_b236(tmp_path):
     """B-236: the panel's wiring hint needs to know whether a relay command exists."""
     from set_orch.fleet import question_relay as qr

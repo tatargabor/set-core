@@ -650,6 +650,15 @@ def _close(w: World, pending: Dict[str, Any], decision: aa.Decision, outcome: Di
         append_log(records, get=w.get, path=w.log)
     except OSError as exc:
         logger.warning("auto answer [%s]: decision log not written (%s)", qr._safe_id(cid)[-12:], type(exc).__name__)
+    # B-251: this watch ends at the relay hook's bound, but a carrier (B-247) keeps an
+    # unanswered question on the relay for up to 24 h. Removing the record then made the board
+    # say "the decider has no record of this call" and hide the question's text while it still
+    # waited. Keep it while this call is still waiting; prune_pending removes it after retention.
+    answered = bool(human) or any(v in (OUT_WRITTEN, OUT_OVERTAKEN) for v in outcome.values())
+    if not answered and _record_live(base, pending["session_id"], cid):
+        logger.info("auto answer [%s]: watch over, the question still waits on the relay; verdict kept",
+                    qr._safe_id(cid)[-12:])
+        return outcome
     try:
         pending_path(base, cid).unlink(missing_ok=True)
     except OSError:
