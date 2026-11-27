@@ -1050,11 +1050,10 @@ TAUGHT_REL = Path(".claude") / "rules" / "auto-answer-taught.md"
 TAUGHT_MAX_BYTES = 20_000
 
 
-def taught_files(cwd: str) -> List[Path]:
-    """The taught-rules files that apply to a call from `cwd`: the repository's main worktree
-    (where Teach writes) and the call's own tree when that is a different worktree."""
+def _project_roots(cwd: str) -> List[Path]:
+    """The repository's main worktree (where Teach writes) and the call's own tree when that is a
+    different worktree — the roots a project's committed relay files are read from."""
     from .relay_teach import main_checkout
-    out: List[Path] = []
     roots: List[Path] = []
     main = main_checkout(cwd) if cwd else None
     if isinstance(main, Path):
@@ -1066,13 +1065,79 @@ def taught_files(cwd: str) -> List[Path]:
             roots.append(Path(top.stdout.strip()))
     except (OSError, subprocess.SubprocessError) as exc:
         logger.debug("auto answer: toplevel of the call's tree not found (%s)", type(exc).__name__)
+    return roots
+
+
+def _project_files(cwd: str, rel: Path) -> List[Path]:
+    out: List[Path] = []
     seen = set()
-    for root in roots:
-        f = root / TAUGHT_REL
+    for root in _project_roots(cwd):
+        f = root / rel
         if f.is_file() and f.resolve() not in seen:
             seen.add(f.resolve())
             out.append(f)
     return out
+
+
+def taught_files(cwd: str) -> List[Path]:
+    """The taught-rules files that apply to a call from `cwd`: the repository's main worktree
+    (where Teach writes) and the call's own tree when that is a different worktree."""
+    return _project_files(cwd, TAUGHT_REL)
+
+
+# --------------------------------------------------------------------------- #
+# the project's never rule (relay-project-never-marker)
+# --------------------------------------------------------------------------- #
+
+#: A project's committed list of questions the decider never answers, taught rule or not.
+NEVER_REL = Path(".claude") / "auto-answer-never.txt"
+#: Honoured on every machine, with no file: a skill can put it in a question about a live step.
+NO_AUTO_MARKER = "[no-auto]"
+
+
+def never_files(cwd: str) -> List[Path]:
+    """The never files that apply to a call from `cwd` (same roots as the taught rules, D2)."""
+    return _project_files(cwd, NEVER_REL)
+
+
+def project_never(cwd: str, files: Optional[Sequence[Path]] = None) -> List[Tuple[str, int, str]]:
+    """`(file shown as .claude/auto-answer-never.txt, line number, pattern)` per rule line."""
+    out: List[Tuple[str, int, str]] = []
+    for f in (never_files(cwd) if files is None else files):
+        try:
+            lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError as exc:
+            logger.warning("auto answer: never file unreadable (%s)", type(exc).__name__)
+            continue
+        for n, line in enumerate(lines, 1):
+            pattern = line.strip()
+            if pattern and not pattern.startswith("#"):
+                out.append((str(NEVER_REL), n, pattern))
+    return out
+
+
+def _never_regex(pattern: str) -> re.Pattern:
+    try:
+        return re.compile(fold(pattern))
+    except re.error:
+        # A broken pattern still has to exclude what it names: read it literally (D4).
+        logger.warning("auto answer: a never-file pattern is not a valid regex; matched literally")
+        return re.compile(re.escape(fold(pattern)))
+
+
+def hard_never(questions: Sequence[Question], cwd: str,
+               rules: Optional[Sequence[Tuple[str, int, str]]] = None) -> Optional[str]:
+    """Why this call is never answered automatically, or None. Checked BEFORE the decider, over
+    every question's text and options (D1); the reason names the rule, never the text (D5)."""
+    texts = [fold(t) for q in questions for t in [q.text, *q.options]]
+    marker = fold(NO_AUTO_MARKER)
+    if any(marker in t for t in texts):
+        return f"never auto-answered: marker {NO_AUTO_MARKER}"
+    for shown, line, pattern in (project_never(cwd) if rules is None else rules):
+        rx = _never_regex(pattern)
+        if any(rx.search(t) for t in texts):
+            return f"never auto-answered: {shown}:{line}"
+    return None
 
 
 def _newest_entries(text: str, limit: int) -> str:

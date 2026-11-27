@@ -535,3 +535,48 @@ def test_an_auto_written_answer_names_its_writer(tmp_path):
     assert qr.answer_by(answers, CID, "Q1") == "auto-answer"
     qr._write_json(qr.answer_file(answers, CID, "Q2"), {"valasz": "ORANGE"})
     assert qr.answer_by(answers, CID, "Q2") is None
+
+
+# --------------------------------------------------------------------------- relay-project-never-marker
+
+def _never_repo(base: Path, lines: str) -> None:
+    _taught_repo(base)
+    f = base / aa.NEVER_REL
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(lines, encoding="utf-8")
+
+
+class _NoDecide(Relay):
+    """A Relay whose decider must never be reached."""
+
+    def work(self, kind="ask", payload=None):
+        def boom(*a, **k):
+            raise AssertionError("the decider ran on a never-auto call")
+        world = aw.World(get=self.get, decide=boom, run=self.run, wall=self.wall, sleep=self.sleep, log=self.log)
+        payload = payload or json.dumps(envelope(self.base), ensure_ascii=False)
+        return aw.work(payload, {qr.ENV_KIND: kind, qr.ENV_SESSION: SID, qr.ENV_CWD: str(self.base)}, world)
+
+
+def test_the_project_never_rule_outranks_a_taught_rule(tmp_path):
+    """The taught rule would let it through (see the AC-10 test); the never file wins, before the decider."""
+    _never_repo(tmp_path, "# live carrier steps\n\nelesben feltolt\n")
+    r = _NoDecide(tmp_path, decided(), events={30: lambda rl: qr.waiting_path(SID, rl.base).unlink()})
+    payload = json.dumps(envelope(tmp_path, text="Élesben feltöltöm a köteget? (Mehet élesbe a weboldal)",
+                                  options=("Igen, mehet", "Még ne")))
+    assert r.work(payload=payload) == {"Q1": "excluded"} and r.answer_text() is None
+    assert r.forwarded and r.forwarded[0]["questions"][0]["question"].startswith("Élesben feltöltöm")
+    rec = r.records()[0]
+    assert rec["outcome"] == "excluded" and rec["reason"] == "never auto-answered: .claude/auto-answer-never.txt:3"
+
+
+def test_the_marker_needs_no_file(tmp_path):
+    r = _NoDecide(tmp_path, decided(), events={30: lambda rl: qr.waiting_path(SID, rl.base).unlink()})
+    payload = json.dumps(envelope(tmp_path, text="[no-auto] Print the labels now?", options=("Yes", "No")))
+    assert r.work(payload=payload) == {"Q1": "excluded"} and r.answer_text() is None
+    assert r.records()[0]["reason"] == "never auto-answered: marker [no-auto]"
+
+
+def test_a_call_with_no_never_hit_is_decided_as_before(tmp_path):
+    _never_repo(tmp_path, "elesben feltolt\n")
+    r = Relay(tmp_path, decided())
+    assert r.work() == {"Q1": "written"} and r.answer_text() == "TEAL"

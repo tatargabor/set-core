@@ -1019,3 +1019,34 @@ def test_a_report_or_a_reply_to_the_operator_does_not_exclude(text, choice):
 def test_what_still_excludes_beside_those_rules(text, choice, fam):
     got = aa.exclusion(aa.KIND_ASK, q(text=text, options=[choice, "No"]), choice, False, allowed=["push"])
     assert got and fam in got
+
+
+# --------------------------------------------------------------------------- relay-project-never-marker
+
+def _q(text, options=()):
+    return aa.Question(key="Q1", text=text, options=list(options))
+
+
+def test_hard_never_reads_the_project_file_and_skips_comments(tmp_path):
+    import subprocess
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    f = tmp_path / aa.NEVER_REL
+    f.parent.mkdir(parents=True)
+    f.write_text("# comment\n\ncimke.*nyomtat\n", encoding="utf-8")
+    assert aa.project_never(str(tmp_path)) == [(str(aa.NEVER_REL), 3, "cimke.*nyomtat")]
+    assert aa.hard_never([_q("A címkét most nyomtatom?")], str(tmp_path)) == \
+        "never auto-answered: .claude/auto-answer-never.txt:3"
+    assert aa.hard_never([_q("Run the tests?")], str(tmp_path)) is None
+
+
+def test_hard_never_matches_an_option_and_folds_accents():
+    rules = [(".claude/auto-answer-never.txt", 1, "ÉLESBEN")]
+    assert aa.hard_never([_q("Which one?", ["Teszten", "élesben feltöltöm"])], "", rules) == \
+        "never auto-answered: .claude/auto-answer-never.txt:1"
+
+
+def test_hard_never_marker_without_a_file_and_invalid_regex_is_literal(tmp_path):
+    assert aa.hard_never([_q("Go? [NO-AUTO]")], str(tmp_path), []) == "never auto-answered: marker [no-auto]"
+    rules = [("f", 7, "upload(")]
+    assert aa.hard_never([_q("bulk upload( now")], "", rules) == "never auto-answered: f:7"
+    assert aa.hard_never([_q("bulk upload now")], "", rules) is None

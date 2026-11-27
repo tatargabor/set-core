@@ -459,7 +459,14 @@ def work(payload: str, relay_vars: Dict[str, str], world: Optional[World] = None
     prune_pending(base, asked_at)
 
     t0 = time.monotonic()
-    decision = w.decide(envelope, kind=kind, session_id=session_id, cwd=cwd, asked_at=asked_at, get=w.get)
+    # The project's never rule outranks everything the decider could find, a taught rule
+    # included, so it is checked before the decider runs (relay-project-never-marker D1).
+    never_reason = aa.hard_never(questions, cwd)
+    if never_reason:
+        logger.info("auto answer [%s]: %s — not decided, forwarded", label, never_reason)
+        decision = aa.Decision({}, {}, "none", [never_reason])
+    else:
+        decision = w.decide(envelope, kind=kind, session_id=session_id, cwd=cwd, asked_at=asked_at, get=w.get)
     latency = round(time.monotonic() - t0, 1)
 
     never = aa.never_patterns(w.get)
@@ -469,6 +476,9 @@ def work(payload: str, relay_vars: Dict[str, str], world: Optional[World] = None
     reasons: Dict[str, str] = {}
     for q in questions:
         a = decision.answers.get(q.key)
+        if never_reason:
+            outcome[q.key], reasons[q.key] = OUT_EXCLUDED, never_reason
+            continue
         if a is None:
             outcome[q.key], reasons[q.key] = OUT_NO_DECISION, decision.refused.get(q.key, "no decision")
             continue
