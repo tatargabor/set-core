@@ -101,7 +101,7 @@ export function waitsForText(d: RelayDetail): string {
     const s = d.decider?.seconds_left
     return `The decider writes its proposal in ${s === null || s === undefined ? '?' : Math.round(s)}s unless you answer first.`
   }
-  if (d.kind === 'permission') return 'Waits for your Allow or Deny on the channel — a permission prompt is answered only by a person.'
+  if (d.kind === 'permission') return 'Waits for your Allow or Deny — on the relay board, the channel or the terminal; a permission prompt is answered only by a person.'
   return 'Waits for your answer on the channel (or in the agent\'s terminal after "to terminal ↩").'
 }
 
@@ -127,7 +127,7 @@ export function answerFieldCount(d: RelayDetail): number {
 
 /** Whether the own-answer overlay is offered at all, and why not. */
 export function ownAnswerBlocked(d: RelayDetail): string | null {
-  if (d.kind === 'permission') return 'A permission prompt is answered with Allow or Deny, on the channel or in the terminal.'
+  if (d.kind === 'permission') return 'A permission prompt is answered with Allow or Deny — on the relay board, the channel or the terminal.'
   if (d.release_requested) return 'It was handed back to the terminal; answer it there.'
   return null
 }

@@ -166,16 +166,40 @@ def test_a_call_that_ended_is_not_answered(world):
     assert released.value.status_code == 409 and "handed back" in released.value.detail
 
 
-def test_a_permission_prompt_gets_no_free_text_but_keeps_the_send_button(world):
-    """own-answer AC-5, and the send button's one-click Allow is untouched."""
+@pytest.mark.parametrize("bad", [["Allow it"], ["allow"], ["yes"], ["Allow", "Deny"], [""], []])
+def test_a_permission_prompt_gets_no_free_text(world, bad):
+    """own-answer AC-5: anything but the two fixed answers is refused and nothing is written."""
     from set_orch.api import fleet_relay_teach as api
     wait(world, kind="permission")
     with pytest.raises(HTTPException) as refused:
-        api.question_relay_answer(CID, api.AnswerBody(answers=["Allow"]))
+        api.question_relay_answer(CID, api.AnswerBody(answers=bad))
+    assert refused.value.status_code == 409 and "Allow or Deny" in refused.value.detail
+    assert answers_written(world, 1) == [None]
+
+
+@pytest.mark.parametrize("button", ["Allow", "Deny", " Deny "])
+def test_a_permission_prompt_takes_the_board_buttons(world, button):
+    """fleet-relay-permission-buttons (owner, 2026-11-27: „akarok egy gombot hogy megnyomjam"):
+    the board's Allow / Deny reaches the relay's answer store verbatim, and the hook's
+    fail-closed reader turns it into the same decision the channel would."""
+    from set_orch.api import fleet_relay_teach as api
+    wait(world, kind="permission")
+    res = api.question_relay_answer(CID, api.AnswerBody(answers=[button]))
+    assert res == {"answered": True, "count": 1, "teach": None}
+    assert answers_written(world, 1) == [button.strip()]
+    behavior = qr.permission_output(button.strip())["hookSpecificOutput"]["decision"]["behavior"]
+    assert behavior == button.strip().lower()
+
+
+def test_a_permission_prompt_is_never_taught(world):
+    """Even with the right answer, a teach item is refused: a permission is never a rule."""
+    from set_orch.api import fleet_relay_teach as api
+    wait(world, kind="permission")
+    with pytest.raises(HTTPException) as refused:
+        api.question_relay_answer(CID, api.AnswerBody(answers=["Allow"],
+                                                      teach=[api.TeachItem(index=0, explanation="")]))
     assert refused.value.status_code == 409
     assert answers_written(world, 1) == [None]
-    assert qr.deliver_answer(SID, "Allow", world / "state") is None
-    assert answers_written(world, 1) == ["Allow"]
 
 
 def _two_question_pending(world):

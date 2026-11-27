@@ -26,8 +26,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { age } from '../lib/fleetAge'
 import { agentName, kindLabel } from '../lib/fleetAutoAnswer'
 import {
-  answerable, boardChoices, composeAnswer, oneClick, readyToSend, rowStatus, taughtLine, verdictSentence,
-  type RowStatus, type TaughtResult,
+  answerable, boardChoices, composeAnswer, oneClick, PERMISSION_ANSWERS, permissionButtons, readyToSend, rowStatus,
+  taughtLine, verdictSentence, type RowStatus, type TaughtResult,
 } from '../lib/fleetRelayBoard'
 import type { WaitingQuestion } from '../lib/fleetRelay'
 import { parseDetail, type RelayDetail } from '../lib/fleetRelayTeach'
@@ -147,6 +147,28 @@ export default function FleetRelayBoard({ waiting, busy, decideBound, onRelease,
           const qs = d?.decider?.questions ?? []
           const done = id ? sent[id] : undefined
           const canAnswer = !!d && answerable(d) && !done?.ok && !!id
+          /** fleet-relay-permission-buttons: Allow runs the command once, Deny refuses it — one click each. */
+          const permButtons = !!d && !!id && permissionButtons(d) && !done?.ok ? (
+            <div className="flex flex-wrap gap-1.5" data-fleet-relay-permission={id}>
+              {PERMISSION_ANSWERS.map(a => (
+                <button key={a} type="button" disabled={sending === id} onClick={() => send(id, [a], d)}
+                        className={`rounded border px-3 py-0.5 font-semibold disabled:opacity-40 ${a === 'Allow'
+                          ? 'border-emerald-400/70 text-emerald-200 hover:bg-emerald-400/15'
+                          : 'border-red-400/70 text-red-300 hover:bg-red-400/15'}`}
+                        title={a === 'Allow'
+                          ? 'Allow — the agent runs this command once, now'
+                          : 'Deny — the agent is refused this command and continues without it'}
+                        data-fleet-relay-permission-answer={a}>
+                  {a}
+                </button>
+              ))}
+            </div>
+          ) : null
+          const doneLines = done && (
+            <ul className={`mt-1 ${done.ok ? 'text-emerald-300' : 'text-amber-400'}`} data-fleet-relay-board-sent={done.ok ? 'ok' : 'failed'}>
+              {done.lines.map(l => <li key={l}>{l}</li>)}
+            </ul>
+          )
           const status = rowStatus(w, d, !!done?.ok, decideBound)
           const tone = TONE[status.tone]
           const single = !!d && oneClick(d)
@@ -181,7 +203,7 @@ export default function FleetRelayBoard({ waiting, busy, decideBound, onRelease,
               <tr key={w.session_id} className={`border-b border-surface-line/60 ${tone.row}`} data-fleet-relay-row={w.session_id}>
                 {agentCell}
                 <td colSpan={3} className="py-2 text-fg-muted">
-                  {typeof raw === 'string'
+                  {permButtons ? <>{permButtons}{doneLines}</> : done ? doneLines : typeof raw === 'string'
                     ? <span className="text-red-400">Detail unreadable: {raw}</span>
                     : !id
                       ? 'This call has no relay id; read it on the channel or in the terminal.'
@@ -269,17 +291,13 @@ export default function FleetRelayBoard({ waiting, busy, decideBound, onRelease,
                         </button>
                       )}
                     </div>
-                  ) : last && done ? null : (
+                  ) : last && permButtons ? permButtons : last && done ? null : (
                     <span className="text-fg-muted">
                       {d.kind === 'permission' ? 'Allow or Deny on the channel or in the terminal.'
                         : d.release_requested ? 'Handed back to the terminal; answer it there.' : ''}
                     </span>
                   )}
-                  {last && done && (
-                    <ul className={`mt-1 ${done.ok ? 'text-emerald-300' : 'text-amber-400'}`} data-fleet-relay-board-sent={done.ok ? 'ok' : 'failed'}>
-                      {done.lines.map(l => <li key={l}>{l}</li>)}
-                    </ul>
-                  )}
+                  {last && doneLines}
                 </td>
                 <td className={`py-2 align-top ${verdict.tone === 'due' ? 'text-amber-300' : verdict.tone === 'held' ? 'text-amber-200/80' : 'text-fg-muted'}`}
                     data-fleet-relay-auto={q.outcome ?? 'none'}>

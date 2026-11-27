@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  answerable, boardChoices, composeAnswer, oneClick, readyToSend, rowStatus, statusCounts, taughtLine, verdictSentence,
+  answerable, boardChoices, composeAnswer, oneClick, PERMISSION_ANSWERS, permissionButtons, readyToSend, rowStatus, statusCounts, taughtLine, verdictSentence,
 } from '../../src/lib/fleetRelayBoard'
 import type { WaitingQuestion } from '../../src/lib/fleetRelay'
 import { parseDetail, type DetailQuestion } from '../../src/lib/fleetRelayTeach'
@@ -53,6 +53,14 @@ describe('fleet-relay-board', () => {
     expect(answerable(detail([q()], { kind: 'permission' }))).toBe(false)
     expect(answerable(detail([q()], { release_requested: true }))).toBe(false)
     expect(answerable(detail([q()]))).toBe(true)
+  })
+
+  it('a permission prompt gets exactly Allow and Deny, unless it was handed back', () => {
+    expect(PERMISSION_ANSWERS).toEqual(['Allow', 'Deny'])
+    expect(permissionButtons(detail([q()], { kind: 'permission' }))).toBe(true)
+    expect(permissionButtons(detail([], { kind: 'permission', decider: null }))).toBe(true)
+    expect(permissionButtons(detail([q()], { kind: 'permission', release_requested: true }))).toBe(false)
+    expect(permissionButtons(detail([q()]))).toBe(false)
   })
 
   it('a several-question call is ready only when every question has an answer', () => {

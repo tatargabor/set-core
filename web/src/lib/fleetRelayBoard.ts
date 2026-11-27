@@ -43,7 +43,19 @@ export function oneClick(d: RelayDetail): boolean {
   return d.kind !== 'permission' && !d.release_requested && (d.decider?.questions.length ?? 0) === 1
 }
 
-/** Whether the board offers any answer control for the call. */
+/** The two fixed answers of a permission prompt — the hook allows only the literal first one. */
+export const PERMISSION_ANSWERS = ['Allow', 'Deny'] as const
+
+/**
+ * Whether the board shows Allow / Deny for the call (fleet-relay-permission-buttons). Owner,
+ * 2026-11-27: „akarok egy gombot hogy megnyomjam". The operator's own press, the same act as
+ * the channel's two buttons; the decider still never answers a permission.
+ */
+export function permissionButtons(d: RelayDetail): boolean {
+  return d.kind === 'permission' && !d.release_requested
+}
+
+/** Whether the board offers any free answer control (options, text, teach) for the call. */
 export function answerable(d: RelayDetail): boolean {
   return d.kind !== 'permission' && !d.release_requested
 }
@@ -144,7 +156,7 @@ export function rowStatus(w: WaitingQuestion, d: RelayDetail | null, sentOk: boo
   if (sentOk) return { key: 'answered', icon: '✓', word: 'answered', why: 'sent from here; the agent continues', tone: 'done' }
   const kind = d?.kind ?? w.kind
   if (kind === 'permission')
-    return { key: 'permission', icon: '🔒', word: 'permission', why: 'never answered automatically — Allow or Deny at the channel or the terminal', tone: 'mine' }
+    return { key: 'permission', icon: '🔒', word: 'permission', why: 'never answered automatically — Allow or Deny here, on the channel or at the terminal', tone: 'mine' }
   if (d?.release_requested || w.release_requested)
     return { key: 'terminal', icon: '↩', word: 'to terminal', why: 'answer it at the agent\'s terminal', tone: 'muted' }
 

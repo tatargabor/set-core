@@ -134,8 +134,13 @@ def question_relay_answer(call_id: str, body: AnswerBody) -> Dict[str, Any]:
     if waiting is None:
         raise HTTPException(status_code=404, detail="the question is no longer waiting on the relay")
     if waiting.get("kind") == "permission":
-        # D4: two fixed answers, on the channel and in the terminal; free text is not one.
-        raise HTTPException(status_code=409, detail="a permission prompt is answered with Allow or Deny")
+        # D4 (fleet-relay-answer-own) kept free text out: the runtime reads only the two fixed
+        # answers. fleet-relay-permission-buttons lets exactly those two through, as the board's
+        # Allow / Deny buttons — the operator's own press, never the decider's, never taught.
+        given = [a.strip() for a in body.answers if isinstance(a, str)]
+        if body.teach or len(given) != 1 or given[0] not in qr.PERMISSION_OPTIONS:
+            raise HTTPException(status_code=409, detail="a permission prompt is answered with Allow or Deny")
+        body = AnswerBody(answers=given)
     taught: Optional[Dict[str, Any]] = None
     items = []
     if body.teach:
