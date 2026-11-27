@@ -66,14 +66,23 @@ def test_already_continued_once():
     spy = Spy("WAITING")
     assert wd.decide(stop_input(), get=config(), classifier=spy, env={})["decision"] == "block"
     assert wd.decide(stop_input(active=True), get=config(), classifier=spy, env={}) is None
-    assert len(spy.calls) == 1
     assert wd.read_verdict("cbcc4e64-6d8c")["verdict"] == "SKIPPED"
 
 
 def test_continued_without_any_record_keeps_the_guard():
     spy = Spy("WAITING")
     assert wd.decide(stop_input(active=True), get=config(), classifier=spy, env={}) is None
-    assert spy.calls == []
+    assert wd.read_verdict("cbcc4e64-6d8c")["verdict"] == "SKIPPED"
+
+
+def test_a_turn_that_finishes_after_a_re_ask_is_recorded_done_b254():
+    """B-254: re-asked, the agent worked on in the same turn and ended with ALL DONE. The guard
+    still forbids a second re-ask, but the DONE is recorded so the continuation asks what next."""
+    assert wd.decide(stop_input(), get=config(), classifier=Spy("WAITING"), env={})["decision"] == "block"
+    out = wd.decide(stop_input("ALL DONE: no agent work left on the board.", active=True), get=config(),
+                    classifier=Spy("DONE"), env={})
+    assert out is None
+    assert wd.read_verdict("cbcc4e64-6d8c")["verdict"] == "DONE"
 
 
 def test_a_turn_woken_from_the_channel_is_classified():

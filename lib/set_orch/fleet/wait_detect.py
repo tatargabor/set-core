@@ -215,15 +215,27 @@ def decide(hook_input: Dict[str, Any], *, get=local_config.get,
         return None
     session_id = str(hook_input.get("session_id") or "")
     sid = qr._safe_id(session_id)[:8] or "unknown"
+    guarded = False
     if hook_input.get("stop_hook_active"):
         previous = read_verdict(session_id, base)
-        if previous is None or previous.get("verdict") == "WAITING":
-            # No record = nothing proves this is not our own continuation: keep the guard.
-            _record(hook_input, "SKIPPED", base)
-            return None
+        # No record = nothing proves this is not our own continuation: keep the guard.
+        guarded = previous is None or previous.get("verdict") == "WAITING"
     message = hook_input.get("last_assistant_message")
     if not isinstance(message, str) or not message.strip():
         _record(hook_input, "SKIPPED", base)
+        return None
+    if guarded:
+        # B-254: the guard forbids a SECOND re-ask, not a verdict. Measured 2026-11-27: a
+        # session re-asked at 14:58 worked on in the same turn for twenty minutes and ended
+        # with "ALL DONE" at 15:20; recorded SKIPPED, so the continuation never posted and the
+        # work stopped with only a one-way notice. A guarded turn is still classified, a DONE
+        # is recorded so the continuation can ask "what next?", and nothing here ever blocks.
+        if dictation_live(hook_input):
+            _record(hook_input, "SKIPPED", base)
+            return None
+        verdict = (classifier or (lambda m: classify(m, get)))(message)
+        _record(hook_input, "DONE" if verdict == "DONE" else "SKIPPED", base)
+        logger.info("wait detect [%s]: continued turn after a re-ask; verdict %s, no second re-ask", sid, verdict)
         return None
     if dictation_live(hook_input):
         logger.info("wait detect [%s]: a dictation runs in this session; the user is at the terminal", sid)
