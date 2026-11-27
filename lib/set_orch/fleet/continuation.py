@@ -47,10 +47,22 @@ The user is away from the terminal and decides on their phone what the agent doe
 Answer in exactly this format and nothing else:
 SUMMARY: <one or two sentences: what the turn reported, in the message's own language>
 NEXT: <one concrete next instruction the user might give, imperative, at most 80 characters>
-Give zero to three NEXT lines; none when nothing sensible follows.
+GOAL: <what the session was started for, from the OPENING PROMPT below, at most 120 characters>
+Give zero to three NEXT lines; none when nothing sensible follows. Leave out GOAL when the
+opening prompt does not show it. An agent's "done" is often local (one step, one board): when
+the goal looks larger than what the message reports, let a NEXT line carry the goal forward.
 
 MESSAGE:
 """
+GOAL_PROMPT = "\n\nOPENING PROMPT (why the session was started):\n"
+KEEP_GOING = "Keep going toward the original goal"
+OPENING_MAX = 800
+OPENING_HEAD_LINES = 400
+GOAL_MAX = 200
+# Entries whose text is the runtime's or a hook's, not the person's (B-246's lesson: a wrapper
+# read as the owner's words is a false quote).
+_NOT_OWN = ("<command-", "<local-command-", "<task-notification", "<system-reminder", "Caveat:",
+            "[Request interrupted")
 
 Suggester = Callable[[str], Optional[Tuple[str, List[str]]]]
 
@@ -129,20 +141,92 @@ def parse_suggestions(text: str) -> Optional[Tuple[str, List[str]]]:
     return summary[:600], nexts
 
 
-def suggest(message: str, get: qr.Getter = local_config.get) -> Optional[Tuple[str, List[str]]]:
-    out = wd.run_headless(SUGGEST_PROMPT + message[-wd.MAX_CHARS:], get, SUGGEST_TIMEOUT_S, label="suggester")
+def parse_goal(text: str) -> str:
+    """The suggester's `GOAL:` line (change relay-continue-original-goal), or ''."""
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if line.upper().startswith("GOAL:"):
+            return line[len("GOAL:"):].strip()[:GOAL_MAX]
+    return ""
+
+
+def _own_text(entry: Dict[str, Any]) -> str:
+    if entry.get("type") != "user" or entry.get("isMeta"):
+        return ""
+    content = entry.get("message", {}).get("content") if isinstance(entry.get("message"), dict) else None
+    if isinstance(content, str):
+        text = content
+    elif isinstance(content, list):
+        if any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content):
+            return ""
+        text = "\n".join(str(b.get("text") or "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+    else:
+        return ""
+    text = text.strip()
+    return "" if not text or text.startswith(_NOT_OWN) else text
+
+
+def opening_prompt(path: Any) -> Optional[str]:
+    """The session's first own prompt: why it was started. None when there is none or on any
+    read error. Read from the transcript's HEAD, bounded; never logged."""
+    if not path:
+        return None
+    try:
+        with open(str(path), encoding="utf-8", errors="replace") as handle:
+            for n, line in enumerate(handle):
+                if n >= OPENING_HEAD_LINES:
+                    break
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(entry, dict):
+                    text = _own_text(entry)
+                    if text:
+                        return text[:OPENING_MAX]
+    except OSError as exc:
+        logger.debug("continuation: transcript head unreadable: %s", type(exc).__name__)
+    return None
+
+
+def suggest(message: str, get: qr.Getter = local_config.get,
+            opening: Optional[str] = None) -> Optional[Tuple[str, List[str], str]]:
+    prompt = SUGGEST_PROMPT + message[-wd.MAX_CHARS:]
+    if opening:
+        prompt += GOAL_PROMPT + opening[:OPENING_MAX]
+    out = wd.run_headless(prompt, get, SUGGEST_TIMEOUT_S, label="suggester")
     if out is None:
         return None
     parsed = parse_suggestions(out)
-    if parsed is None:
-        logger.warning("continuation: suggester answer had no SUMMARY/NEXT lines (%d chars)", len(out))
-    return parsed
+    goal = parse_goal(out)
+    if parsed is None and not goal:
+        logger.warning("continuation: suggester answer had no SUMMARY/NEXT/GOAL lines (%d chars)", len(out))
+        return None
+    summary, nexts = parsed if parsed else ("", [])
+    return summary, nexts, goal
 
 
-def continuation_question(project: str, sid: str, summary: str) -> str:
+def continuation_question(project: str, sid: str, summary: str, goal: str = "") -> str:
     head = f"✅ Finished, waiting for the next instruction — {project} · {sid}"
     body = f"\n{summary}" if summary else ""
-    return f"{head}{body}\nPick a suggestion or write what it should do next; the session continues with it."
+    if goal:
+        ask = (f"\nStarted for: {goal}\nDoes that goal, and the reason the session was started, still hold? "
+               f"Keep going, pick a suggestion, or write what it should do next.")
+    else:
+        ask = ("\nIs anything left of what the session was started for? "
+               "Keep going, pick a suggestion, or write what it should do next.")
+    return f"{head}{body}{ask}"
+
+
+def continuation_options(nexts: List[str]) -> List[str]:
+    """The fixed keep-going option first, then at most MAX_NEXT suggestions."""
+    return [NEXT_MARK + KEEP_GOING] + [NEXT_MARK + n for n in nexts[:MAX_NEXT]]
+
+
+KEEP_GOING_INSTRUCTION = (
+    "Re-read the goal this session was started for and the reason it was started (its opening prompt, "
+    "and the handoff if one was loaded). If they still hold and work toward them is left, carry on with "
+    "the next step now. If not, say in one line why the goal is met or no longer holds, and stop.")
 
 
 def instruction(answer: str, by: Optional[str] = None) -> str:
@@ -153,6 +237,8 @@ def instruction(answer: str, by: Optional[str] = None) -> str:
     text = answer.strip()
     if text.startswith(NEXT_MARK.strip()):
         text = text[len(NEXT_MARK.strip()):].strip()
+    if text == KEEP_GOING:
+        text = KEEP_GOING_INSTRUCTION
     if by:
         return ("The auto-answer chose this next step on the owner's behalf, from his standing rules and "
                 "earlier answers — the owner did not type it and has not seen it yet. "
@@ -233,14 +319,23 @@ def continue_turn(hook_input: Dict[str, Any], *,
         return None
 
     message = hook_input.get("last_assistant_message")
-    parsed = (suggester or (lambda m: suggest(m, get)))(message if isinstance(message, str) else "")
-    summary, nexts = parsed if parsed else ("", [])
+    opening = opening_prompt(transcript)
+    if suggester is None:
+        parsed = suggest(message if isinstance(message, str) else "", get, opening)
+    else:
+        parsed = suggester(message if isinstance(message, str) else "")
+    summary, nexts, goal = "", [], ""
+    if parsed:
+        summary, nexts = parsed[0], list(parsed[1])
+        goal = parsed[2] if len(parsed) > 2 else ""
     project = project_name(str(hook_input.get("cwd") or os.getcwd()))
     if stale():
         logger.info("continuation [%s]: superseded before posting; nothing posted", sid)
         return None
-    record = qr.hand_over_one(hook_input, qr.KIND_CONTINUATION, continuation_question(project, sid, summary),
-                              [NEXT_MARK + n for n in nexts], get=get, run=run,
+    question = continuation_question(project, sid, summary, goal)
+    options = continuation_options(nexts)
+    record = qr.hand_over_one(hook_input, qr.KIND_CONTINUATION, question,
+                              options, get=get, run=run,
                               project_name=lambda _cwd: project, wall=wall, base=base)
     if record is None:
         return None
@@ -255,8 +350,8 @@ def continue_turn(hook_input: Dict[str, Any], *,
                    "cwd": str(hook_input.get("cwd") or ""), "project": project,
                    "transcript": transcript, "armed": armed, "started": record.get("started"),
                    "prompt_id": hook_input.get("prompt_id"),
-                   "question": continuation_question(project, sid, summary),
-                   "options": [NEXT_MARK + n for n in nexts]}
+                   "question": question,
+                   "options": options}
             try:
                 on_timeout(job)
             except Exception as exc:  # the next step stays in the terminal, as before

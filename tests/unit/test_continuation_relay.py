@@ -9,6 +9,7 @@ and an injected transcript standing in for the session moving on.
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -93,7 +94,8 @@ def test_continued_from_the_channel(tmp_path):
     text = w.decide()
     assert text and text.endswith("Continue with this instruction: Promote to the test system")
     q = w.envelopes[0]["questions"][0]
-    assert q["optionsList"] == ["→ Promote to the test system", "→ Write the release note"]
+    assert q["optionsList"] == ["→ Keep going toward the original goal", "→ Promote to the test system",
+                                "→ Write the release note"]
     assert "Staging is green." in q["question"] and "proj" in q["question"]
     assert w.suggested == [MESSAGE]
     assert not qr.waiting_path(SID, tmp_path).exists()
@@ -126,11 +128,11 @@ def test_verdict_arriving_while_waiting(tmp_path):
     assert w.decide().endswith("go")
 
 
-def test_suggester_failure_still_posts_free_text_only(tmp_path):
+def test_suggester_failure_still_posts_with_the_keep_going_option(tmp_path):
     verdict(tmp_path, "DONE")
     w = World(tmp_path, answer="go on", suggestion=None)
     assert w.decide().endswith("go on")
-    assert w.envelopes[0]["questions"][0]["optionsList"] == []
+    assert w.envelopes[0]["questions"][0]["optionsList"] == ["→ Keep going toward the original goal"]
 
 
 def test_the_owner_typed_first(tmp_path):
@@ -249,7 +251,7 @@ def test_a_next_step_that_reaches_the_hooks_limit_is_handed_to_a_carrier(tmp_pat
     assert job["kind"] == qr.KIND_CONTINUATION and job["session_id"] == SID and job["armed"] == ARMED
     assert job["transcript"] == "/t.jsonl" and job["project"] == "proj" and job["prompt_id"] == "8593cae2"
     assert job["question"].startswith("✅ Finished") and job["options"] == [
-        ct.NEXT_MARK + "Promote to the test system", ct.NEXT_MARK + "Write the release note"]
+        ct.NEXT_MARK + ct.KEEP_GOING, ct.NEXT_MARK + "Promote to the test system", ct.NEXT_MARK + "Write the release note"]
     assert not qr.waiting_path(SID, tmp_path).exists(), "the hook's own record is cleared; the carrier writes its own"
 
 
@@ -288,3 +290,78 @@ def test_an_auto_written_next_step_does_not_claim_the_owner_said_it(tmp_path):
     verdict(tmp_path, "DONE")
     own = World(tmp_path, answer="→ Promote to the test system").decide()
     assert own.startswith("The owner answered from the relay channel"), "the operator's own wording is unchanged"
+
+
+# ── the original goal (change relay-continue-original-goal) ─────────────────
+
+
+def _transcript(tmp_path, entries):
+    path = tmp_path / "head.jsonl"
+    path.write_text("".join(json.dumps(e) + "\n" for e in entries))
+    return path
+
+
+def test_the_opening_prompt_skips_wrappers_and_tool_results(tmp_path):
+    """AC-3"""
+    path = _transcript(tmp_path, [
+        {"type": "summary", "summary": "x"},
+        {"type": "user", "message": {"content": "<command-name>/clear</command-name>"}},
+        {"type": "user", "isMeta": True, "message": {"content": "Caveat: meta"}},
+        {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t", "content": "r"}]}},
+        {"type": "user", "message": {"content": [{"type": "text", "text": "Ship the export feature to staging."}]}},
+        {"type": "user", "message": {"content": "later prompt"}},
+    ])
+    assert ct.opening_prompt(path) == "Ship the export feature to staging."
+
+
+def test_the_opening_prompt_is_bounded_and_fails_soft(tmp_path):
+    path = _transcript(tmp_path, [{"type": "user", "message": {"content": "x" * 5000}}])
+    assert ct.opening_prompt(path) == "x" * ct.OPENING_MAX
+    assert ct.opening_prompt(tmp_path / "missing.jsonl") is None
+    assert ct.opening_prompt(None) is None
+
+
+def test_the_goal_line_is_parsed():
+    assert ct.parse_goal("SUMMARY: s\nGOAL: ship the export feature\nNEXT: a") == "ship the export feature"
+    assert ct.parse_goal("SUMMARY: s") == ""
+    assert len(ct.parse_goal("GOAL: " + "g" * 500)) == ct.GOAL_MAX
+
+
+def test_a_goal_is_shown_and_asked_about():
+    """AC-1"""
+    q = ct.continuation_question("proj", "abcd1234", "Board empty.", "ship the export feature")
+    assert "Started for: ship the export feature" in q
+    assert "still hold?" in q and q.startswith("✅ Finished, waiting for the next instruction — proj · abcd1234")
+
+
+def test_without_a_goal_the_post_still_asks_what_is_left():
+    """AC-2"""
+    q = ct.continuation_question("proj", "abcd1234", "Board empty.")
+    assert "Started for:" not in q and "Is anything left of what the session was started for?" in q
+
+
+def test_the_keep_going_option_comes_first():
+    """AC-4"""
+    assert ct.continuation_options(["a", "b"]) == ["→ " + ct.KEEP_GOING, "→ a", "→ b"]
+    assert len(ct.continuation_options(["a", "b", "c", "d"])) == 1 + ct.MAX_NEXT
+
+
+def test_keep_going_wakes_with_the_goal_re_check():
+    """AC-5 / AC-6"""
+    mine = ct.instruction("→ " + ct.KEEP_GOING)
+    assert mine.startswith("The owner answered from the relay channel")
+    assert ct.KEEP_GOING_INSTRUCTION in mine and "still hold" in mine and "stop" in mine
+    auto = ct.instruction("→ " + ct.KEEP_GOING, by="auto-answer")
+    assert "auto-answer chose this next step on the owner's behalf" in auto and ct.KEEP_GOING_INSTRUCTION in auto
+    assert ct.instruction("→ Promote it").endswith("Continue with this instruction: Promote it")
+
+
+def test_the_suggester_gets_the_opening_prompt_and_nothing_is_logged(tmp_path, monkeypatch, caplog):
+    seen = []
+    monkeypatch.setattr(ct.wd, "run_headless",
+                        lambda prompt, *a, **k: seen.append(prompt) or "SUMMARY: s\nGOAL: the export\nNEXT: n")
+    caplog.set_level(logging.DEBUG)
+    out = ct.suggest("ALL DONE: board empty.", lambda *a, **k: None, "Ship the export feature to staging.")
+    assert out == ("s", ["n"], "the export")
+    assert "OPENING PROMPT" in seen[0] and "Ship the export feature to staging." in seen[0]
+    assert all("export" not in r.getMessage() for r in caplog.records)
