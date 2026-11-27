@@ -13,6 +13,10 @@ The decision lives in `set_orch.fleet.question_relay.notify`; this file is the
 carrier. Output: nothing, always, and exit 0 — a notification has nothing to hand
 back to the runtime.
 
+`--ask-reason`: a hook that returned "ask" pipes its PreToolUse input plus `reason` (and
+an optional `source`) on stdin; the relay's permission post for that exact call then shows
+the reason. Stored only while the switch is on; see `question_relay.store_ask_reason`.
+
 Configuration (machine-local, `set-config set <key> <value>`):
     question_relay.notify_command  one-way outbound: reads {"kind":"notification",...}
                                    on stdin, posts it, prints nothing
@@ -34,7 +38,37 @@ if _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 
 
+def ask_reason() -> int:
+    """`--ask-reason`: a hook that returned "ask" hands its reason to the permission post.
+
+    stdin: {"session_id", "tool_name", "tool_input", "reason", "source"?} — the hook's own
+    PreToolUse input plus its reason (change relay-permission-reason). Stored only while the
+    switch is on; prints nothing; exit 0 on every path; logs no command or reason text.
+    """
+    try:
+        payload = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    if not isinstance(payload, dict):
+        return 0
+    try:
+        from set_orch.fleet import question_relay as qr
+
+        if not qr.readiness()["enabled"]:
+            return 0
+        folder = qr.state_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(filename=str(folder / "relay.log"), level=logging.INFO,
+                            format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        qr.store_ask_reason(payload)
+    except Exception as exc:  # never let a reason touch the session
+        logging.getLogger("set-hook-notify-relay").warning("ask reason failed (%s)", type(exc).__name__)
+    return 0
+
+
 def main() -> int:
+    if sys.argv[1:2] == ["--ask-reason"]:
+        return ask_reason()
     # `--text "…"`: a hook that RAISED the blocking answer can send its own reason —
     # the one text no transcript carries (measured 2026-11-19: hook outputs are
     # terminal-prompt-only, B-188). Session unknown there; the project is the cwd.

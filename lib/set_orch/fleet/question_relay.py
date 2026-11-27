@@ -1267,12 +1267,115 @@ def resolved_calls(entries: List[Dict[str, Any]], tool_name: str, tool_input: An
     return {i for i in matching & results if i}
 
 
-def permission_question(project: str, sid: str, hook_input: Dict[str, Any]) -> str:
+# ── the asking hook's reason (change relay-permission-reason, B-188 a) ─────────────────
+#
+# The runtime's PermissionRequest payload carries no word from the PreToolUse hook that
+# raised the `ask` (measured 2026-11-22), and no transcript carries hook output. So the
+# asking hook hands its reason over itself (`set-hook-notify-relay --ask-reason`), keyed by
+# the session and the EXACT call: a reason can only ever reach the post of the call it was
+# written for, and an unmatched one fails toward today's post (no reason line).
+
+ASK_REASON_WINDOW_S = 600
+ASK_REASON_MAX = 600
+PERMISSION_COMMAND_MAX = 1200
+
+
+def ask_reason_key(tool_name: str, tool_input: Any) -> str:
+    canon = json.dumps(tool_input, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(f"{tool_name}\0{canon}".encode("utf-8")).hexdigest()[:24]
+
+
+def _ask_reason_dir(base: Optional[Path]) -> Path:
+    return (base or state_dir()) / "ask-reasons"
+
+
+def _prune_ask_reasons(folder: Path, now: float) -> None:
+    try:
+        entries = list(folder.glob("*.json"))
+    except OSError:
+        return
+    for path in entries:
+        try:
+            if now - path.stat().st_mtime > ASK_REASON_WINDOW_S:
+                path.unlink()
+                logger.debug("question relay: stale ask reason %s removed", path.name[:8])
+        except OSError:
+            continue
+
+
+def store_ask_reason(hook_input: Dict[str, Any], base: Optional[Path] = None,
+                     wall: Callable[[], float] = time.time) -> bool:
+    """Store a hook's reason for the call it asked about. True when stored. Logs no content."""
+    if not isinstance(hook_input, dict):
+        return False
+    session = _safe_id(str(hook_input.get("session_id") or ""))
+    tool = _text(hook_input.get("tool_name"))
+    reason = _text(hook_input.get("reason"))
+    sid = session[:8] or "unknown"
+    if not (session and tool and reason):
+        logger.info("question relay ask reason [%s]: incomplete input; not stored", sid)
+        return False
+    folder = _ask_reason_dir(base)
+    now = wall()
+    _prune_ask_reasons(folder, now)
+    path = folder / f"{session}-{ask_reason_key(tool, hook_input.get('tool_input'))}.json"
+    _write_json(path, {"reason": reason[:ASK_REASON_MAX], "source": _text(hook_input.get("source"))[:80],
+                       "at": now})
+    logger.info("question relay ask reason [%s]: stored", sid)
+    return True
+
+
+def take_ask_reason(session_id: str, tool_name: str, tool_input: Any, base: Optional[Path] = None,
+                    wall: Callable[[], float] = time.time) -> Optional[Dict[str, Any]]:
+    """The fresh reason stored for exactly this call, consumed; None when there is none."""
+    session = _safe_id(session_id or "")
+    if not (session and tool_name):
+        return None
+    folder = _ask_reason_dir(base)
+    now = wall()
+    _prune_ask_reasons(folder, now)
+    path = folder / f"{session}-{ask_reason_key(tool_name, tool_input)}.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        logger.warning("question relay ask reason [%s]: unreadable (%s)", session[:8], type(exc).__name__)
+        return None
+    try:
+        path.unlink()
+    except OSError:
+        pass
+    at = data.get("at") if isinstance(data, dict) else None
+    if not isinstance(at, (int, float)) or now - at > ASK_REASON_WINDOW_S or not _text(data.get("reason")):
+        return None
+    return data
+
+
+def _permission_command(tool: str, tool_input: Dict[str, Any]) -> str:
+    if tool != "Bash":
+        return _tool_summary({"name": tool, "input": tool_input}) or tool
+    command = _text(tool_input.get("command"))
+    if not command:
+        return tool
+    if len(command) > PERMISSION_COMMAND_MAX:
+        left = len(command) - PERMISSION_COMMAND_MAX
+        command = f"{command[:PERMISSION_COMMAND_MAX]}… [+{left} chars cut]"
+    return f"Bash: {command}"
+
+
+def permission_question(project: str, sid: str, hook_input: Dict[str, Any],
+                        base: Optional[Path] = None, wall: Callable[[], float] = time.time) -> str:
     tool = str(hook_input.get("tool_name") or "a tool")
     tool_input = hook_input.get("tool_input") if isinstance(hook_input.get("tool_input"), dict) else {}
-    summary = _tool_summary({"name": tool, "input": tool_input}) or tool
-    return (f"🔐 Permission asked — {project} · {sid}\n{summary}\n"
-            f"Allow runs it once; Deny refuses it. Free text refuses it and passes your words to the agent.")
+    lines = [f"🔐 Permission asked — {project} · {sid}", _permission_command(tool, tool_input)]
+    why = take_ask_reason(str(hook_input.get("session_id") or ""), tool, hook_input.get("tool_input"),
+                          base, wall)
+    if why:
+        source = _text(why.get("source")) or "a hook"
+        lines.append(f"Why it asks ({source}): {_text(why.get('reason'))}")
+    lines.append("Allow runs it once; Deny refuses it. Free text refuses it and passes your words to the agent.")
+    return "\n".join(lines)
 
 
 def permission_output(text: str) -> Dict[str, Any]:
@@ -1315,7 +1418,7 @@ def permission(hook_input: Dict[str, Any], *,
     session_id = str(hook_input.get("session_id") or "")
     sid = _safe_id(session_id)[:8] or "unknown"
     project = project_name(str(hook_input.get("cwd") or os.getcwd()))
-    record = hand_over_one(hook_input, KIND_PERMISSION, permission_question(project, sid, hook_input),
+    record = hand_over_one(hook_input, KIND_PERMISSION, permission_question(project, sid, hook_input, base, wall),
                            list(PERMISSION_OPTIONS), get=get, run=run,
                            project_name=lambda _cwd: project, wall=wall, base=base)
     if record is None:
